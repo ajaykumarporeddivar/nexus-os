@@ -1,0 +1,52 @@
+{
+  "name": "@nexus-os/web",
+  "version": "11.0.0",
+  "private": true,
+  "prisma": {
+    "schema": "../../prisma/schema.prisma"
+  },
+  "scripts": {
+    "dev": "next dev",
+    "build": "prisma generate && next build",
+    "start": "next start",
+    "lint": "next lint",
+    "test": "vitest",
+    "db:generate": "prisma generate",
+    "db:push": "prisma db push",
+    "db:migrate": "prisma migrate dev",
+    "db:studio": "prisma studio"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.24.0",
+    "@prisma/client": "5.22.0",
+    "@upstash/ratelimit": "^2.0.5",
+    "@upstash/redis": "^1.37.0",
+    "bullmq": "^5.7.0",
+    "class-variance-authority": "^0.7.0",
+    "clsx": "^2.1.0",
+    "ioredis": "^5.3.0",
+    "jszip": "^3.10.1",
+    "next": "^14.2.0",
+    "next-auth": "^4.24.0",
+    "razorpay": "^2.9.6",
+    "react": "^18.3.0",
+    "react-dom": "^18.3.0",
+    "resend": "^6.12.2",
+    "tailwind-merge": "^2.3.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "@types/react": "^18.3.0",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.2.0",
+    "autoprefixer": "^10.4.0",
+    "eslint": "^8",
+    "eslint-config-next": "^14.2.0",
+    "jsdom": "^29.0.2",
+    "postcss": "^8.4.0",
+    "prisma": "5.22.0",
+    "tailwindcss": "^3.4.0",
+    "typescript": "^5.4.0",
+    "vitest": "^1.6.0"
+  }
+}

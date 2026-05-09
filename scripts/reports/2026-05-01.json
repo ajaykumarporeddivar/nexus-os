@@ -1,0 +1,15 @@
+{
+  "date": "2026-05-01",
+  "timestamp": "2026-05-01T13:49:26Z",
+  "testSuite": {
+    "pass": 28,
+    "fail": 35,
+    "warn": 1,
+    "total": 64
+  },
+  "agent": {
+    "healthScore": "?",
+    "autoFixesApplied": 0,
+    "analysis": "n/a"
+  }
+}

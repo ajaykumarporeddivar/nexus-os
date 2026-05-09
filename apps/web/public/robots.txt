@@ -1,0 +1,22 @@
+User-agent: *
+Allow: /
+Allow: /llms.txt
+Allow: /sitemap.xml
+
+Sitemap: https://nexus-os.ai/sitemap.xml
+
+# LLM crawlers — welcome
+User-agent: GPTBot
+Allow: /
+
+User-agent: ClaudeBot
+Allow: /
+
+User-agent: PerplexityBot
+Allow: /
+
+User-agent: anthropic-ai
+Allow: /
+
+User-agent: CCBot
+Allow: /

@@ -1,0 +1,16 @@
+{
+  "date": "2026-04-30",
+  "timestamp": "2026-04-30T01:38:30Z",
+  "testSuite": {
+    "pass": 0
+0,
+    "fail": 43,
+    "warn": 21,
+    "total": 
+  },
+  "agent": {
+    "healthScore": "?",
+    "autoFixesApplied": 0,
+    "analysis": "n/a"
+  }
+}

@@ -1,0 +1,63 @@
+services:
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      DATABASE_URL: postgresql://nexus:nexus@postgres:5432/nexus
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
+      NEXTAUTH_URL: ${NEXTAUTH_URL:-http://localhost:3000}
+      NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      EMAIL_FROM: ${EMAIL_FROM:-NEXUS OS <noreply@nexus-os.ai>}
+      RAZORPAY_KEY_ID: ${RAZORPAY_KEY_ID:-}
+      RAZORPAY_KEY_SECRET: ${RAZORPAY_KEY_SECRET:-}
+      NEXT_PUBLIC_RAZORPAY_KEY_ID: ${NEXT_PUBLIC_RAZORPAY_KEY_ID:-}
+      WATI_API_KEY: ${WATI_API_KEY:-}
+      WATI_URL: ${WATI_URL:-}
+      CRON_SECRET: ${CRON_SECRET:-nexus-cron-secret}
+      ALERT_PHONE: ${ALERT_PHONE:-}
+      INTERNAL_NOTIFY_EMAIL: ${INTERNAL_NOTIFY_EMAIL:-}
+      NEXT_PUBLIC_BRAND_NAME: ${NEXT_PUBLIC_BRAND_NAME:-NEXUS OS}
+      NEXT_PUBLIC_BRAND_VERSION: ${NEXT_PUBLIC_BRAND_VERSION:-v11}
+      NEXT_PUBLIC_BRAND_TAGLINE: ${NEXT_PUBLIC_BRAND_TAGLINE:-AI Delivery Infrastructure for Digital Agencies}
+      NEXT_PUBLIC_BRAND_DOMAIN: ${NEXT_PUBLIC_BRAND_DOMAIN:-nexus-os.ai}
+      NEXT_PUBLIC_BRAND_COLOR: ${NEXT_PUBLIC_BRAND_COLOR:-#8B5CF6}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: nexus
+      POSTGRES_PASSWORD: nexus
+      POSTGRES_DB: nexus
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nexus -d nexus"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  migrate:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      target: deps
+    command: sh -c "cd /app && npx prisma migrate deploy"
+    environment:
+      DATABASE_URL: postgresql://nexus:nexus@postgres:5432/nexus
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: on-failure
+
+volumes:
+  pgdata:

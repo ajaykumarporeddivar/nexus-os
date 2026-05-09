@@ -1,0 +1,303 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id              String    @id @default(cuid())
+  email           String    @unique
+  name            String?
+  image           String?
+  emailVerified   DateTime?
+  plan            String    @default("free")
+  planActivatedAt DateTime?
+  razorpayOrderId String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  accounts      Account[]
+  sessions      Session[]
+  executions    Execution[]
+  apiKeys       ApiKey[]
+  auditEvents   AuditEvent[]
+  subscriptions Subscription[]
+  workspaces    Workspace[]
+
+  @@index([plan])
+}
+
+model Workspace {
+  id          String   @id @default(cuid())
+  name        String
+  type        String   @default("client") // client | feature | internal | personal
+  description String?
+  context     String?  @db.Text
+  emoji       String   @default("📁")
+  color       String   @default("acid")
+  ownerId     String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  owner      User?       @relation(fields: [ownerId], references: [id], onDelete: SetNull)
+  executions Execution[]
+
+  @@index([ownerId])
+}
+
+model Subscription {
+  id          String   @id @default(cuid())
+  userId      String
+  plan        String
+  orderId     String   @unique
+  paymentId   String   @unique
+  amount      Int
+  currency    String   @default("INR")
+  status      String   @default("active")
+  activatedAt DateTime @default(now())
+  expiresAt   DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status])
+  @@index([expiresAt])
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+model ApiKey {
+  id           String    @id @default(cuid())
+  userId       String
+  encryptedKey String    @db.Text
+  keyHint      String
+  isValid      Boolean   @default(true)
+  lastUsed     DateTime?
+  createdAt    DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Execution {
+  id               Int      @id @default(autoincrement())
+  userId           String?
+  workspaceId      String?
+  sessionId        String
+  inputSnippet     String   @db.Text
+  clientName       String
+  phases           String[]
+  tokens           Int      @default(0)
+  calls            Int      @default(0)
+  score            Float?
+  passed           Boolean?
+  status           String   @default("COMPLETE")
+  fileCount        Int      @default(0)
+  zipKey           String?
+  fatigueZone      String   @default("green")   // AAS v4: green|yellow|red at decision time
+  attributionConf  Float?                        // AAS v4: 0–1, gates rule updates in Phase 08
+  irreversible     Boolean  @default(false)       // AAS v4: true = 2× confidence gate
+  timingAdv        Float    @default(0.5)         // AAS v4 RP_score: 1=pioneer, 0.5=field consensus, 0.1=late mover
+  createdAt        DateTime @default(now())
+
+  user         User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
+  workspace    Workspace?    @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+  agentOutputs AgentOutput[]
+  auditEvents  AuditEvent[]
+
+  @@index([sessionId])
+  @@index([userId])
+  @@index([workspaceId])
+  @@index([createdAt])
+  @@index([status])
+}
+
+model AgentOutput {
+  id          String   @id @default(cuid())
+  executionId Int
+  agentId     String
+  filePath    String
+  content     String   @db.Text
+  tokens      Int      @default(0)
+  createdAt   DateTime @default(now())
+
+  execution Execution @relation(fields: [executionId], references: [id], onDelete: Cascade)
+}
+
+model VaultPrompt {
+  id          String   @id @default(cuid())
+  vaultItemId String
+  userId      String?
+  title       String
+  content     String   @db.Text
+  version     Int      @default(1)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([vaultItemId, version])
+  @@index([vaultItemId, isActive])
+}
+
+model AuditEvent {
+  id          String   @id @default(cuid())
+  action      String
+  userId      String?
+  sessionId   String
+  executionId Int?
+  meta        Json     @default("{}")
+  createdAt   DateTime @default(now())
+
+  user      User?      @relation(fields: [userId], references: [id], onDelete: SetNull)
+  execution Execution? @relation(fields: [executionId], references: [id], onDelete: SetNull)
+
+  @@index([action])
+  @@index([sessionId])
+  @@index([createdAt])
+}
+
+model PromptVersion {
+  id                     String   @id @default(cuid())
+  agentId                String
+  prompt                 String   @db.Text
+  avgScore               Float    @default(0)
+  runCount               Int      @default(0)
+  active                 Boolean  @default(false)
+  createdAt              DateTime @default(now())
+  // AAS v4 Phase C — learning system tracking
+  methodId               String   @default("failure_analysis") // which learning method produced this
+  loopsWithoutImprovement Int     @default(0)                  // increments when avgScore stagnates
+  quarantined            Boolean  @default(false)              // Phase 10: flagged for removal review
+  quarantinedAt          DateTime?                             // when quarantine was set
+
+  learningResults LearningMethodResult[]
+
+  @@index([agentId, active])
+  @@index([agentId, quarantined])
+}
+
+// AAS v4 Phase 08 — per-method learning effectiveness tracking
+// Enables quarterly win-rate comparison and method deprioritisation
+model LearningMethodResult {
+  id            String   @id @default(cuid())
+  methodId      String   // failure_analysis | success_deconstruction | anomaly_review | adversarial_audit
+  agentId       String
+  promptVersion PromptVersion @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+  ruleId        String   // PromptVersion.id created by this cycle
+  scoreBefore   Float
+  scoreAfter    Float    @default(0)  // updated when enough runs accumulate post-cycle
+  delta         Float    @default(0)  // scoreAfter - scoreBefore (updated retroactively)
+  cadence       String   // micro | weekly | quarterly
+  computedAt    DateTime @default(now())
+
+  @@index([methodId])
+  @@index([agentId])
+  @@index([computedAt])
+  @@index([cadence])
+}
+
+model KitActivation {
+  id        String   @id @default(cuid())
+  kitId     String
+  sessionId String
+  plan      String   @default("free")
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  @@unique([kitId, sessionId])
+  @@index([sessionId, active])
+}
+
+model TrendingItem {
+  id               String   @id @default(cuid())
+  title            String
+  url              String?
+  source           String   // 'hackernews' | 'ai_curated' | 'producthunt'
+  category         String   // 'tool' | 'trend' | 'opportunity' | 'article'
+  audience         String   @default("both") // 'freelancer' | 'solopreneur' | 'both'
+  summary          String   @db.Text
+  useCase          String   @db.Text
+  tags             String[] @default([])
+  hnScore          Int      @default(0)
+  batchId          String   // groups items from same fetch run
+  fetchedAt        DateTime @default(now())
+  // AAS v4 Signal Object fields
+  confidence       Float    @default(0.5)          // 0–1, required at every handoff
+  causalMechanism  String?                          // null = kill; why this is happening
+  regimeClass      String   @default("unknown")    // expansion|transition|contraction|unknown
+  exploreOrExploit String   @default("E")          // E=explore, X=exploit
+  saturationIndex  Float    @default(0.0)          // 0–1; >0.8 = hygiene, not advantage
+  timingAdv        Float    @default(0.0)          // timing advantage score vs field consensus
+
+  @@index([fetchedAt])
+  @@index([batchId])
+  @@index([category])
+  @@index([regimeClass])
+}
+
+// AAS v4 — current system regime classification
+model SystemRegime {
+  id            String   @id @default(cuid())
+  regimeClass   String   // expansion|transition|contraction|unknown
+  confidence    Float    // 0–1, classification confidence
+  triggerSource String   // scheduled|threshold_breach|manual|regime_shift
+  indicators    Json     @default("{}") // raw signals used: signalDensity, trendSlope, anomalyRate, crDelta
+  classifiedAt  DateTime @default(now())
+
+  @@index([classifiedAt])
+}
+
+// AAS v4 — per-loop 5-dimensional Compound Rate snapshots
+model CRSnapshot {
+  id          String   @id @default(cuid())
+  loopVersion Int
+  sqi         Float    // Signal Quality Index (25%): avg score quality + full pipeline rate
+  pAcc        Float    // Prediction Accuracy (30%): Brier-score-based pass/fail accuracy
+  kPrec       Float    // Kill Precision (20%): ratio of completed full-pipeline runs
+  evel        Float    // Execution Velocity (15%): runs/day vs 30d baseline
+  lsm         Float    // Learning Speed Metric (10%): avg score delta per learning cycle
+  cr          Float    // Compound Rate = weighted sum of above
+  mCR         Float    // Meta-CR: CR delta vs prior snapshot (learning system health)
+  regimeClass String   // regime at time of computation
+  cadence     String   @default("scheduled") // micro | weekly | quarterly | scheduled | manual
+  computedAt  DateTime @default(now())
+
+  @@index([computedAt])
+  @@index([loopVersion])
+  @@index([cadence])
+}
