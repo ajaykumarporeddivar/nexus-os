@@ -1556,11 +1556,13 @@ export default function PipelinePage() {
     const PARALLEL_AGENTS = ['planner', 'test-writer', 'builder', 'security', 'db-opt']
     log(`FORGE · parallel phase starting: ${PARALLEL_AGENTS.join(', ')}`)
 
-    await Promise.all(PARALLEL_AGENTS.map(id =>
-      runForgeAgent(
-        id,
-        FORGE_AGENT_SYSTEMS[id] ?? `You are the NEXUS ${id.toUpperCase()} agent. Complete your task.`,
-        parallelCtx,
+    await Promise.all(PARALLEL_AGENTS.map((id, i) =>
+      new Promise<void>(r => setTimeout(r, i * 600)).then(() =>
+        runForgeAgent(
+          id,
+          FORGE_AGENT_SYSTEMS[id] ?? `You are the NEXUS ${id.toUpperCase()} agent. Complete your task.`,
+          parallelCtx,
+        )
       )
     ))
     log('✓ FORGE parallel phase complete — all 5 specialist agents done', 'ok')
@@ -1786,39 +1788,28 @@ Generate the ${agentId.toUpperCase()} files now. Follow the output contract exac
       return parsed
     }
 
+    // Stagger parallel agents 600ms apart to avoid rate-limit spikes
+    const stagger = async (ids: string[]) =>
+      Promise.all(ids.map((id, i) =>
+        new Promise<void>(r => setTimeout(r, i * 600)).then(() => runAgent(id, { ...allFiles }))
+      ))
+
     // Stage 1 (parallel): scaffold + mock-data + shell — fully independent
-    await Promise.all([
-      runAgent('scaffold',  { ...allFiles }),
-      runAgent('mock-data', { ...allFiles }),
-      runAgent('shell',     { ...allFiles }),
-    ])
+    await stagger(['scaffold', 'mock-data', 'shell'])
     setBuildStage(1)
-    await new Promise(r => setTimeout(r, 300))
 
     // Stage 2 (parallel): ui-core + api — need types from stage 1
-    await Promise.all([
-      runAgent('ui-core', { ...allFiles }),
-      runAgent('api',     { ...allFiles }),
-    ])
+    await stagger(['ui-core', 'api'])
     setBuildStage(2)
     // (no mid-BUILD announce — the section narration above plays while agents work)
-    await new Promise(r => setTimeout(r, 300))
 
     // Stage 3 (parallel): landing + interactions — need ui components from stage 2
-    await Promise.all([
-      runAgent('landing',      { ...allFiles }),
-      runAgent('interactions', { ...allFiles }),
-    ])
+    await stagger(['landing', 'interactions'])
     setBuildStage(3)
-    await new Promise(r => setTimeout(r, 300))
 
     // Stage 4 (parallel): dashboard + features — need ui layout from stage 2
-    await Promise.all([
-      runAgent('dashboard', { ...allFiles }),
-      runAgent('features',  { ...allFiles }),
-    ])
+    await stagger(['dashboard', 'features'])
     setBuildStage(4)
-    await new Promise(r => setTimeout(r, 300))
 
     // Stage 5: repair — needs all prior output
     await runAgent('repair', { ...allFiles })

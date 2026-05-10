@@ -9,7 +9,7 @@ import { Ratelimit } from '@upstash/ratelimit'
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 
-const AUTH_REQUESTS   = 20
+const AUTH_REQUESTS   = 40
 const AUTH_WINDOW     = '60 s'
 const PUBLIC_REQUESTS = 5
 const PUBLIC_WINDOW   = '60 s'
