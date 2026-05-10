@@ -1469,7 +1469,8 @@ export default function PipelinePage() {
     const vertical        = detectVertical(briefText)
     const verticalContext = VERTICAL_CONTEXTS[vertical]
     log(`FORGE ENGINE starting — 11 agents · vertical: ${vertical.toUpperCase()}`)
-    announce('FORGE ENGINE started. Eleven specialists are reading your brief and defining your product.')
+    // Section 1: FORGE narration — fires once at start, completes naturally while agents run (~40-90s)
+    announce('FORGE ENGINE running. Eleven specialists are reading your brief, defining the architecture, planning every feature, writing the security model, and building your go-to-market and revenue strategy. This takes about thirty to sixty seconds.')
 
     const content: Record<string, string>   = {}
     const specFiles: Record<string, string> = {}
@@ -1545,8 +1546,7 @@ export default function PipelinePage() {
       FORGE_AGENT_SYSTEMS['architect'] ?? 'You are the NEXUS ARCHITECT.',
       `${briefCtx}\n\nPrevious outputs:\n${prevOutputs()}`,
     )
-    // Milestone 2: after first 3 sequential agents complete
-    announce('Strategy, requirements, and architecture are locked. Five specialists are now working in parallel.')
+    // (no mid-FORGE announce — the section narration above plays while agents work)
     await new Promise(r => setTimeout(r, 200))
 
     // ── Phase D: parallel — 5 specialist agents (all depend on architect only) ─
@@ -1659,10 +1659,7 @@ export default function PipelinePage() {
     setForgeActiveAgents(new Set())
     log(`✓ FORGE MONETISATION STRATEGIST (${monetisationResult.tokens} tokens)`, 'ok')
 
-    // Milestone 3: FORGE complete — single announcement after all 11 agents done
-    const qaLabel = qaScore !== null ? ` Quality score: ${qaScore.toFixed(1)} out of ten.` : ''
-    announce(`FORGE complete.${qaLabel} Product spec, architecture, growth playbook, and revenue model are ready. BUILD ENGINE starting now.`)
-    // Drain queue — all FORGE narration must finish before BUILD narration starts
+    // Drain — ensure FORGE section narration fully plays before BUILD narration starts
     await waitForSpeech(14_000)
     await new Promise(r => setTimeout(r, 300))
 
@@ -1745,7 +1742,8 @@ Generate the ${agentId.toUpperCase()} files now. Follow the output contract exac
   const runBuild = useCallback(async (forge: ForgeBuild): Promise<Record<string, string>> => {
     patchStep('build', { status: 'running', error: undefined })
     log('BUILD ENGINE starting — 10 agents (incl. REPAIR) in parallel stages')
-    announce('BUILD ENGINE active. Ten agents are writing real Next.js code — components, APIs, and the full feature set.')
+    // Section 2: BUILD narration — fires once at start, completes naturally while agents run (~40-90s)
+    announce('BUILD ENGINE active. Ten agents are now writing your complete Next.js application — scaffold, UI components, API routes, landing page, dashboard, feature pages, and a final repair pass to ensure everything is consistent.')
 
     const allFiles: Record<string, string> = {}
 
@@ -1804,8 +1802,7 @@ Generate the ${agentId.toUpperCase()} files now. Follow the output contract exac
       runAgent('api',     { ...allFiles }),
     ])
     setBuildStage(2)
-    // Milestone 4: BUILD midpoint — scaffold, mock data, UI, and API complete
-    announce('BUILD midpoint. Foundation, UI components, and all API routes are generated. Building landing page and dashboard next.')
+    // (no mid-BUILD announce — the section narration above plays while agents work)
     await new Promise(r => setTimeout(r, 300))
 
     // Stage 3 (parallel): landing + interactions — need ui components from stage 2
@@ -1852,9 +1849,7 @@ Generate the ${agentId.toUpperCase()} files now. Follow the output contract exac
     } else {
       log(`BUILD complete — ${fileCount} files generated`, 'ok')
     }
-    // Milestone 5: BUILD complete — single clear announce after all 10 agents done
-    announce(`BUILD ENGINE complete. ${fileCount} production files written. Deploying to GitHub and Vercel now.`)
-    // Drain queue — BUILD narration must finish before DEPLOY narration starts
+    // Drain — ensure BUILD section narration fully plays before DEPLOY narration starts
     await waitForSpeech(14_000)
 
     patchStep('build', { status: 'done' })
@@ -1869,8 +1864,8 @@ Generate the ${agentId.toUpperCase()} files now. Follow the output contract exac
   ): Promise<DeployResult> => {
     patchStep('deploy', { status: 'running', error: undefined })
     setDeploySubStep(1)
-    // Milestone 6 (mid): DEPLOY started
-    announce('DEPLOY started. Pushing code to GitHub and triggering your Vercel build now.')
+    // Section 3: DEPLOY narration — fires once at start, plays while GitHub/Vercel calls run
+    announce('DEPLOY phase running. Your code is being pushed to GitHub and deployed to Vercel. A live production URL will be ready in moments.')
     log('DEPLOY starting…')
 
     const slug = forge.projectName
@@ -1965,7 +1960,6 @@ Generate the ${agentId.toUpperCase()} files now. Follow the output contract exac
     if (liveVercelOk && Object.keys(appFiles).length > 0) {
       setDeploySubStep(3)
       log('Deploying app to Vercel (Next.js build)…')
-      log('Deploying app to Vercel (Next.js build)…')
       try {
         const vRes = await fetch('/api/deploy/vercel-app', {
           method:  'POST',
@@ -2041,11 +2035,9 @@ Generate the ${agentId.toUpperCase()} files now. Follow the output contract exac
       }
     }
 
-    // Advance sub-step to 5 if no Vercel polling is pending (no deploymentId, or already ready).
-    // This prevents the DeploySubGrid from staying stuck at step 1–3 when tokens are absent.
-    if (deployReady || !deploymentId) {
-      setDeploySubStep(5)
-    }
+    // Set to 6 so ALL 5 steps show ✓ done (isDone = currentStep > s.n; 6 > 5 = true for LIVE).
+    // Without this, step 5 (LIVE) stays as "▸ running" because isActive = currentStep === 5.
+    setDeploySubStep(6)
     const result: DeployResult = { specRepoUrl, appRepoUrl, proposalUrl, vercelImport, deploymentId: deploymentId || undefined, deployReady }
     patchStep('deploy', { status: 'done' })
     log('DEPLOY complete', 'ok')
@@ -2138,7 +2130,8 @@ Generate the ${agentId.toUpperCase()} files now. Follow the output contract exac
     totalCallsRef.current  = 0
     pipelineStartRef.current = Date.now()
 
-    announce('Pipeline launched. Twenty-one AI specialists are now building your product from scratch.')
+    // Section 0: launch — single sentence, spoken before FORGE starts
+    announce('Pipeline launched. Twenty-one AI specialists are about to build your product from scratch — spec, code, and live deployment, fully autonomous.')
     setPhase('running')
     setLogLines([])
     setStreamingOutput('')
@@ -2587,24 +2580,7 @@ Generate the ${agentId.toUpperCase()} files now. Follow the output contract exac
                 ))}
               </div>
 
-              {/* Live streaming output */}
-              {streamingOutput && (
-                <div className="rounded-xl border border-ink/15 bg-ink overflow-hidden">
-                  <div className="flex items-center gap-2 px-3 py-1.5 border-b border-ink/15">
-                    <div className="flex gap-1.5">
-                      <span className="w-2 h-2 rounded-full bg-red-500/60" />
-                      <span className="w-2 h-2 rounded-full bg-amber-500/60" />
-                      <span className="w-2 h-2 rounded-full bg-green-500/60" />
-                    </div>
-                    <p className="text-[9px] font-black font-mono tracking-widest text-[#c8f23c]/50 uppercase">Live agent output</p>
-                  </div>
-                  <div className="p-3 max-h-[100px] overflow-hidden">
-                    <p className="font-mono text-[10px] text-[#c8f23c]/80 leading-relaxed whitespace-pre-wrap">{streamingOutput}
-                      <span className="inline-block w-1.5 h-3.5 bg-[#c8f23c]/70 ml-0.5 animate-[pulse_0.6s_ease-in-out_infinite] align-middle" />
-                    </p>
-                  </div>
-                </div>
-              )}
+              {/* Live streaming output — removed: provides no actionable value in UI */}
 
               {/* Voice bar */}
               <PipelineVoiceBar
