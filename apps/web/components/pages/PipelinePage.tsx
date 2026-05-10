@@ -1058,7 +1058,7 @@ export default function PipelinePage() {
   // Results
   const [deployResult,    setDeployResult]    = useState<DeployResult | null>(null)
   const [forgeQaScore,    setForgeQaScore]    = useState<number | null>(null)
-  const [streamingOutput, setStreamingOutput] = useState('')
+  const [_streamingOutput, _setStreamingOutput] = useState('') // kept for state shape compat, not rendered
 
   // Modals
   const [showTemplates,    setShowTemplates]    = useState(false)
@@ -1277,7 +1277,7 @@ export default function PipelinePage() {
     setPhase('input')
     setSteps(INITIAL_STEPS.map(s => ({ ...s, status: 'pending' as StepStatus })))
     setLogLines([])
-    setStreamingOutput('')
+    /* streamingOutput panel removed */void 0
     setForgeQaScore(null)
     setFinalElapsedSec(0)
     setForgeActiveAgents(new Set())
@@ -1298,7 +1298,7 @@ export default function PipelinePage() {
     systemPrompt: string,
     userMessage:  string,
   ): Promise<{ content: string; tokens: number }> => {
-    setStreamingOutput('')
+    /* streamingOutput panel removed */void 0
 
     // G1: check if aborted before starting each agent
     if (abortRef.current?.signal.aborted) throw new Error('Pipeline cancelled')
@@ -1346,7 +1346,7 @@ export default function PipelinePage() {
           const msg = JSON.parse(line.slice(6)) as { type: string; content?: string; tokens?: number; message?: string }
           if (msg.type === 'chunk' && msg.content) {
             content += msg.content
-            setStreamingOutput(content.slice(-280))
+            // streaming display removed — content accumulates in memory only
           } else if (msg.type === 'done') {
             tokens = msg.tokens ?? Math.ceil(content.length / 4)
           } else if (msg.type === 'error') {
@@ -1356,7 +1356,7 @@ export default function PipelinePage() {
       }
     }
 
-    setStreamingOutput('')
+    /* streamingOutput panel removed */void 0
     // G2: accumulate tokens/calls
     totalTokensRef.current += tokens
     totalCallsRef.current  += 1
@@ -1486,8 +1486,17 @@ export default function PipelinePage() {
     const content: Record<string, string>   = {}
     const specFiles: Record<string, string> = {}
 
+    // Abort-safe sleep helper
+    const abortSleep = (ms: number) => new Promise<void>((resolve, reject) => {
+      const t = setTimeout(resolve, ms)
+      const check = setInterval(() => {
+        if (abortRef.current?.signal.aborted) { clearTimeout(t); clearInterval(check); reject(new Error('Pipeline cancelled')) }
+      }, 300)
+      setTimeout(() => clearInterval(check), ms + 100)
+    })
+
     const callForge = async (agentId: string, system: string, userMsg: string) => {
-      for (let attempt = 0; attempt < 3; attempt++) {
+      for (let attempt = 0; attempt < 4; attempt++) {
         try {
           const result = await callAgentStreaming(system, userMsg)
           return result
@@ -1495,15 +1504,11 @@ export default function PipelinePage() {
           const msg = (err as Error).message ?? ''
           if (msg === 'Pipeline cancelled') throw err
           const isRateLimit = /rate.?limit|429|try again/i.test(msg)
-          if (attempt < 2) {
-            const waitSec = isRateLimit ? 30 : 6
-            log(`⚠ FORGE ${agentId} ${isRateLimit ? 'rate-limited' : 'failed'} — retrying in ${waitSec}s…`, 'warn')
-            for (let t = waitSec; t > 0; t--) {
-              if (abortRef.current?.signal.aborted) throw new Error('Pipeline cancelled')
-              setStreamingOutput(`⏳ Rate limit — retrying ${agentId} in ${t}s…`)
-              await new Promise(r => setTimeout(r, 1000))
-            }
-            setStreamingOutput('')
+          if (attempt < 3) {
+            // Exponential backoff: 8→16→32s for rate limits, 4→8→16s for other errors
+            const waitMs = (isRateLimit ? 8000 : 4000) * Math.pow(2, attempt)
+            log(`⚠ FORGE ${agentId} ${isRateLimit ? 'rate-limited' : 'failed'} — retrying in ${Math.round(waitMs / 1000)}s (attempt ${attempt + 1}/4)…`, 'warn')
+            await abortSleep(waitMs)
           } else {
             throw new Error(`FORGE ${agentId}: ${msg}`)
           }
@@ -1560,23 +1565,21 @@ export default function PipelinePage() {
     // (no mid-FORGE announce — the section narration above plays while agents work)
     await new Promise(r => setTimeout(r, 200))
 
-    // ── Phase D: parallel — 5 specialist agents (all depend on architect only) ─
-    // planner, test-writer, builder, security, db-opt can all work simultaneously.
-    // Each gets the same context snapshot from after architect completes.
+    // ── Phase D: sequential specialist agents (strictly one at a time — no burst) ─
+    // planner → test-writer → builder → security → db-opt, 1500ms gap between each.
     const parallelCtx = `${briefCtx}\n\nPrevious outputs:\n${prevOutputs()}`
-    const PARALLEL_AGENTS = ['planner', 'test-writer', 'builder', 'security', 'db-opt']
-    log(`FORGE · parallel phase starting: ${PARALLEL_AGENTS.join(', ')}`)
+    const SPECIALIST_AGENTS = ['planner', 'test-writer', 'builder', 'security', 'db-opt']
+    log(`FORGE · specialist phase starting (sequential): ${SPECIALIST_AGENTS.join(' → ')}`)
 
-    await Promise.all(PARALLEL_AGENTS.map((id, i) =>
-      new Promise<void>(r => setTimeout(r, i * 600)).then(() =>
-        runForgeAgent(
-          id,
-          FORGE_AGENT_SYSTEMS[id] ?? `You are the NEXUS ${id.toUpperCase()} agent. Complete your task.`,
-          parallelCtx,
-        )
+    for (const id of SPECIALIST_AGENTS) {
+      await runForgeAgent(
+        id,
+        FORGE_AGENT_SYSTEMS[id] ?? `You are the NEXUS ${id.toUpperCase()} agent. Complete your task.`,
+        parallelCtx,
       )
-    ))
-    log('✓ FORGE parallel phase complete — all 5 specialist agents done', 'ok')
+      await abortSleep(1500)
+    }
+    log('✓ FORGE specialist phase complete — all 5 agents done', 'ok')
     await new Promise(r => setTimeout(r, 200))
 
     // ── Phase E: QA gate (sequential — needs all specialist outputs) ──────────
@@ -1761,6 +1764,15 @@ Generate the ${agentId.toUpperCase()} files now. Follow the output contract exac
 
     const allFiles: Record<string, string> = {}
 
+    // Abort-safe sleep (mirrors the one in runForge — needed here too)
+    const abortSleep = (ms: number) => new Promise<void>((resolve, reject) => {
+      const t = setTimeout(resolve, ms)
+      const check = setInterval(() => {
+        if (abortRef.current?.signal.aborted) { clearTimeout(t); clearInterval(check); reject(new Error('Pipeline cancelled')) }
+      }, 300)
+      setTimeout(() => clearInterval(check), ms + 100)
+    })
+
     // Helper: run a single agent with retry
     const runAgent = async (agentId: string, contextSnapshot: Record<string, string>) => {
       const agent = BUILD_AGENTS.find(a => a.id === agentId)!
@@ -1779,14 +1791,9 @@ Generate the ${agentId.toUpperCase()} files now. Follow the output contract exac
           if (msg === 'Pipeline cancelled') throw err
           const isRateLimit = /rate.?limit|429|try again/i.test(msg)
           if (attempt < 2) {
-            const waitSec = isRateLimit ? 30 : 6
-            log(`⚠ BUILD ${agent.name} ${isRateLimit ? 'rate-limited' : 'failed'} — retrying in ${waitSec}s…`, 'warn')
-            for (let t = waitSec; t > 0; t--) {
-              if (abortRef.current?.signal.aborted) throw new Error('Pipeline cancelled')
-              setStreamingOutput(`⏳ Rate limit — retrying ${agent.name} in ${t}s…`)
-              await new Promise(r => setTimeout(r, 1000))
-            }
-            setStreamingOutput('')
+            const waitMs = (isRateLimit ? 8000 : 4000) * Math.pow(2, attempt)
+            log(`⚠ BUILD ${agent.name} ${isRateLimit ? 'rate-limited' : 'failed'} — retrying in ${Math.round(waitMs / 1000)}s (attempt ${attempt + 1}/3)…`, 'warn')
+            await abortSleep(waitMs)
           } else {
             throw new Error(`BUILD ${agent.name}: ${msg}`)
           }
@@ -1801,31 +1808,32 @@ Generate the ${agentId.toUpperCase()} files now. Follow the output contract exac
       return parsed
     }
 
-    // Stagger parallel agents 600ms apart to avoid rate-limit spikes
-    const stagger = async (ids: string[]) =>
-      Promise.all(ids.map((id, i) =>
-        new Promise<void>(r => setTimeout(r, i * 600)).then(() => runAgent(id, { ...allFiles }))
-      ))
+    // Strictly sequential — 1 agent at a time, 1500ms gap — eliminates all API burst.
+    // Order preserves dependency chain: types → structure → UI → pages → features → repair.
+    const BUILD_ORDER = [
+      'scaffold',      // stage 1 — generates types, package.json
+      'mock-data',     // stage 1 — data fixtures (independent)
+      'shell',         // stage 1 — navigation shell (independent)
+      'ui-core',       // stage 2 — shared components (needs types)
+      'api',           // stage 2 — API routes (needs types)
+      'landing',       // stage 3 — marketing page (needs ui-core)
+      'interactions',  // stage 3 — modals/drawers (needs ui-core)
+      'dashboard',     // stage 3 — main dashboard (needs ui-core)
+      'features',      // stage 4 — feature pages (needs dashboard)
+      'repair',        // stage 5 — consistency pass (needs all)
+    ]
 
-    // Stage 1 (parallel): scaffold + mock-data + shell — fully independent
-    await stagger(['scaffold', 'mock-data', 'shell'])
-    setBuildStage(1)
-
-    // Stage 2 (parallel): ui-core + api — need types from stage 1
-    // NOTE: dashboard deliberately NOT here — it imports from ui-core, so must run after it
-    await stagger(['ui-core', 'api'])
-    setBuildStage(2)
-
-    // Stage 3 (parallel): landing + interactions + dashboard — need ui-core from stage 2
-    await stagger(['landing', 'interactions', 'dashboard'])
-    setBuildStage(3)
-
-    // Stage 4 (solo): features — needs dashboard structure + all prior context
-    await runAgent('features', { ...allFiles })
-    setBuildStage(4)
-
-    // Stage 5: repair — needs all prior output
-    await runAgent('repair', { ...allFiles })
+    for (let i = 0; i < BUILD_ORDER.length; i++) {
+      const agentId = BUILD_ORDER[i]
+      await runAgent(agentId, { ...allFiles })
+      // Update build stage milestones
+      if (agentId === 'shell')         setBuildStage(1)
+      if (agentId === 'api')           setBuildStage(2)
+      if (agentId === 'dashboard')     setBuildStage(3)
+      if (agentId === 'features')      setBuildStage(4)
+      // 1500ms breathing room between agents — prevents API burst
+      if (i < BUILD_ORDER.length - 1) await abortSleep(1500)
+    }
     setBuildStage(5)
     setBuildActiveAgents(new Set())
     buildFilesRef.current = allFiles
@@ -2142,7 +2150,7 @@ Generate the ${agentId.toUpperCase()} files now. Follow the output contract exac
     announce('Pipeline launched. Twenty-one AI specialists are about to build your product from scratch — spec, code, and live deployment, fully autonomous.')
     setPhase('running')
     setLogLines([])
-    setStreamingOutput('')
+    /* streamingOutput panel removed */void 0
     setForgeQaScore(null)
     setFinalElapsedSec(0)
     setSteps(INITIAL_STEPS.map(s => ({ ...s, status: 'pending' as StepStatus })))
