@@ -121,14 +121,15 @@ export function buildRepairMessage(forge: { projectName: string; brief: string }
     'src/app/globals.css',
     'src/app/layout.tsx',
     'src/app/page.tsx',
+    'src/lib/utils.ts',
     'src/lib/types.ts',
     'src/lib/data.ts',
     'src/components/ui.tsx',
     'src/components/layout.tsx',
+    'src/hooks/useApp.ts',
     'src/app/dashboard/page.tsx',
     'src/app/dashboard/layout.tsx',
     'src/app/dashboard/settings/page.tsx',
-    'src/lib/utils.ts',
   ]
   const missing = CRITICAL.filter(f => !accumulated[f])
 
@@ -150,17 +151,8 @@ ${missing.length > 0 ? missing.join('\n') : 'None — all critical files present
 package.json:
 ${snippet('package.json', 600)}
 
-src/app/layout.tsx:
-${snippet('src/app/layout.tsx', 1200)}
-
-src/app/globals.css:
-${snippet('src/app/globals.css', 800)}
-
-src/components/ui.tsx (first 1200 chars):
-${snippet('src/components/ui.tsx', 1200)}
-
-src/components/layout.tsx (first 800 chars):
-${snippet('src/components/layout.tsx', 800)}
+src/lib/utils.ts:
+${snippet('src/lib/utils.ts', 800)}
 
 src/lib/types.ts:
 ${snippet('src/lib/types.ts', 1000)}
@@ -168,8 +160,20 @@ ${snippet('src/lib/types.ts', 1000)}
 src/lib/data.ts (first 1200 chars):
 ${snippet('src/lib/data.ts', 1200)}
 
-src/app/page.tsx (first 800 chars):
-${snippet('src/app/page.tsx', 800)}
+src/app/layout.tsx:
+${snippet('src/app/layout.tsx', 1000)}
+
+src/app/globals.css:
+${snippet('src/app/globals.css', 600)}
+
+src/components/ui.tsx (first 1000 chars):
+${snippet('src/components/ui.tsx', 1000)}
+
+src/components/layout.tsx (first 800 chars):
+${snippet('src/components/layout.tsx', 800)}
+
+src/hooks/useApp.ts (first 600 chars):
+${snippet('src/hooks/useApp.ts', 600)}
 
 src/app/dashboard/layout.tsx:
 ${snippet('src/app/dashboard/layout.tsx', 800)}
@@ -177,12 +181,13 @@ ${snippet('src/app/dashboard/layout.tsx', 800)}
 src/app/dashboard/page.tsx (first 800 chars):
 ${snippet('src/app/dashboard/page.tsx', 800)}
 
-=== YOUR TASKS ===
-1. Generate EVERY file listed in MISSING CRITICAL FILES above — complete implementations, no stubs
-2. Fix any import path mismatches you can infer from the context
-3. If src/lib/utils.ts is missing, generate it (cn, formatRelativeTime, truncate, capitalize, generateId)
-4. If src/app/dashboard/settings/page.tsx is missing, generate a complete settings page
-5. Ensure postcss.config.js exists (critical for Tailwind)
+=== YOUR TASKS (in priority order) ===
+1. Apply ALL 6 known build-failure patterns from your system prompt before anything else
+2. Generate EVERY file listed in MISSING CRITICAL FILES — complete implementations, no stubs
+3. Ensure src/lib/utils.ts exports: cn, formatCurrency, formatDate, formatRelativeTime, formatDateTime, truncate, capitalize, slugify, generateId, clamp, formatNumber, groupBy, sortBy
+4. Ensure src/hooks/useApp.ts starts with 'use client' and exports: useLocalStorage, useFilter, useModal, useDemoToast
+5. Generate src/app/dashboard/settings/page.tsx if missing (Profile / Notifications / Appearance tabs)
+6. Fix all named import violations: import { AppHeader, AppSidebar, DemoBanner } from '@/components/layout'
 
 Follow the output contract exactly. Generate COMPLETE files only.`
 }
@@ -737,7 +742,13 @@ ${CONTRACT}
 
 FILE: src/app/dashboard/[feature]/page.tsx
 
-OUTPUT THIS EXACT FILE STRUCTURE — no deviations:
+⚠️ CRITICAL RULES (build failures if violated):
+1. ALL return statements MUST be INSIDE export default function FeaturePage() { } — NEVER at module top level
+2. The file MUST start with exactly: 'use client'
+3. import { AppHeader } from '@/components/layout'  ← NAMED import, never default
+4. NEVER write JSX comment placeholders like {/* implementation here */} — write the actual JSX
+
+Read the FORGE spec's FEATURE CARDS and SPEC CONTRACT to get the exact slugs, entity names, and field names. Use them verbatim.
 
 FILE: src/app/dashboard/[feature]/page.tsx
 <<<
@@ -746,74 +757,237 @@ import { useParams } from 'next/navigation'
 import { useState } from 'react'
 import { Card, CardHeader, CardTitle, CardContent, Badge, Button, Input } from '@/components/ui'
 import { AppHeader } from '@/components/layout'
-// import your mock data arrays from '@/lib/data' here
-
-// (your mock data constants here if needed)
+import { MOCK_[MAIN_ENTITY], MOCK_[SECOND_ENTITY], MOCK_[THIRD_ENTITY] } from '@/lib/data'
+import { Search, Filter, Plus, Download, Eye } from 'lucide-react'
 
 export default function FeaturePage() {
   const params = useParams()
   const slug = (params.feature as string) ?? ''
   const [search, setSearch] = useState('')
+  const [statusFilter, setStatusFilter] = useState('')
   const [selected, setSelected] = useState<string | null>(null)
 
-  if (slug === 'FEATURE_1_SLUG') {
-    // full feature 1 implementation
+  // ── Feature 1: [Feature Name] (/dashboard/[slug-1]) ──────────────────────
+  if (slug === '[slug-1]') {
+    const items = MOCK_[MAIN_ENTITY].filter(i =>
+      (!search || i.name.toLowerCase().includes(search.toLowerCase())) &&
+      (!statusFilter || i.status === statusFilter)
+    )
     return (
-      <div className="p-6 space-y-6">
-        <AppHeader title="Feature 1 Name" subtitle="Manage your [entities]" actions={<Button size="sm">+ New [Entity]</Button>} />
-        {/* rich data table / card grid implementation */}
+      <div className="space-y-6">
+        <AppHeader
+          title="[Feature 1 Display Name]"
+          subtitle={\`\${items.length} [entities] total\`}
+          actions={<Button size="sm"><Plus size={14} className="mr-1" />New [Entity]</Button>}
+        />
+        <Card>
+          <CardHeader>
+            <div className="flex gap-3">
+              <div className="relative flex-1 max-w-xs">
+                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" />
+                <input
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                  placeholder="Search [entities]..."
+                  className="w-full pl-9 pr-3 py-2 text-sm border border-zinc-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-zinc-900/10"
+                />
+              </div>
+              <select
+                value={statusFilter}
+                onChange={e => setStatusFilter(e.target.value)}
+                className="px-3 py-2 text-sm border border-zinc-200 rounded-lg bg-white focus:outline-none"
+              >
+                <option value="">All statuses</option>
+                <option value="[status-1]">[Status 1]</option>
+                <option value="[status-2]">[Status 2]</option>
+                <option value="[status-3]">[Status 3]</option>
+              </select>
+            </div>
+          </CardHeader>
+          <CardContent className="p-0">
+            <table className="w-full text-sm">
+              <thead className="border-b border-zinc-100">
+                <tr className="text-left text-zinc-500 text-xs uppercase tracking-wide">
+                  <th className="px-6 py-3">[Field 1]</th>
+                  <th className="px-6 py-3">[Field 2]</th>
+                  <th className="px-6 py-3">[Field 3]</th>
+                  <th className="px-6 py-3">Status</th>
+                  <th className="px-6 py-3">Date</th>
+                  <th className="px-6 py-3"></th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-zinc-50">
+                {items.map(item => (
+                  <tr
+                    key={item.id}
+                    onClick={() => setSelected(selected === item.id ? null : item.id)}
+                    className={\`hover:bg-zinc-50 cursor-pointer transition-colors \${selected === item.id ? 'bg-indigo-50' : ''}\`}
+                  >
+                    <td className="px-6 py-3 font-medium text-zinc-900">{item.[field1]}</td>
+                    <td className="px-6 py-3 text-zinc-500">{item.[field2]}</td>
+                    <td className="px-6 py-3 text-zinc-700">{item.[field3]}</td>
+                    <td className="px-6 py-3">
+                      <Badge variant={item.status === '[status-1]' ? 'success' : item.status === '[status-2]' ? 'warning' : 'error'}>
+                        {item.status}
+                      </Badge>
+                    </td>
+                    <td className="px-6 py-3 text-zinc-400 text-xs">{new Date(item.createdAt).toLocaleDateString()}</td>
+                    <td className="px-6 py-3">
+                      <button className="text-zinc-400 hover:text-zinc-700 p-1"><Eye size={14} /></button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <div className="px-6 py-3 border-t border-zinc-100 text-xs text-zinc-400">
+              Showing {items.length} of {MOCK_[MAIN_ENTITY].length} [entities]
+            </div>
+          </CardContent>
+        </Card>
       </div>
     )
   }
 
-  if (slug === 'FEATURE_2_SLUG') {
+  // ── Feature 2: [Feature Name] (/dashboard/[slug-2]) ──────────────────────
+  if (slug === '[slug-2]') {
+    const items = MOCK_[SECOND_ENTITY].filter(i =>
+      !search || JSON.stringify(i).toLowerCase().includes(search.toLowerCase())
+    )
     return (
-      <div className="p-6 space-y-6">
-        <AppHeader title="Feature 2 Name" subtitle="Manage your [entities]" actions={<Button size="sm">+ New [Entity]</Button>} />
-        {/* rich data table / card grid implementation */}
+      <div className="space-y-6">
+        <AppHeader
+          title="[Feature 2 Display Name]"
+          subtitle={\`\${items.length} [entities]\`}
+          actions={<Button size="sm"><Plus size={14} className="mr-1" />Add [Entity]</Button>}
+        />
+        <div className="mb-4">
+          <div className="relative max-w-xs">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" />
+            <input
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Search..."
+              className="w-full pl-9 pr-3 py-2 text-sm border border-zinc-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-zinc-900/10"
+            />
+          </div>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {items.map(item => (
+            <Card key={item.id} className="hover:shadow-md transition-shadow cursor-pointer" onClick={() => setSelected(item.id)}>
+              <CardContent className="p-5">
+                <div className="flex items-start justify-between mb-3">
+                  <div className="w-10 h-10 rounded-xl bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold text-sm">
+                    {String(item.[field1]).slice(0, 2).toUpperCase()}
+                  </div>
+                  <Badge variant={item.status === '[status-1]' ? 'success' : 'warning'}>{item.status}</Badge>
+                </div>
+                <h3 className="font-semibold text-zinc-900 text-sm mb-1">{item.[field1]}</h3>
+                <p className="text-zinc-500 text-xs mb-3">{item.[field2]}</p>
+                <div className="flex items-center justify-between text-xs text-zinc-400">
+                  <span>{item.[field3]}</span>
+                  <span>{new Date(item.createdAt).toLocaleDateString()}</span>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
       </div>
     )
   }
 
-  if (slug === 'FEATURE_3_SLUG') {
+  // ── Feature 3: [Feature Name] (/dashboard/[slug-3]) ──────────────────────
+  if (slug === '[slug-3]') {
+    const items = MOCK_[THIRD_ENTITY].filter(i =>
+      !search || JSON.stringify(i).toLowerCase().includes(search.toLowerCase())
+    )
     return (
-      <div className="p-6 space-y-6">
-        <AppHeader title="Feature 3 Name" subtitle="Manage your [entities]" actions={<Button size="sm">+ New [Entity]</Button>} />
-        {/* rich data table / card grid implementation */}
+      <div className="space-y-6">
+        <AppHeader
+          title="[Feature 3 Display Name]"
+          subtitle={\`\${items.length} records\`}
+          actions={
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm"><Download size={14} className="mr-1" />Export</Button>
+              <Button size="sm"><Plus size={14} className="mr-1" />New [Entity]</Button>
+            </div>
+          }
+        />
+        <Card>
+          <CardHeader>
+            <div className="relative max-w-xs">
+              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" />
+              <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search..."
+                className="w-full pl-9 pr-3 py-2 text-sm border border-zinc-200 rounded-lg focus:outline-none" />
+            </div>
+          </CardHeader>
+          <CardContent className="p-0">
+            <table className="w-full text-sm">
+              <thead className="border-b border-zinc-100">
+                <tr className="text-left text-zinc-500 text-xs uppercase tracking-wide">
+                  <th className="px-6 py-3">[Field A]</th>
+                  <th className="px-6 py-3">[Field B]</th>
+                  <th className="px-6 py-3">[Field C]</th>
+                  <th className="px-6 py-3">Status</th>
+                  <th className="px-6 py-3">Created</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-zinc-50">
+                {items.map(item => (
+                  <tr key={item.id} className="hover:bg-zinc-50 cursor-pointer" onClick={() => setSelected(item.id)}>
+                    <td className="px-6 py-3 font-medium text-zinc-900">{item.[fieldA]}</td>
+                    <td className="px-6 py-3 text-zinc-500">{item.[fieldB]}</td>
+                    <td className="px-6 py-3 text-zinc-700">{item.[fieldC]}</td>
+                    <td className="px-6 py-3"><Badge variant="info">{item.status}</Badge></td>
+                    <td className="px-6 py-3 text-zinc-400 text-xs">{new Date(item.createdAt).toLocaleDateString()}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </CardContent>
+        </Card>
       </div>
     )
   }
 
-  // Default: feature index
+  // ── Default: feature hub ──────────────────────────────────────────────────
   return (
-    <div className="p-6 grid grid-cols-1 md:grid-cols-3 gap-6">
-      {/* 3 feature cards with Open → links */}
+    <div className="space-y-6">
+      <AppHeader title="Features" subtitle="Select a feature to get started" />
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        {[
+          { slug: '[slug-1]', name: '[Feature 1]', description: '[What this feature does]', count: MOCK_[MAIN_ENTITY].length },
+          { slug: '[slug-2]', name: '[Feature 2]', description: '[What this feature does]', count: MOCK_[SECOND_ENTITY].length },
+          { slug: '[slug-3]', name: '[Feature 3]', description: '[What this feature does]', count: MOCK_[THIRD_ENTITY].length },
+        ].map(f => (
+          <a key={f.slug} href={\`/dashboard/\${f.slug}\`}>
+            <Card className="hover:shadow-md transition-all hover:-translate-y-0.5 cursor-pointer h-full">
+              <CardContent className="p-6">
+                <div className="w-12 h-12 rounded-2xl bg-indigo-100 flex items-center justify-center text-indigo-600 mb-4">
+                  <Eye size={20} />
+                </div>
+                <h3 className="font-bold text-zinc-900 mb-1">{f.name}</h3>
+                <p className="text-zinc-500 text-sm mb-4">{f.description}</p>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-zinc-400">{f.count} records</span>
+                  <span className="text-xs font-medium text-indigo-600">Open →</span>
+                </div>
+              </CardContent>
+            </Card>
+          </a>
+        ))}
+      </div>
     </div>
   )
 }
 >>>
 
-REPLACE the placeholders above with REAL implementations:
-- FEATURE_1_SLUG, FEATURE_2_SLUG, FEATURE_3_SLUG = exact URL slugs from FORGE feature cards
-- Each feature block = complete rich UI (data table OR card grid, filter row, status badges, row click detail)
-- Build EXACTLY 3 feature views from the FORGE spec's top 3 features
+REPLACE every placeholder above ([slug-1], [Feature 1 Display Name], [MAIN_ENTITY], [field1], etc.) with the EXACT values from the FORGE SPEC CONTRACT and feature cards.
+- Get slugs from: SPEC CONTRACT "FEATURE ROUTE REFERENCE" table
+- Get entity names from: SPEC CONTRACT "ENTITY REFERENCE TABLE"
+- Get field names from: SPEC CONTRACT "TYPESCRIPT INTERFACE SHAPES"
+- Get status values from: SPEC CONTRACT "STATUS VALUES PER ENTITY"
 
-⚠️ HARD RULE: ALL return statements MUST be INSIDE the \`export default function FeaturePage()\` body.
-   NEVER put return statements at the top level of the module — that causes a Next.js build error.
-   The file MUST start with 'use client' and the function MUST be exported as \`export default function FeaturePage()\`.
-
-For each feature view implement:
-1. AppHeader with feature title + 1-2 action buttons
-2. Data table (list of items) OR grid of cards — using REAL mock data from '@/lib/data'
-3. At least one interactive element: filter dropdown (useState) + search input (useState)
-4. Status Badge on every data row
-
-import { Card, CardHeader, CardTitle, CardContent, Badge, Button, Input } from '@/components/ui'
-import { AppHeader } from '@/components/layout'  ← named import only, never default import
-import from '@/lib/data': the relevant mock arrays for each feature
-import from 'lucide-react': relevant icons
-
-Make each feature page feel like a standalone product page — dense with data and functionality.`,
+The output must have zero placeholder text — every [bracket] replaced with real product-specific values.`,
 
 // ── 7. API ────────────────────────────────────────────────────────────────────
 api: `You are NEXUS API — you build lightweight route handlers that return mock JSON.
@@ -1060,6 +1234,19 @@ PATTERN 4 — Missing 'use client' on interactive components
   Symptom: "useState only works in a Client Component. Add the 'use client' directive."
   Fix: Any file that uses useState, useEffect, useParams, useRouter, or event handlers
   MUST have 'use client' as its very first line.
+
+PATTERN 5 — Hooks file missing 'use client'
+  Symptom: "useLocalStorage/useFilter/useModal/useDemoToast is not a Client Component."
+  Fix: src/hooks/useApp.ts MUST have 'use client' as its very first line.
+  If useApp.ts is missing entirely, generate it with all 4 hooks:
+  useLocalStorage, useFilter, useModal, useDemoToast.
+
+PATTERN 6 — utils.ts missing or importing wrong packages
+  Symptom: "Cannot find module '@/lib/utils'" or "Module not found: clsx"
+  Fix: src/lib/utils.ts MUST exist and export: cn, formatCurrency, formatDate,
+  formatRelativeTime, formatDateTime, truncate, capitalize, slugify, generateId,
+  clamp, formatNumber, groupBy, sortBy.
+  It uses 'clsx' and 'tailwind-merge' — both are in package.json.
 
 ═══════════════════════════════════════════════════════
 STANDARD TASKS

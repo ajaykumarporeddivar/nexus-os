@@ -1674,7 +1674,7 @@ export default function PipelinePage() {
       `Brief: ${briefText}\nVertical: ${vertical}\n\nFORGE spec outputs:\n${prevForRevenue}\n\nGrowth playbook:\n${growthResult.content.slice(0, 1200)}`,
     )
     content['monetisation'] = monetisationResult.content
-    specFiles['MONETISATION_BLUEPRINT.md'] = monetisationResult.content
+    specFiles['.claude/monetisation.md'] = monetisationResult.content
     setForgeDoneAgents(d => new Set([...d, 'monetisation']))
     setForgeActiveAgents(new Set())
     log(`✓ FORGE MONETISATION STRATEGIST (${monetisationResult.tokens} tokens)`, 'ok')
@@ -1713,12 +1713,14 @@ export default function PipelinePage() {
   // ── BUILD phase ─────────────────────────────────────────────────────────────
 
   const buildUserMessage = useCallback((agentId: string, forge: ForgeBuild, generatedSoFar: Record<string, string>): string => {
-    const manifest = forge.files['PROJECT_MANIFEST.md'] ?? ''
-    const arch     = forge.files['.claude/architecture.md'] ?? ''
-    const features = forge.files['.claude/features/feature-cards.md'] ?? ''
-    const security = forge.files['.claude/security-report.md'] ?? ''
-    const sql      = forge.files['db/migrations/001_init.sql'] ?? ''
-    const qa       = forge.files['.forge/qa-report.md'] ?? ''
+    const manifest     = forge.files['PROJECT_MANIFEST.md'] ?? ''
+    const arch         = forge.files['.claude/architecture.md'] ?? ''
+    const features     = forge.files['.claude/features/feature-cards.md'] ?? ''
+    const specContract = forge.files['.claude/spec-contract.md'] ?? ''
+    const sql          = forge.files['db/migrations/001_init.sql'] ?? ''
+    const qa           = forge.files['.forge/qa-report.md'] ?? ''
+    const monetisation = forge.files['.claude/monetisation.md'] ?? ''
+    // security-report is available but kept separate; not included for token efficiency
 
     const prevFilesSummary = Object.keys(generatedSoFar).length > 0
       ? `\nPREVIOUSLY GENERATED FILES (${Object.keys(generatedSoFar).length} total — do NOT re-generate these):\n${Object.keys(generatedSoFar).join('\n')}\n`
@@ -1728,6 +1730,7 @@ export default function PipelinePage() {
       generatedSoFar[key] ? `\n--- ${key} (first ${max} chars) ---\n${generatedSoFar[key].slice(0, max)}` : ''
 
     const prevContext = prevFilesSummary
+      + snippet('src/lib/utils.ts', 600)
       + snippet('src/lib/types.ts', 2000)
       + snippet('src/lib/data.ts', 2000)
       + snippet('src/components/ui.tsx', 1500)
@@ -1747,8 +1750,14 @@ ${arch.slice(0, 3000)}
 FEATURE CARDS:
 ${features.slice(0, 3000)}
 
-DATABASE SCHEMA (SQL):
-${sql.slice(0, 1200)}
+SPEC CONTRACT (entity names, slugs, field names — use these exactly):
+${specContract.slice(0, 2500)}
+
+DATABASE SCHEMA (SQL — for understanding data relationships):
+${sql.slice(0, 2000)}
+
+MONETISATION TIERS (use PRICING_TIERS block in landing page):
+${monetisation.slice(0, 800)}
 
 QA REPORT:
 ${qa.slice(0, 800)}
