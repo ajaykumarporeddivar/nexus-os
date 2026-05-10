@@ -1527,11 +1527,11 @@ export default function PipelinePage() {
       return result
     }
 
-    // Tiered context caps: foundational agents get more chars, specialists get standard, revenue agents get summary
+    // Tiered context caps: foundational agents get full output; specialists get rich context; revenue agents get standard
     const AGENT_CTX_CAPS: Record<string, number> = {
-      orchestrator: 2000, analyst: 2000, architect: 2000,
-      planner: 800, 'test-writer': 800, builder: 800, security: 800, 'db-opt': 800,
-      qa: 600, growth: 600, monetisation: 600,
+      orchestrator: 3000, analyst: 4000, architect: 4000,
+      planner: 2500, 'test-writer': 2000, builder: 2500, security: 2000, 'db-opt': 2500,
+      qa: 2000, growth: 1500, monetisation: 1500,
     }
     const prevOutputs = () => Object.entries(content)
       .map(([k, v]) => `[${k}]: ${v.slice(0, AGENT_CTX_CAPS[k] ?? 800)}`)
@@ -1580,9 +1580,13 @@ export default function PipelinePage() {
     await new Promise(r => setTimeout(r, 200))
 
     // ── Phase E: QA gate (sequential — needs all specialist outputs) ──────────
+    // QA gets a richer context window — 2000 chars per agent is the updated cap
+    const qaCtx = Object.entries(content)
+      .map(([k, v]) => `[${k}]: ${v.slice(0, 2000)}`)
+      .join('\n\n')
     await runForgeAgent('qa',
       FORGE_AGENT_SYSTEMS['qa'] ?? 'You are the NEXUS QA GATE.',
-      `${briefCtx}\n\nAll agent outputs:\n${prevOutputs()}`,
+      `${briefCtx}\n\nAll agent outputs:\n${qaCtx}`,
     )
     setForgeActiveAgents(new Set())
 
@@ -1615,7 +1619,7 @@ export default function PipelinePage() {
         log(`FORGE · QA RE-ASSESSMENT after revision #${rev + 1}`)
         setForgeActiveAgents(new Set(['qa']))
         const prevForRevision = Object.entries(content)
-          .map(([k, v]) => `[${k}]: ${v.slice(0, 300)}`)
+          .map(([k, v]) => `[${k}]: ${v.slice(0, 1500)}`)
           .join('\n\n')
 
         const revisedQA = await callForge(
@@ -1721,32 +1725,30 @@ export default function PipelinePage() {
       generatedSoFar[key] ? `\n--- ${key} (first ${max} chars) ---\n${generatedSoFar[key].slice(0, max)}` : ''
 
     const prevContext = prevFilesSummary
-      + snippet('src/lib/types.ts', 1200)
-      + snippet('src/lib/data.ts', 900)
-      + snippet('src/components/ui.tsx', 700)
-      + snippet('src/app/layout.tsx', 600)
-      + snippet('src/components/layout.tsx', 500)
+      + snippet('src/lib/types.ts', 2000)
+      + snippet('src/lib/data.ts', 2000)
+      + snippet('src/components/ui.tsx', 1500)
+      + snippet('src/app/layout.tsx', 800)
+      + snippet('src/components/layout.tsx', 800)
+      + snippet('src/app/globals.css', 400)
 
     return `PROJECT: ${forge.projectName}
 BRIEF: ${forge.brief}
 
 PROJECT_MANIFEST.md:
-${manifest.slice(0, 2000)}
+${manifest.slice(0, 4000)}
 
 ARCHITECTURE:
-${arch.slice(0, 1200)}
+${arch.slice(0, 3000)}
 
 FEATURE CARDS:
-${features.slice(0, 1200)}
-
-SECURITY REPORT:
-${security.slice(0, 600)}
+${features.slice(0, 3000)}
 
 DATABASE SCHEMA (SQL):
-${sql.slice(0, 800)}
+${sql.slice(0, 1200)}
 
 QA REPORT:
-${qa.slice(0, 600)}
+${qa.slice(0, 800)}
 ${prevContext}
 Generate the ${agentId.toUpperCase()} files now. Follow the output contract exactly.`
   }, [])
@@ -1810,16 +1812,16 @@ Generate the ${agentId.toUpperCase()} files now. Follow the output contract exac
     setBuildStage(1)
 
     // Stage 2 (parallel): ui-core + api — need types from stage 1
+    // NOTE: dashboard deliberately NOT here — it imports from ui-core, so must run after it
     await stagger(['ui-core', 'api'])
     setBuildStage(2)
-    // (no mid-BUILD announce — the section narration above plays while agents work)
 
-    // Stage 3 (parallel): landing + interactions — need ui components from stage 2
-    await stagger(['landing', 'interactions'])
+    // Stage 3 (parallel): landing + interactions + dashboard — need ui-core from stage 2
+    await stagger(['landing', 'interactions', 'dashboard'])
     setBuildStage(3)
 
-    // Stage 4 (parallel): dashboard + features — need ui layout from stage 2
-    await stagger(['dashboard', 'features'])
+    // Stage 4 (solo): features — needs dashboard structure + all prior context
+    await runAgent('features', { ...allFiles })
     setBuildStage(4)
 
     // Stage 5: repair — needs all prior output

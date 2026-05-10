@@ -141,7 +141,7 @@ export async function POST(req: NextRequest) {
             const client = new Anthropic({ apiKey: key })
             const anthropicStream = client.messages.stream({
               model: MODEL,
-              max_tokens: 4096,
+              max_tokens: 8000,
               system: resolvedSystemPrompt,
               messages: [{ role: 'user', content: safeMessage }],
             })
@@ -160,7 +160,7 @@ export async function POST(req: NextRequest) {
             for await (const text of aiStream({
               system:    resolvedSystemPrompt,
               messages:  [{ role: 'user', content: safeMessage }],
-              maxTokens: 4096,
+              maxTokens: 8000,
             })) {
               charCount += text.length
               controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'chunk', content: text })}\n\n`))
