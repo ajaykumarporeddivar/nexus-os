@@ -6,7 +6,7 @@ import { AGENTS, agentFileMap } from '@/lib/agentData'
 import { BUILD_AGENTS, BUILD_AGENT_SYSTEMS, parseAgentFiles } from '@/lib/buildAgentData'
 import { FORGE_AGENTS, FORGE_AGENT_SYSTEMS, extractQAScore, detectVertical, VERTICAL_CONTEXTS } from '@/lib/forgeAgentData'
 import { VoiceTextarea } from '@/components/VoiceButton'
-import { speak, stopSpeaking, useVoice, _activeVoiceName } from '@/lib/voice'
+import { speak, stopSpeaking, useVoice, waitForSpeech, _activeVoiceName } from '@/lib/voice'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -1527,27 +1527,27 @@ export default function PipelinePage() {
     const briefCtx    = `${briefText}\n\n${verticalContext}`
 
     // ── Phase A: orchestrator (sequential) ────────────────────────────────────
-    announce('Mission controller is mapping your project goals and setting agent priorities.', { rate: 1.05 })
     await runForgeAgent('orchestrator',
       FORGE_AGENT_SYSTEMS['orchestrator'] ?? 'You are the NEXUS ORCHESTRATOR.',
       `Mission: ${briefText}\nClient: ${client || 'Client'}\n\n${verticalContext}`,
     )
+    announce('Mission control complete. Your project goals are mapped and agent priorities are set.', { rate: 1.02 })
     await new Promise(r => setTimeout(r, 200))
 
     // ── Phase B: analyst (sequential — establishes PROJECT_MANIFEST) ──────────
-    announce('Analyst is extracting your core requirements and writing the product manifest.', { rate: 1.05 })
     await runForgeAgent('analyst',
       `${FORGE_AGENT_SYSTEMS['analyst']}\n\n${verticalContext}`,
       `${briefCtx}\n\nPrevious outputs:\n${prevOutputs()}`,
     )
+    announce('Requirements complete. Core features, user personas, and the product manifest are written.', { rate: 1.02 })
     await new Promise(r => setTimeout(r, 200))
 
     // ── Phase C: architect (sequential — design must precede specialist agents) ─
-    announce('Architect is now designing your technical stack, database schema, and API contracts.', { rate: 1.05 })
     await runForgeAgent('architect',
       FORGE_AGENT_SYSTEMS['architect'] ?? 'You are the NEXUS ARCHITECT.',
       `${briefCtx}\n\nPrevious outputs:\n${prevOutputs()}`,
     )
+    announce('Architecture locked. Technical stack, database schema, and all API contracts are defined.', { rate: 1.02 })
     await new Promise(r => setTimeout(r, 200))
 
     // ── Phase D: parallel — 5 specialist agents (all depend on architect only) ─
@@ -1555,7 +1555,7 @@ export default function PipelinePage() {
     // Each gets the same context snapshot from after architect completes.
     const parallelCtx = `${briefCtx}\n\nPrevious outputs:\n${prevOutputs()}`
     const PARALLEL_AGENTS = ['planner', 'test-writer', 'builder', 'security', 'db-opt']
-    announce('Five specialists are now running simultaneously — feature planning, code building, security review, test writing, and database optimization.', { rate: 1.05 })
+    announce('Five specialists are now working in parallel — feature planning, code design, security review, test strategy, and database optimisation.', { rate: 1.02 })
     log(`FORGE · parallel phase starting: ${PARALLEL_AGENTS.join(', ')}`)
 
     await Promise.all(PARALLEL_AGENTS.map(id =>
@@ -1565,11 +1565,11 @@ export default function PipelinePage() {
         parallelCtx,
       )
     ))
+    announce('All five specialists done. Features, security, tests, code structure, and data model are complete.', { rate: 1.02 })
     log('✓ FORGE parallel phase complete — all 5 specialist agents done', 'ok')
     await new Promise(r => setTimeout(r, 200))
 
     // ── Phase E: QA gate (sequential — needs all specialist outputs) ──────────
-    announce('Quality Gate is scoring the full specification for completeness and consistency.', { rate: 1.05 })
     await runForgeAgent('qa',
       FORGE_AGENT_SYSTEMS['qa'] ?? 'You are the NEXUS QA GATE.',
       `${briefCtx}\n\nAll agent outputs:\n${prevOutputs()}`,
@@ -1582,7 +1582,7 @@ export default function PipelinePage() {
     setForgeQaScore(qaScore)
 
     if (qaScore === null || qaScore < 7.0) {
-      announce(`Quality score is ${qaScore ?? 'incomplete'} out of ten. Running an automatic revision to fix the gaps.`)
+      announce(`Quality score is ${qaScore ?? 'incomplete'} out of ten. Gaps detected — running an automatic revision now.`)
       log(`⚠ QA score ${qaScore ?? 'unscored'}/10 — below 7.0 hard gate. Running ANALYST revision loop…`, 'warn')
       await new Promise(r => setTimeout(r, 4000))
 
@@ -1625,9 +1625,13 @@ export default function PipelinePage() {
 
       if (qaScore !== null && qaScore < 7.0) {
         log(`⚠ QA still ${qaScore}/10 after 2 revisions — proceeding to BUILD (output may be suboptimal)`, 'warn')
+        announce(`Revision complete. Proceeding to BUILD ENGINE with a score of ${qaScore.toFixed(1)} out of ten.`)
+      } else if (qaScore !== null) {
+        announce(`Revision raised the score to ${qaScore.toFixed(1)} out of ten. Specification approved.`)
+        log(`✓ Revised QA score ${qaScore}/10 — APPROVED for BUILD`, 'ok')
       }
     } else if (qaScore !== null) {
-      announce(`Specification approved with a quality score of ${qaScore.toFixed(1)} out of ten. Handing off to BUILD ENGINE.`)
+      announce(`Specification approved. Quality score: ${qaScore.toFixed(1)} out of ten. Handing off to BUILD ENGINE.`)
       log(`✓ FORGE QA score ${qaScore}/10 — APPROVED for BUILD`, 'ok')
     }
 
@@ -1637,7 +1641,6 @@ export default function PipelinePage() {
     const prevForRevenue = prevOutputs()
 
     setForgeActiveAgents(new Set(['growth']))
-    announce('Growth Hacker is designing your acquisition channels, viral loops, and go-to-market playbook.')
     log('FORGE · GROWTH HACKER — building GTM playbook')
     const growthResult = await callForge(
       'growth',
@@ -1648,11 +1651,11 @@ export default function PipelinePage() {
     specFiles['GROWTH_PLAYBOOK.md'] = growthResult.content
     setForgeDoneAgents(d => new Set([...d, 'growth']))
     setForgeActiveAgents(new Set())
+    announce('Growth playbook done. Acquisition channels, viral loops, and go-to-market strategy are written.')
     log(`✓ FORGE GROWTH HACKER (${growthResult.tokens} tokens)`, 'ok')
     await new Promise(r => setTimeout(r, 300))
 
     setForgeActiveAgents(new Set(['monetisation']))
-    announce('Monetisation Strategist is building your pricing tiers, upsell triggers, and revenue projections.')
     log('FORGE · MONETISATION STRATEGIST — designing revenue engine')
     const monetisationResult = await callForge(
       'monetisation',
@@ -1663,8 +1666,10 @@ export default function PipelinePage() {
     specFiles['MONETISATION_BLUEPRINT.md'] = monetisationResult.content
     setForgeDoneAgents(d => new Set([...d, 'monetisation']))
     setForgeActiveAgents(new Set())
+    announce('Revenue model done. Pricing tiers, upsell triggers, and projections are complete. FORGE ENGINE finished.')
     log(`✓ FORGE MONETISATION STRATEGIST (${monetisationResult.tokens} tokens)`, 'ok')
-    announce('FORGE ENGINE complete. Your product spec, architecture, and revenue model are ready. BUILD ENGINE is starting now.')
+    // Drain TTS queue before BUILD starts — ensures all FORGE narration plays before transition
+    await waitForSpeech(12_000)
     await new Promise(r => setTimeout(r, 300))
 
     const slug = slugify(client || briefText.slice(0, 30))
@@ -1857,6 +1862,8 @@ Generate the ${agentId.toUpperCase()} files now. Follow the output contract exac
       log(`BUILD complete — ${fileCount} files generated`, 'ok')
       announce(`BUILD complete. ${fileCount} production-ready files generated. Pushing to GitHub and deploying to Vercel next.`)
     }
+    // Drain TTS queue — all BUILD stage narration must finish before DEPLOY narration starts
+    await waitForSpeech(12_000)
 
     patchStep('build', { status: 'done' })
     return allFiles
@@ -1983,7 +1990,7 @@ Generate the ${agentId.toUpperCase()} files now. Follow the output contract exac
           log(`✓ App deploying: ${proposalUrl} — ${vData.data.state}`, 'ok')
           setDeploySubStep(deployReady ? 5 : 4)
           if (deployReady) {
-            announce('Your app is live on Vercel right now. The entire pipeline is complete.', { priority: 'high' })
+            announce('Your app is live on Vercel right now. The entire pipeline is complete.')
           } else {
             announce('Vercel is building your app right now. You will be notified the moment it goes live.')
           }

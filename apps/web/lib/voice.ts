@@ -235,6 +235,22 @@ export function stopSpeaking(): void {
   }
 }
 
+// Resolves when the TTS queue is fully drained (both queue empty AND not currently speaking).
+// maxMs caps the wait so a hung browser never blocks the pipeline.
+export function waitForSpeech(maxMs = 15_000): Promise<void> {
+  return new Promise(resolve => {
+    const deadline = Date.now() + maxMs
+    const check = () => {
+      if ((!_ttsBusy && _ttsQueue.length === 0) || Date.now() >= deadline) {
+        resolve()
+      } else {
+        setTimeout(check, 200)
+      }
+    }
+    check()
+  })
+}
+
 // ─── Voice command engine ─────────────────────────────────────────────────────
 
 const NAV_COMMANDS: Record<string, string> = {
