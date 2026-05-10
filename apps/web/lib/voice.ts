@@ -77,23 +77,161 @@ function getSpeechRecognition(): SpeechRecognitionCtor | null {
 // Phase 1: Browser SpeechSynthesis (free, no credentials)
 // Phase 2 upgrade: replace speak() with MAI-Voice-1 API call
 
-export function speak(text: string, opts: { rate?: number; pitch?: number; lang?: string } = {}): void {
+let _voicesLogged = false
+
+// Filter to English voices FIRST (by lang code), then rank by quality.
+// This avoids picking a non-English Microsoft/Google voice by name accident.
+function pickVoice(voices: SpeechSynthesisVoice[]): SpeechSynthesisVoice | null {
+  // Log once for debugging (visible in browser devtools console)
+  if (!_voicesLogged && voices.length > 0) {
+    _voicesLogged = true
+    console.info('[NEXUS TTS] Available voices:', voices.map(v => `${v.name} (${v.lang})`).join(', '))
+  }
+
+  // Step 1: isolate English voices — must have en-* lang code
+  const english = voices.filter(v =>
+    v.lang === 'en-US' || v.lang === 'en-GB' || v.lang === 'en-AU' ||
+    v.lang === 'en-IN' || v.lang === 'en-CA' || v.lang === 'en-NZ' ||
+    v.lang.startsWith('en-')
+  )
+
+  if (english.length === 0) {
+    console.warn('[NEXUS TTS] No English voices found — browser will use system default. Install an English TTS voice in Windows Settings → Speech.')
+    return null  // utterance.lang='en-US' still hints the browser to use English
+  }
+
+  // Step 2: prefer highest-quality within English voices only
+  // Tier-A: Azure Neural / Google Neural (best quality)
+  const tA = english.find(v => /Natural|Neural|Premium|Online/i.test(v.name))
+  if (tA) return tA
+
+  // Tier-B: Google named English voices
+  const tB = english.find(v => /Google/i.test(v.name))
+  if (tB) return tB
+
+  // Tier-C: Microsoft named English voices (Zira, David, Aria, Jenny, etc.)
+  const tC = english.find(v => /Microsoft/i.test(v.name))
+  if (tC) return tC
+
+  // Tier-D: macOS / iOS voices
+  const tD = english.find(v => /Samantha|Karen|Moira|Daniel/i.test(v.name))
+  if (tD) return tD
+
+  // Tier-E: any English voice
+  return english[0]
+}
+
+// ─── TTS queue — prevents successive speak() calls from cancelling each other ──
+// Messages play sequentially; high-priority clears queue and jumps the line.
+interface TTSItem {
+  text:   string
+  rate:   number
+  pitch:  number
+  lang:   string
+  volume: number
+  voice:  SpeechSynthesisVoice | null
+}
+
+const _ttsQueue: TTSItem[] = []
+let _ttsBusy      = false
+let _ttsGen       = 0   // generation counter — incremented on cancel so stale callbacks no-op
+const MAX_QUEUE   = 4   // drop oldest normal-priority item when over limit
+
+let _ttsWatchdog: ReturnType<typeof setTimeout> | null = null
+
+// Exported so PipelineVoiceBar can show which voice is active
+export let _activeVoiceName = ''
+
+function _ttsNext(): void {
+  if (_ttsBusy || _ttsQueue.length === 0 || typeof window === 'undefined') return
+  const item = _ttsQueue.shift()!
+  _ttsBusy = true
+  _activeVoiceName = item.voice?.name ?? `en-US (system)`
+
+  // Watchdog: if onend/onerror never fires, unblock the queue after estimated duration + 5s
+  const wordsPerSec = Math.max(1, (item.rate ?? 1) * 2.5)
+  const estMs = Math.ceil((item.text.split(/\s+/).length / wordsPerSec) * 1000) + 5000
+  const myGen = _ttsGen
+  _ttsWatchdog = setTimeout(() => {
+    if (_ttsGen === myGen && _ttsBusy) { _ttsBusy = false; _ttsNext() }
+  }, estMs)
+
+  const u    = new SpeechSynthesisUtterance(item.text)
+  u.rate     = item.rate
+  u.pitch    = item.pitch
+  u.lang     = item.lang
+  u.volume   = item.volume
+  if (item.voice) u.voice = item.voice
+
+  const done = () => {
+    // Ignore stale callbacks from cancelled utterances (race condition on high-priority cancel)
+    if (_ttsGen !== myGen) return
+    if (_ttsWatchdog) { clearTimeout(_ttsWatchdog); _ttsWatchdog = null }
+    _ttsBusy = false
+    _ttsNext()
+  }
+  u.onend   = done
+  u.onerror = done
+  window.speechSynthesis.speak(u)
+}
+
+function _enqueue(item: TTSItem, priority: 'normal' | 'high'): void {
+  if (priority === 'high') {
+    // Increment generation BEFORE cancel so the in-flight utterance's callbacks become no-ops
+    _ttsGen++
+    if (typeof window !== 'undefined') window.speechSynthesis.cancel()
+    if (_ttsWatchdog) { clearTimeout(_ttsWatchdog); _ttsWatchdog = null }
+    _ttsQueue.length = 0
+    _ttsBusy = false
+    _ttsQueue.push(item)
+  } else {
+    // Drop oldest if queue is full to avoid stale backlog
+    if (_ttsQueue.length >= MAX_QUEUE) _ttsQueue.shift()
+    _ttsQueue.push(item)
+  }
+  _ttsNext()
+}
+
+export function speak(
+  text: string,
+  opts: { rate?: number; pitch?: number; lang?: string; volume?: number; priority?: 'normal' | 'high' } = {},
+): void {
   if (typeof window === 'undefined' || !window.speechSynthesis) return
-  window.speechSynthesis.cancel() // stop any current speech
-  const utterance    = new SpeechSynthesisUtterance(text)
-  utterance.rate     = opts.rate  ?? 1.0
-  utterance.pitch    = opts.pitch ?? 1.0
-  utterance.lang     = opts.lang  ?? 'en-US'
-  // Prefer a natural-sounding voice
+
+  const priority = opts.priority ?? 'normal'
+
+  const buildItem = (voices: SpeechSynthesisVoice[]): TTSItem => {
+    const voice = pickVoice(voices)
+    return {
+      text,
+      rate:   opts.rate   ?? 1.0,
+      pitch:  opts.pitch  ?? 1.0,
+      // Always use the voice's own language if one is found — prevents the browser
+      // selecting a non-English voice while lang='en-US' is set (Windows edge case).
+      lang:   voice?.lang ?? opts.lang ?? 'en-US',
+      volume: opts.volume ?? 1.0,
+      voice,
+    }
+  }
+
   const voices = window.speechSynthesis.getVoices()
-  const preferred = voices.find(v => v.name.includes('Google') || v.name.includes('Natural') || v.name.includes('Premium'))
-  if (preferred) utterance.voice = preferred
-  window.speechSynthesis.speak(utterance)
+  if (voices.length > 0) {
+    _enqueue(buildItem(voices), priority)
+  } else {
+    // Chrome loads voices async — wait for the event then enqueue
+    window.speechSynthesis.addEventListener(
+      'voiceschanged',
+      () => _enqueue(buildItem(window.speechSynthesis.getVoices()), priority),
+      { once: true },
+    )
+  }
 }
 
 export function stopSpeaking(): void {
   if (typeof window !== 'undefined' && window.speechSynthesis) {
     window.speechSynthesis.cancel()
+    _ttsQueue.length = 0
+    _ttsBusy = false
   }
 }
 

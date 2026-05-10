@@ -76,6 +76,16 @@ export async function POST(req: NextRequest) {
     if (!systemPrompt || !userMessage) {
       return NextResponse.json({ ok: false, error: 'Missing systemPrompt or userMessage' }, { status: 400 })
     }
+    if (typeof systemPrompt !== 'string' || typeof userMessage !== 'string') {
+      return NextResponse.json({ ok: false, error: 'systemPrompt and userMessage must be strings' }, { status: 400 })
+    }
+    // Strip ASCII control chars (except \t \n \r) to prevent prompt injection via malicious brief content
+    const sanitise = (s: string) => s.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '')
+    const safeSystem  = sanitise(systemPrompt).slice(0, 32_000)
+    const safeMessage = sanitise(userMessage).slice(0, 32_000)
+    if (safeMessage.trim().length < 10) {
+      return NextResponse.json({ ok: false, error: 'userMessage too short (min 10 chars after sanitisation)' }, { status: 400 })
+    }
 
     const rl = await checkRateLimit(sid)
     if (!rl.success) {
@@ -106,8 +116,8 @@ export async function POST(req: NextRequest) {
     await incrementQuota(sid, plan)
 
     // AAS v4 — resolve {{aasContext}} in GOVERNOR prompt if present (other lenses unaffected)
-    let resolvedSystemPrompt: string = systemPrompt
-    if (systemPrompt.includes('{{aasContext}}')) {
+    let resolvedSystemPrompt: string = safeSystem
+    if (safeSystem.includes('{{aasContext}}')) {
       const aasContext = await buildAASContext(plan)
       resolvedSystemPrompt = systemPrompt.replace('{{aasContext}}', aasContext)
     }
@@ -133,7 +143,7 @@ export async function POST(req: NextRequest) {
               model: MODEL,
               max_tokens: 4096,
               system: resolvedSystemPrompt,
-              messages: [{ role: 'user', content: userMessage }],
+              messages: [{ role: 'user', content: safeMessage }],
             })
 
             for await (const event of anthropicStream) {
@@ -149,7 +159,7 @@ export async function POST(req: NextRequest) {
             let charCount = 0
             for await (const text of aiStream({
               system:    resolvedSystemPrompt,
-              messages:  [{ role: 'user', content: userMessage }],
+              messages:  [{ role: 'user', content: safeMessage }],
               maxTokens: 4096,
             })) {
               charCount += text.length

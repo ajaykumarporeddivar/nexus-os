@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireSession } from '@/lib/session'
+import { checkRateLimit } from '@/lib/ratelimit'
 
 async function gh(path: string, token: string, method = 'GET', body?: object) {
   const res = await fetch(`https://api.github.com${path}`, {
@@ -14,13 +15,27 @@ async function gh(path: string, token: string, method = 'GET', body?: object) {
   })
   if (!res.ok) {
     const errBody = await res.json().catch(() => ({ message: res.statusText }))
-    // Surface the most specific error — errors[0].message is often more useful than the top-level message
     const detail = Array.isArray(errBody.errors) && errBody.errors.length > 0
       ? errBody.errors[0].message
       : errBody.message
     throw new Error(`GitHub ${method} ${path}: ${detail ?? res.statusText}`)
   }
   return res.json()
+}
+
+// Retry wrapper — exponential backoff on transient 5xx / rate-limit errors
+async function ghRetry(path: string, token: string, method = 'GET', body?: object, retries = 3) {
+  for (let attempt = 0; attempt < retries; attempt++) {
+    try {
+      return await gh(path, token, method, body)
+    } catch (err) {
+      const msg = (err as Error).message ?? ''
+      const isTransient = /5\d\d|rate.?limit|timeout|ECONNRESET|ETIMEDOUT/i.test(msg)
+      if (!isTransient || attempt === retries - 1) throw err
+      await new Promise(r => setTimeout(r, Math.pow(2, attempt) * 600))
+    }
+  }
+  throw new Error('GitHub: exhausted retries')
 }
 
 async function repoExists(owner: string, name: string, token: string): Promise<boolean> {
@@ -33,6 +48,15 @@ async function repoExists(owner: string, name: string, token: string): Promise<b
 export async function POST(req: NextRequest) {
   const auth = await requireSession()
   if (auth.error) return auth.error
+
+  // Rate-limit deploy calls — 10/min per user (pipeline makes 2 calls per run: spec + app repo)
+  const rl = await checkRateLimit(`deploy:gh:${auth.user.id}`)
+  if (!rl.success) {
+    return NextResponse.json(
+      { ok: false, error: 'Deploy rate limit reached. Max 10 GitHub repo creations per minute.' },
+      { status: 429, headers: { 'Retry-After': '60', 'X-RateLimit-Remaining': '0' } }
+    )
+  }
 
   const { repoName, files, token: bodyToken, isPrivate = true, description } = await req.json() as {
     repoName:    string
@@ -85,15 +109,30 @@ export async function POST(req: NextRequest) {
     const commitData = await gh(`/repos/${owner}/${finalName}/git/commits/${latestSHA}`, token)
     const baseTreeSHA: string = commitData.tree.sha
 
-    // 4. Create blobs for each file
+    // 4. Create blobs in parallel (10 at a time) — per-blob catch so one failure doesn't kill the batch
+    const CONCURRENCY = 10
+    const entries = Object.entries(files).filter(([p, c]) => !!p && !!c)
     const treeItems: { path: string; mode: string; type: string; sha: string }[] = []
-    for (const [path, content] of Object.entries(files)) {
-      if (!content || !path) continue
-      const blob = await gh(`/repos/${owner}/${finalName}/git/blobs`, token, 'POST', {
-        content:  Buffer.from(content).toString('base64'),
-        encoding: 'base64',
-      })
-      treeItems.push({ path, mode: '100644', type: 'blob', sha: blob.sha })
+    const blobErrors: string[] = []
+    for (let i = 0; i < entries.length; i += CONCURRENCY) {
+      const batch = entries.slice(i, i + CONCURRENCY)
+      const settled = await Promise.allSettled(batch.map(async ([filePath, content]) => {
+        const blob = await ghRetry(`/repos/${owner}/${finalName}/git/blobs`, token, 'POST', {
+          content:  Buffer.from(content as string).toString('base64'),
+          encoding: 'base64',
+        })
+        return { path: filePath, mode: '100644', type: 'blob', sha: blob.sha as string }
+      }))
+      for (const r of settled) {
+        if (r.status === 'fulfilled') treeItems.push(r.value)
+        else blobErrors.push((r.reason as Error).message?.slice(0, 120) ?? 'unknown blob error')
+      }
+    }
+    if (blobErrors.length > 0) {
+      console.warn(`GitHub blob upload: ${blobErrors.length} file(s) failed —`, blobErrors.slice(0, 5))
+    }
+    if (treeItems.length === 0) {
+      throw new Error(`All ${entries.length} blob uploads failed — check GitHub token permissions`)
     }
 
     // 5. Create tree
@@ -124,9 +163,10 @@ export async function POST(req: NextRequest) {
         repoUrl,
         vercelImport,
         owner,
-        repo:   finalName,
+        repo:        finalName,
         branch,
-        files:  treeItems.length,
+        files:       treeItems.length,
+        blobErrors:  blobErrors.length > 0 ? blobErrors.length : undefined,
       },
     })
   } catch (err) {

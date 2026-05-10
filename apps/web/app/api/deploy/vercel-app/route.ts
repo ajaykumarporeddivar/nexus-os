@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireSession } from '@/lib/session'
+import { checkRateLimit } from '@/lib/ratelimit'
 import crypto from 'crypto'
 
 const VERCEL_API = 'https://api.vercel.com'
@@ -14,6 +15,20 @@ async function vGet(path: string, token: string, teamId?: string) {
     headers: { Authorization: `Bearer ${token}` },
   })
   return { ok: res.ok, data: await res.json() }
+}
+
+async function vPostRetry(path: string, token: string, body: object, teamId?: string, retries = 3) {
+  for (let attempt = 0; attempt < retries; attempt++) {
+    try {
+      return await vPost(path, token, body, teamId)
+    } catch (err) {
+      const msg = (err as Error).message ?? ''
+      const isTransient = /5\d\d|rate.?limit|timeout|ECONNRESET|ETIMEDOUT/i.test(msg)
+      if (!isTransient || attempt === retries - 1) throw err
+      await new Promise(r => setTimeout(r, Math.pow(2, attempt) * 600))
+    }
+  }
+  throw new Error('Vercel: exhausted retries')
 }
 
 async function vPost(path: string, token: string, body: object, teamId?: string) {
@@ -63,6 +78,15 @@ const SKIP = ['.github/', 'README.md', '.env.example', 'vitest.config', '__tests
 export async function POST(req: NextRequest) {
   const auth = await requireSession()
   if (auth.error) return auth.error
+
+  // Rate-limit deploy calls — 5/min per user (one Vercel deploy per pipeline run)
+  const rl = await checkRateLimit(`deploy:vrcl:${auth.user.id}`)
+  if (!rl.success) {
+    return NextResponse.json(
+      { ok: false, error: 'Deploy rate limit reached. Max 5 Vercel deployments per minute.' },
+      { status: 429, headers: { 'Retry-After': '60', 'X-RateLimit-Remaining': '0' } }
+    )
+  }
 
   const token  = process.env.VERCEL_TOKEN?.trim()
   const teamId = process.env.VERCEL_TEAM_ID?.trim() || undefined
@@ -481,18 +505,33 @@ export const USERS: DemoUser[] = Array.from({ length: 8 }, (_, i) => ({
       sourceFiles.push(...newBarrels)
     }
 
-    // ── 4. Upload blobs ───────────────────────────────────────────────────────
+    // ── 4. Upload blobs in parallel (10 at a time) — per-blob catch so one failure doesn't kill the batch
+    const BLOB_CONCURRENCY = 10
     const fileRefs: { file: string; sha: string; size: number }[] = []
-    for (const [path, content] of sourceFiles) {
-      const buf = Buffer.from(content, 'utf8')
-      const { sha, size } = await uploadBlob(buf, token, teamId)
-      fileRefs.push({ file: path, sha, size })
+    const blobErrors: string[] = []
+    for (let i = 0; i < sourceFiles.length; i += BLOB_CONCURRENCY) {
+      const batch = sourceFiles.slice(i, i + BLOB_CONCURRENCY)
+      const settled = await Promise.allSettled(batch.map(async ([filePath, content]) => {
+        const buf = Buffer.from(content as string, 'utf8')
+        const { sha, size } = await uploadBlob(buf, token, teamId)
+        return { file: filePath, sha, size }
+      }))
+      for (const r of settled) {
+        if (r.status === 'fulfilled') fileRefs.push(r.value)
+        else blobErrors.push((r.reason as Error).message?.slice(0, 120) ?? 'unknown blob error')
+      }
+    }
+    if (blobErrors.length > 0) {
+      console.warn(`Vercel blob upload: ${blobErrors.length} file(s) failed —`, blobErrors.slice(0, 5))
+    }
+    if (fileRefs.length === 0) {
+      throw new Error(`All ${sourceFiles.length} Vercel blob uploads failed — check Vercel token permissions`)
     }
 
     // ── 5. Create deployment — return immediately, let client poll ───────────
     const aliasUrl = `https://${finalName}.vercel.app`
 
-    const deployment = await vPost('/v13/deployments', token, {
+    const deployment = await vPostRetry('/v13/deployments', token, {
       name:           finalName,
       files:          fileRefs,
       framework:      'nextjs',

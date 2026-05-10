@@ -57,6 +57,15 @@ async function uploadFileToVercel(
   return { sha, size }
 }
 
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}
+
 function mdToHtml(md: string): string {
   return md
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -105,27 +114,29 @@ function generateOverviewHTML(
   const featureBullets = extractBullets(features).slice(0, 8)
   const featureCards = featureBullets.length
     ? featureBullets.map((f, i) => {
-        const [title, ...rest] = f.split(':')
-        return `<div class="feat-card"><span class="feat-n">F${String(i+1).padStart(2,'0')}</span><strong>${title.trim()}</strong>${rest.length ? `<p>${rest.join(':').trim()}</p>` : ''}</div>`
+        const [ftitle, ...rest] = f.split(':')
+        return `<div class="feat-card"><span class="feat-n">F${String(i+1).padStart(2,'0')}</span><strong>${escapeHtml(ftitle.trim())}</strong>${rest.length ? `<p>${escapeHtml(rest.join(':').trim())}</p>` : ''}</div>`
       }).join('')
-    : `<div class="feat-card"><p>${brief.slice(0, 300)}</p></div>`
+    : `<div class="feat-card"><p>${escapeHtml(brief.slice(0, 300))}</p></div>`
 
   const techLines = extractBullets(arch).filter(l => /typescript|node|react|next|postgres|supabase|redis|stripe|prisma/i.test(l)).slice(0, 6)
   const techStack = techLines.length
-    ? techLines.map(t => `<span class="tech-pill">${t.split(':')[0].trim()}</span>`).join('')
+    ? techLines.map(t => `<span class="tech-pill">${escapeHtml(t.split(':')[0].trim())}</span>`).join('')
     : '<span class="tech-pill">TypeScript</span><span class="tech-pill">Node.js</span><span class="tech-pill">PostgreSQL</span><span class="tech-pill">REST API</span>'
 
   const secFindings = extractBullets(security).slice(0, 4)
   const secHtml = secFindings.length
     ? secFindings.map(s => {
         const lvl = /critical/i.test(s) ? 'crit' : /high/i.test(s) ? 'high' : /medium/i.test(s) ? 'med' : 'low'
-        return `<div class="sec-row"><span class="sec-badge ${lvl}">${lvl.toUpperCase()}</span><span>${s.replace(/^(CRITICAL|HIGH|MEDIUM|LOW)[:\s]*/i,'').slice(0,120)}</span></div>`
+        const text = escapeHtml(s.replace(/^(CRITICAL|HIGH|MEDIUM|LOW)[:\s]*/i,'').slice(0,120))
+        return `<div class="sec-row"><span class="sec-badge ${lvl}">${lvl.toUpperCase()}</span><span>${text}</span></div>`
       }).join('')
     : '<div class="sec-row"><span class="sec-badge low">PASS</span><span>No critical security issues detected.</span></div>'
 
   const sqlPreview = sql ? sql.split('\n').filter(l => l.match(/CREATE TABLE|CREATE INDEX|--/i)).slice(0, 10).join('\n') : ''
 
-  const title = projectName.replace(/[-_]/g,' ').replace(/\b\w/g, c => c.toUpperCase())
+  const rawTitle = projectName.replace(/[-_]/g,' ').replace(/\b\w/g, c => c.toUpperCase())
+  const title = escapeHtml(rawTitle)
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -232,7 +243,7 @@ footer{border-top:1px solid var(--border);padding:24px 32px;display:flex;justify
   <div class="hero">
     <div class="hero-eyebrow">Project Proposal · ${new Date().toLocaleDateString('en-US',{year:'numeric',month:'long',day:'numeric'})}</div>
     <h1>${title}</h1>
-    <p class="hero-sub">${(overview || brief).slice(0,300).replace(/</g,'&lt;').replace(/>/g,'&gt;')}</p>
+    <p class="hero-sub">${escapeHtml((overview || brief).slice(0,300))}</p>
     <div class="kpi-row">
       <div class="kpi"><div class="kpi-val ${statusCls}">${scoreStr}</div><div class="kpi-label">QA Score / 10</div></div>
       <div class="kpi"><div class="kpi-val">${featureBullets.length || '8+'}</div><div class="kpi-label">Core Features</div></div>
@@ -244,7 +255,7 @@ footer{border-top:1px solid var(--border);padding:24px 32px;display:flex;justify
   <div class="section">
     <div class="section-label">What we're building</div>
     <h2>Project Scope</h2>
-    <p class="lead">${(manifest ? extractSection(manifest,'Overview') || extractSection(manifest,'Project Overview') || brief : brief).slice(0,600).replace(/</g,'&lt;').replace(/>/g,'&gt;')}</p>
+    <p class="lead">${escapeHtml((manifest ? extractSection(manifest,'Overview') || extractSection(manifest,'Project Overview') || brief : brief).slice(0,600))}</p>
     <div class="section-label" style="margin-top:32px">Tech Stack</div>
     <div class="tech-row">${techStack}</div>
   </div>
@@ -282,7 +293,7 @@ footer{border-top:1px solid var(--border);padding:24px 32px;display:flex;justify
       ${Object.keys(files).map(f => {
         const icons: Record<string,string> = { 'PROJECT_MANIFEST.md':'📋','architecture.md':'🏗','feature-cards.md':'✦','specs.md':'✓','index.ts':'⟨/⟩','security-report.md':'🔒','001_init.sql':'🗄','qa-report.md':'★' }
         const icon = Object.entries(icons).find(([k]) => f.includes(k))?.[1] ?? '◈'
-        return `<div class="feat-card"><span class="feat-n">${icon}</span><strong style="font-size:13px;font-family:monospace">${f}</strong><p>${f.endsWith('.md') ? 'Markdown document' : f.endsWith('.ts') ? 'TypeScript source' : f.endsWith('.sql') ? 'Database migration' : 'Project file'}</p></div>`
+        return `<div class="feat-card"><span class="feat-n">${icon}</span><strong style="font-size:13px;font-family:monospace">${escapeHtml(f)}</strong><p>${f.endsWith('.md') ? 'Markdown document' : f.endsWith('.ts') ? 'TypeScript source' : f.endsWith('.sql') ? 'Database migration' : 'Project file'}</p></div>`
       }).join('')}
     </div>
     <div class="timeline" style="margin-top:48px">
