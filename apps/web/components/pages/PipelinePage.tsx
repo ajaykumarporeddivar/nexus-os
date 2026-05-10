@@ -1531,7 +1531,6 @@ export default function PipelinePage() {
       FORGE_AGENT_SYSTEMS['orchestrator'] ?? 'You are the NEXUS ORCHESTRATOR.',
       `Mission: ${briefText}\nClient: ${client || 'Client'}\n\n${verticalContext}`,
     )
-    announce('Mission control complete. Your project goals are mapped and agent priorities are set.', { rate: 1.02 })
     await new Promise(r => setTimeout(r, 200))
 
     // ── Phase B: analyst (sequential — establishes PROJECT_MANIFEST) ──────────
@@ -1539,7 +1538,6 @@ export default function PipelinePage() {
       `${FORGE_AGENT_SYSTEMS['analyst']}\n\n${verticalContext}`,
       `${briefCtx}\n\nPrevious outputs:\n${prevOutputs()}`,
     )
-    announce('Requirements complete. Core features, user personas, and the product manifest are written.', { rate: 1.02 })
     await new Promise(r => setTimeout(r, 200))
 
     // ── Phase C: architect (sequential — design must precede specialist agents) ─
@@ -1547,7 +1545,8 @@ export default function PipelinePage() {
       FORGE_AGENT_SYSTEMS['architect'] ?? 'You are the NEXUS ARCHITECT.',
       `${briefCtx}\n\nPrevious outputs:\n${prevOutputs()}`,
     )
-    announce('Architecture locked. Technical stack, database schema, and all API contracts are defined.', { rate: 1.02 })
+    // Milestone 2: after first 3 sequential agents complete
+    announce('Strategy, requirements, and architecture are locked. Five specialists are now working in parallel.')
     await new Promise(r => setTimeout(r, 200))
 
     // ── Phase D: parallel — 5 specialist agents (all depend on architect only) ─
@@ -1555,7 +1554,6 @@ export default function PipelinePage() {
     // Each gets the same context snapshot from after architect completes.
     const parallelCtx = `${briefCtx}\n\nPrevious outputs:\n${prevOutputs()}`
     const PARALLEL_AGENTS = ['planner', 'test-writer', 'builder', 'security', 'db-opt']
-    announce('Five specialists are now working in parallel — feature planning, code design, security review, test strategy, and database optimisation.', { rate: 1.02 })
     log(`FORGE · parallel phase starting: ${PARALLEL_AGENTS.join(', ')}`)
 
     await Promise.all(PARALLEL_AGENTS.map(id =>
@@ -1565,7 +1563,6 @@ export default function PipelinePage() {
         parallelCtx,
       )
     ))
-    announce('All five specialists done. Features, security, tests, code structure, and data model are complete.', { rate: 1.02 })
     log('✓ FORGE parallel phase complete — all 5 specialist agents done', 'ok')
     await new Promise(r => setTimeout(r, 200))
 
@@ -1625,19 +1622,14 @@ export default function PipelinePage() {
 
       if (qaScore !== null && qaScore < 7.0) {
         log(`⚠ QA still ${qaScore}/10 after 2 revisions — proceeding to BUILD (output may be suboptimal)`, 'warn')
-        announce(`Revision complete. Proceeding to BUILD ENGINE with a score of ${qaScore.toFixed(1)} out of ten.`)
       } else if (qaScore !== null) {
-        announce(`Revision raised the score to ${qaScore.toFixed(1)} out of ten. Specification approved.`)
         log(`✓ Revised QA score ${qaScore}/10 — APPROVED for BUILD`, 'ok')
       }
     } else if (qaScore !== null) {
-      announce(`Specification approved. Quality score: ${qaScore.toFixed(1)} out of ten. Handing off to BUILD ENGINE.`)
       log(`✓ FORGE QA score ${qaScore}/10 — APPROVED for BUILD`, 'ok')
     }
 
     // ── Revenue agents 10 & 11 — run after QA gate ────────────────────────────
-    // F-08/F-09: use full tiered caps (600 chars for qa, 800+ for strategic agents) so
-    // growth and monetisation agents have full product context to reference
     const prevForRevenue = prevOutputs()
 
     setForgeActiveAgents(new Set(['growth']))
@@ -1651,7 +1643,6 @@ export default function PipelinePage() {
     specFiles['GROWTH_PLAYBOOK.md'] = growthResult.content
     setForgeDoneAgents(d => new Set([...d, 'growth']))
     setForgeActiveAgents(new Set())
-    announce('Growth playbook done. Acquisition channels, viral loops, and go-to-market strategy are written.')
     log(`✓ FORGE GROWTH HACKER (${growthResult.tokens} tokens)`, 'ok')
     await new Promise(r => setTimeout(r, 300))
 
@@ -1666,10 +1657,13 @@ export default function PipelinePage() {
     specFiles['MONETISATION_BLUEPRINT.md'] = monetisationResult.content
     setForgeDoneAgents(d => new Set([...d, 'monetisation']))
     setForgeActiveAgents(new Set())
-    announce('Revenue model done. Pricing tiers, upsell triggers, and projections are complete. FORGE ENGINE finished.')
     log(`✓ FORGE MONETISATION STRATEGIST (${monetisationResult.tokens} tokens)`, 'ok')
-    // Drain TTS queue before BUILD starts — ensures all FORGE narration plays before transition
-    await waitForSpeech(12_000)
+
+    // Milestone 3: FORGE complete — single announcement after all 11 agents done
+    const qaLabel = qaScore !== null ? ` Quality score: ${qaScore.toFixed(1)} out of ten.` : ''
+    announce(`FORGE complete.${qaLabel} Product spec, architecture, growth playbook, and revenue model are ready. BUILD ENGINE starting now.`)
+    // Drain queue — all FORGE narration must finish before BUILD narration starts
+    await waitForSpeech(14_000)
     await new Promise(r => setTimeout(r, 300))
 
     const slug = slugify(client || briefText.slice(0, 30))
@@ -1802,7 +1796,6 @@ Generate the ${agentId.toUpperCase()} files now. Follow the output contract exac
       runAgent('shell',     { ...allFiles }),
     ])
     setBuildStage(1)
-    announce('Stage one complete. Project scaffold, file structure, and mock data layer are ready.')
     await new Promise(r => setTimeout(r, 300))
 
     // Stage 2 (parallel): ui-core + api — need types from stage 1
@@ -1811,7 +1804,8 @@ Generate the ${agentId.toUpperCase()} files now. Follow the output contract exac
       runAgent('api',     { ...allFiles }),
     ])
     setBuildStage(2)
-    announce('Stage two complete. User interface components and all API routes are generated.')
+    // Milestone 4: BUILD midpoint — scaffold, mock data, UI, and API complete
+    announce('BUILD midpoint. Foundation, UI components, and all API routes are generated. Building landing page and dashboard next.')
     await new Promise(r => setTimeout(r, 300))
 
     // Stage 3 (parallel): landing + interactions — need ui components from stage 2
@@ -1820,7 +1814,6 @@ Generate the ${agentId.toUpperCase()} files now. Follow the output contract exac
       runAgent('interactions', { ...allFiles }),
     ])
     setBuildStage(3)
-    announce('Stage three complete. Landing page and all interactive elements are built.')
     await new Promise(r => setTimeout(r, 300))
 
     // Stage 4 (parallel): dashboard + features — need ui layout from stage 2
@@ -1829,7 +1822,6 @@ Generate the ${agentId.toUpperCase()} files now. Follow the output contract exac
       runAgent('features',  { ...allFiles }),
     ])
     setBuildStage(4)
-    announce('Stage four complete. Dashboard and full feature set are built. Repair agent is doing a final consistency pass.')
     await new Promise(r => setTimeout(r, 300))
 
     // Stage 5: repair — needs all prior output
@@ -1857,13 +1849,13 @@ Generate the ${agentId.toUpperCase()} files now. Follow the output contract exac
     if (fileCount < 8) {
       setBuildWarning(`BUILD produced only ${fileCount} file${fileCount === 1 ? '' : 's'} — missing critical files will be auto-injected during deploy.`)
       log(`⚠ Only ${fileCount} files generated — vercel-app route will inject missing critical files`, 'warn')
-      announce(`BUILD complete. ${fileCount} files generated and repaired. Moving to deployment now.`)
     } else {
       log(`BUILD complete — ${fileCount} files generated`, 'ok')
-      announce(`BUILD complete. ${fileCount} production-ready files generated. Pushing to GitHub and deploying to Vercel next.`)
     }
-    // Drain TTS queue — all BUILD stage narration must finish before DEPLOY narration starts
-    await waitForSpeech(12_000)
+    // Milestone 5: BUILD complete — single clear announce after all 10 agents done
+    announce(`BUILD ENGINE complete. ${fileCount} production files written. Deploying to GitHub and Vercel now.`)
+    // Drain queue — BUILD narration must finish before DEPLOY narration starts
+    await waitForSpeech(14_000)
 
     patchStep('build', { status: 'done' })
     return allFiles
@@ -1877,7 +1869,8 @@ Generate the ${agentId.toUpperCase()} files now. Follow the output contract exac
   ): Promise<DeployResult> => {
     patchStep('deploy', { status: 'running', error: undefined })
     setDeploySubStep(1)
-    announce('DEPLOY phase started. Creating your private spec repository and public app repository on GitHub.')
+    // Milestone 6 (mid): DEPLOY started
+    announce('DEPLOY started. Pushing code to GitHub and triggering your Vercel build now.')
     log('DEPLOY starting…')
 
     const slug = forge.projectName
@@ -1937,7 +1930,7 @@ Generate the ${agentId.toUpperCase()} files now. Follow the output contract exac
 
       if (Object.keys(appFiles).length > 0) {
         setDeploySubStep(2)
-        announce('Application code pushed to GitHub. Creating the Vercel project and triggering the build.')
+        // (no extra announce here — DEPLOY already narrated above; final completion covers the outcome)
         log('Pushing app repo to GitHub…')
         try {
           const ghAppRes = await fetch('/api/deploy/github', {
@@ -1971,7 +1964,7 @@ Generate the ${agentId.toUpperCase()} files now. Follow the output contract exac
 
     if (liveVercelOk && Object.keys(appFiles).length > 0) {
       setDeploySubStep(3)
-      announce('Deploying to Vercel. Next.js build starting.')
+      log('Deploying app to Vercel (Next.js build)…')
       log('Deploying app to Vercel (Next.js build)…')
       try {
         const vRes = await fetch('/api/deploy/vercel-app', {
@@ -1992,7 +1985,7 @@ Generate the ${agentId.toUpperCase()} files now. Follow the output contract exac
           if (deployReady) {
             announce('Your app is live on Vercel right now. The entire pipeline is complete.')
           } else {
-            announce('Vercel is building your app right now. You will be notified the moment it goes live.')
+            log('App is building on Vercel — adaptive polling (5s → 10s → 15s)', 'ok')
           }
           log(deployReady ? 'App is live!' : 'App is building on Vercel — adaptive polling (5s → 10s → 15s)', 'ok')
         } else {
@@ -2015,7 +2008,7 @@ Generate the ${agentId.toUpperCase()} files now. Follow the output contract exac
     // ── Render fallback: deploy if Vercel didn't produce a live URL ──────────
     if (!proposalUrl && appRepoUrl && liveRenderOk) {
       setDeploySubStep(3)
-      announce('Vercel is unavailable. Switching to Render deployment. Your app will be live in moments.')
+      log('Vercel unavailable — switching to Render deployment', 'warn')
       log('Deploying to Render (fallback)…')
       try {
         const rRes = await fetch('/api/deploy/render', {

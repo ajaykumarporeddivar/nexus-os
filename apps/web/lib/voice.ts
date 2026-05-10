@@ -88,37 +88,43 @@ function pickVoice(voices: SpeechSynthesisVoice[]): SpeechSynthesisVoice | null 
     console.info('[NEXUS TTS] Available voices:', voices.map(v => `${v.name} (${v.lang})`).join(', '))
   }
 
-  // Step 1: isolate English voices — must have en-* lang code
-  const english = voices.filter(v =>
-    v.lang === 'en-US' || v.lang === 'en-GB' || v.lang === 'en-AU' ||
-    v.lang === 'en-IN' || v.lang === 'en-CA' || v.lang === 'en-NZ' ||
-    v.lang.startsWith('en-')
-  )
+  // Step 1: isolate English voices.
+  // Normalize lang code — some browsers/OS return "en_US" (underscore) instead of "en-US".
+  const normLang = (v: SpeechSynthesisVoice) => v.lang.toLowerCase().replace('_', '-')
+  const english = voices.filter(v => normLang(v).startsWith('en-'))
 
-  if (english.length === 0) {
-    console.warn('[NEXUS TTS] No English voices found — browser will use system default. Install an English TTS voice in Windows Settings → Speech.')
-    return null  // utterance.lang='en-US' still hints the browser to use English
+  // Fallback: no lang-matched English voices — try well-known English voice names directly.
+  // This catches edge-cases where lang is empty or malformed (observed on some Windows builds).
+  const englishByName = english.length === 0
+    ? voices.filter(v => /\b(zira|david|mark|aria|jenny|guy|michelle|roger|steffan|google us|google uk|samantha|karen|moira|daniel)\b/i.test(v.name))
+    : []
+
+  const candidates = english.length > 0 ? english : englishByName
+
+  if (candidates.length === 0) {
+    console.warn('[NEXUS TTS] No English voices found — install one via Windows Settings → Time & Language → Speech → Add voices → English (United States)')
+    return null  // utterance.lang='en-US' still hints the browser; worst case: system default voice
   }
 
-  // Step 2: prefer highest-quality within English voices only
-  // Tier-A: Azure Neural / Google Neural (best quality)
-  const tA = english.find(v => /Natural|Neural|Premium|Online/i.test(v.name))
+  // Step 2: prefer highest-quality within English candidates
+  // Tier-A: Neural / Natural / Premium (Azure, Google WaveNet)
+  const tA = candidates.find(v => /Natural|Neural|Premium|Online/i.test(v.name))
   if (tA) return tA
 
-  // Tier-B: Google named English voices
-  const tB = english.find(v => /Google/i.test(v.name))
+  // Tier-B: Google named English
+  const tB = candidates.find(v => /Google/i.test(v.name))
   if (tB) return tB
 
-  // Tier-C: Microsoft named English voices (Zira, David, Aria, Jenny, etc.)
-  const tC = english.find(v => /Microsoft/i.test(v.name))
+  // Tier-C: Microsoft named English (Zira, David, Aria, Jenny, Guy, etc.)
+  const tC = candidates.find(v => /Microsoft/i.test(v.name))
   if (tC) return tC
 
-  // Tier-D: macOS / iOS voices
-  const tD = english.find(v => /Samantha|Karen|Moira|Daniel/i.test(v.name))
+  // Tier-D: macOS/iOS built-in English voices
+  const tD = candidates.find(v => /Samantha|Karen|Moira|Daniel/i.test(v.name))
   if (tD) return tD
 
-  // Tier-E: any English voice
-  return english[0]
+  // Tier-E: first available English candidate
+  return candidates[0]
 }
 
 // ─── TTS queue — prevents successive speak() calls from cancelling each other ──
