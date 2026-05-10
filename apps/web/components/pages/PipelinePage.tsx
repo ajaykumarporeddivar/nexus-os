@@ -1470,7 +1470,7 @@ export default function PipelinePage() {
     const verticalContext = VERTICAL_CONTEXTS[vertical]
     log(`FORGE ENGINE starting — 11 agents · vertical: ${vertical.toUpperCase()}`)
     // Section 1: FORGE narration — fires once at start, completes naturally while agents run (~40-90s)
-    announce('FORGE ENGINE running. Eleven specialists are reading your brief, defining the architecture, planning every feature, writing the security model, and building your go-to-market and revenue strategy. This takes about thirty to sixty seconds.')
+    announce('FORGE ENGINE running. Eleven specialists are reading your brief, defining the architecture, planning every feature, writing the security model, and building your go-to-market strategy. This takes about forty to sixty seconds.', { rate: 1.08 })
 
     const content: Record<string, string>   = {}
     const specFiles: Record<string, string> = {}
@@ -1660,8 +1660,7 @@ export default function PipelinePage() {
     log(`✓ FORGE MONETISATION STRATEGIST (${monetisationResult.tokens} tokens)`, 'ok')
 
     // Drain — ensure FORGE section narration fully plays before BUILD narration starts
-    await waitForSpeech(14_000)
-    await new Promise(r => setTimeout(r, 300))
+    await waitForSpeech(6_000)
 
     const slug = slugify(client || briefText.slice(0, 30))
     const build: ForgeBuild = {
@@ -1743,7 +1742,7 @@ Generate the ${agentId.toUpperCase()} files now. Follow the output contract exac
     patchStep('build', { status: 'running', error: undefined })
     log('BUILD ENGINE starting — 10 agents (incl. REPAIR) in parallel stages')
     // Section 2: BUILD narration — fires once at start, completes naturally while agents run (~40-90s)
-    announce('BUILD ENGINE active. Ten agents are now writing your complete Next.js application — scaffold, UI components, API routes, landing page, dashboard, feature pages, and a final repair pass to ensure everything is consistent.')
+    announce('BUILD ENGINE active. Ten agents are now writing your complete Next.js application — scaffold, UI components, API routes, landing page, dashboard, feature pages, and a final repair pass for consistency.', { rate: 1.08 })
 
     const allFiles: Record<string, string> = {}
 
@@ -1850,7 +1849,7 @@ Generate the ${agentId.toUpperCase()} files now. Follow the output contract exac
       log(`BUILD complete — ${fileCount} files generated`, 'ok')
     }
     // Drain — ensure BUILD section narration fully plays before DEPLOY narration starts
-    await waitForSpeech(14_000)
+    await waitForSpeech(6_000)
 
     patchStep('build', { status: 'done' })
     return allFiles
