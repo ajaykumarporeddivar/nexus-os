@@ -384,33 +384,112 @@ const DEPLOY_SUBSTEPS = [
   { n: 5, label: 'LIVE',         detail: 'App is live — production URL ready' },
 ]
 
-function DeploySubGrid({ currentStep }: { currentStep: number }) {
+function DeploySubGrid({ currentStep, result }: { currentStep: number; result: DeployResult | null }) {
   if (currentStep === 0) return null
+
+  // Per-step outcome URLs — shown after each step completes
+  const stepUrls: Record<number, string | null> = {
+    1: result?.specRepoUrl  || null,
+    2: result?.appRepoUrl   || null,
+    3: result?.proposalUrl  || null,
+    4: null,
+    5: result?.proposalUrl  || null,
+  }
+
   return (
-    <div className="mt-3 space-y-2 bg-paper2/50 border border-border/50 rounded-xl p-3">
-      <p className="text-[9px] font-black font-mono tracking-widest text-ink3 uppercase">Deploy pipeline</p>
-      <div className="grid grid-cols-5 gap-1">
-        {DEPLOY_SUBSTEPS.map(s => {
-          const isDone   = currentStep > s.n
-          const isActive = currentStep === s.n
-          return (
-            <div
-              key={s.n}
-              className={`border rounded-lg p-2 transition-all text-left ${
-                isActive ? 'border-[#c8f23c]/50 bg-[#c8f23c]/5 shadow-[0_0_8px_1px_rgba(200,242,60,0.18)]' :
-                isDone   ? 'border-green-200/60 bg-paper' : 'border-border/40 bg-paper2/40'
-              }`}
-            >
-              <p className={`text-[8px] font-black font-mono leading-tight ${
-                isActive ? 'text-[#c8f23c]' : isDone ? 'text-ink2' : 'text-ink3/50'
-              }`}>{s.label}</p>
-              <p className="text-[7px] text-ink3 leading-tight mt-0.5 truncate hidden sm:block">{s.detail}</p>
-              {isActive && <span className="text-[7px] font-mono text-[#c8f23c]/70 animate-pulse">▸ running</span>}
-              {isDone && <span className="text-[7px] font-mono text-green-500">✓</span>}
+    <div className="mt-3 space-y-1.5 bg-paper2/50 border border-border/50 rounded-xl p-3">
+      <p className="text-[9px] font-black font-mono tracking-widest text-ink3 uppercase mb-2.5">Deploy pipeline — 5 steps</p>
+      {DEPLOY_SUBSTEPS.map(s => {
+        const isDone   = currentStep > s.n
+        const isActive = currentStep === s.n
+        const url      = isDone ? stepUrls[s.n] : null
+        return (
+          <div
+            key={s.n}
+            className={`flex items-start gap-2.5 p-2.5 rounded-lg border transition-all ${
+              isActive ? 'border-[#c8f23c]/60 bg-[#c8f23c]/5 shadow-[0_0_10px_rgba(200,242,60,0.15)]' :
+              isDone   ? 'border-green-200/60 bg-paper' :
+              'border-border/30 bg-paper2/40 opacity-40'
+            }`}
+          >
+            {/* Step indicator */}
+            <div className={`w-5 h-5 rounded-full flex-shrink-0 flex items-center justify-center text-[9px] font-black mt-0.5 ${
+              isDone   ? 'bg-green-500 text-white' :
+              isActive ? 'bg-[#c8f23c] text-black' :
+              'bg-border/60 text-ink3'
+            }`}>
+              {isDone ? '✓' : s.n}
             </div>
-          )
-        })}
-      </div>
+
+            {/* Content */}
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2">
+                <p className={`text-[10px] font-black font-mono ${
+                  isActive ? 'text-[#c8f23c]' : isDone ? 'text-ink' : 'text-ink3'
+                }`}>{s.label}</p>
+                {isActive && <span className="text-[8px] font-mono text-[#c8f23c]/80 animate-pulse">▸ running…</span>}
+                {isDone && !url && <span className="text-[8px] font-mono text-green-600">done</span>}
+              </div>
+              <p className="text-[9px] text-ink3 mt-0.5 leading-relaxed">{s.detail}</p>
+              {url && (
+                <a
+                  href={url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 text-[9px] font-mono text-[#c8f23c] hover:text-[#d4f74a] underline transition-colors mt-1 max-w-full truncate"
+                >
+                  {url.replace(/^https?:\/\//, '').slice(0, 52)}{url.replace(/^https?:\/\//, '').length > 52 ? '…' : ''} ↗
+                </a>
+              )}
+            </div>
+          </div>
+        )
+      })}
+
+      {/* Live URL hero — shown once deploy is complete and we have a URL */}
+      {currentStep >= 6 && result?.proposalUrl && (
+        <div className="mt-3 p-3 rounded-xl bg-[#c8f23c]/10 border border-[#c8f23c]/40">
+          <p className="text-[9px] font-black font-mono tracking-widest text-[#5a6e00] uppercase mb-2">Live production URL</p>
+          <a
+            href={result.proposalUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center justify-center gap-2 w-full py-2.5 rounded-lg bg-[#c8f23c] text-black text-xs font-black hover:bg-[#d4f74a] transition-all shadow-[0_0_16px_rgba(200,242,60,0.3)] hover:scale-[1.01] active:scale-[0.99]"
+          >
+            Open Live App ↗
+          </a>
+        </div>
+      )}
+
+      {/* No-URL fallback — show manual deploy when tokens weren't configured */}
+      {currentStep >= 6 && !result?.proposalUrl && result?.vercelImport && (
+        <div className="mt-3 p-3 rounded-xl bg-paper border border-border/60">
+          <p className="text-[9px] font-black font-mono tracking-widest text-ink3 uppercase mb-1.5">Deploy manually</p>
+          <p className="text-[10px] text-ink3 mb-2">Vercel deploy wasn't triggered automatically — click below to import the repo and deploy in one click.</p>
+          <a
+            href={result.vercelImport}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center justify-center gap-2 w-full py-2.5 rounded-lg bg-ink text-paper text-xs font-black hover:bg-ink/80 transition-all"
+          >
+            ▲ Import to Vercel →
+          </a>
+        </div>
+      )}
+
+      {/* No tokens at all */}
+      {currentStep >= 6 && !result?.proposalUrl && !result?.vercelImport && !result?.appRepoUrl && (
+        <div className="mt-3 p-3 rounded-xl bg-amber-50 border border-amber-300">
+          <p className="text-[10px] font-bold text-amber-800 mb-1">Deploy tokens not configured</p>
+          <p className="text-[9px] text-amber-700 mb-2">Your app code was generated but not deployed. Add GitHub and Vercel tokens to go live.</p>
+          <button
+            onClick={() => { window.location.href = '/shell?page=deploy' }}
+            className="w-full py-2 rounded-lg bg-amber-500 text-white text-xs font-black hover:bg-amber-600 transition-all"
+          >
+            Configure Deploy Tokens →
+          </button>
+        </div>
+      )}
     </div>
   )
 }
@@ -458,21 +537,29 @@ function LogBox({ lines }: { lines: string[] }) {
 
 function TokenWarning({ ghOk, vercelOk }: { ghOk: boolean; vercelOk: boolean }) {
   if (ghOk && vercelOk) return null
+  const missing = [!ghOk && 'GitHub', !vercelOk && 'Vercel'].filter(Boolean).join(' + ')
   return (
-    <div className="flex items-start gap-3 px-4 py-3.5 rounded-xl border border-amber-300 bg-amber-50 shadow-sm">
-      <span className="text-amber-500 text-base flex-shrink-0 mt-0.5">⚠</span>
-      <div className="flex-1 min-w-0">
-        <p className="text-xs font-bold text-amber-800 mb-0.5">Deploy tokens not configured</p>
-        <p className="text-[11px] text-amber-700 leading-relaxed">
-          {!ghOk && 'GitHub token missing — repos won\'t be created. '}
-          {!vercelOk && 'Vercel token missing — live URL won\'t be generated. '}
-          <button
-            onClick={() => { window.location.href = '/shell?page=deploy' }}
-            className="underline font-semibold hover:text-amber-900 transition-colors"
-          >
-            Configure in Export &amp; Deploy →
-          </button>
-        </p>
+    <div className="rounded-xl border-2 border-amber-400 bg-amber-50 overflow-hidden shadow-sm">
+      <div className="flex items-start gap-3 px-4 py-3.5">
+        <span className="text-amber-500 text-base flex-shrink-0 mt-0.5">⚠</span>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-black text-amber-900">
+            {missing} token{missing.includes('+') ? 's' : ''} not configured
+          </p>
+          <p className="text-[11px] text-amber-700 leading-relaxed mt-0.5">
+            {!ghOk && 'Without a GitHub token, no repos will be created. '}
+            {!vercelOk && 'Without a Vercel token, no live URL will be generated. '}
+            Your app code will still be built — but deploy won't happen.
+          </p>
+        </div>
+      </div>
+      <div className="px-4 pb-4">
+        <button
+          onClick={() => { window.location.href = '/shell?page=deploy' }}
+          className="w-full py-2.5 rounded-xl bg-amber-500 text-white text-sm font-black hover:bg-amber-600 transition-all shadow-sm"
+        >
+          Configure {missing} Token{missing.includes('+') ? 's' : ''} — Takes 2 min →
+        </button>
       </div>
     </div>
   )
@@ -761,12 +848,22 @@ function ShareStrip({ liveUrl, elapsed }: { liveUrl?: string; elapsed: string | 
 }
 
 function DoneCard({ result, elapsedSec }: { result: DeployResult; elapsedSec?: number }) {
+  const [urlCopied, setUrlCopied] = useState(false)
   const isBuilding = !result.deployReady && !!result.deploymentId
   const elapsed = elapsedSec
     ? elapsedSec >= 60
       ? `${Math.floor(elapsedSec / 60)}m ${elapsedSec % 60}s`
       : `${elapsedSec}s`
     : null
+
+  const copyUrl = () => {
+    if (!result.proposalUrl) return
+    navigator.clipboard.writeText(result.proposalUrl).then(() => {
+      setUrlCopied(true)
+      setTimeout(() => setUrlCopied(false), 2500)
+    }).catch(() => {})
+  }
+
   return (
     <div className="mt-6 border border-[#c8f23c]/40 rounded-2xl bg-[#c8f23c]/4 overflow-hidden shadow-[0_0_40px_rgba(200,242,60,0.12)]">
       {/* Hero banner */}
@@ -785,46 +882,97 @@ function DoneCard({ result, elapsedSec }: { result: DeployResult; elapsedSec?: n
       </div>
 
       <div className="p-6 space-y-4">
-        {/* Links */}
-        <div className="space-y-2.5">
-          {result.specRepoUrl && (
-            <LinkRow icon="◈" label="Spec repo" url={result.specRepoUrl} />
-          )}
-          {result.appRepoUrl && (
-            <LinkRow icon="⚙" label="App repo (GitHub)" url={result.appRepoUrl} />
-          )}
-          {isBuilding ? (
-            <div className="flex items-center gap-3 p-3.5 rounded-xl border border-[#c8f23c]/40 bg-[#c8f23c]/5">
-              <span className="w-2.5 h-2.5 rounded-full bg-[#c8f23c] animate-[pulse_0.8s_ease-in-out_infinite] flex-shrink-0 shadow-[0_0_8px_rgba(200,242,60,0.6)]" />
-              <div className="flex-1 min-w-0">
-                <p className="text-[9px] font-bold font-mono text-ink3 uppercase tracking-widest">Live URL</p>
-                <p className="text-xs font-mono text-ink3 animate-pulse">Building on Vercel… polling every 5–15s</p>
-              </div>
-              {result.proposalUrl && (
-                <a href={result.proposalUrl} target="_blank" rel="noopener noreferrer"
-                  className="text-[10px] font-mono font-bold border border-border rounded-lg px-3 py-1.5 text-ink3 hover:text-ink hover:border-ink/30 flex-shrink-0 transition-colors">
-                  Preview ↗
-                </a>
-              )}
-            </div>
-          ) : result.proposalUrl ? (
-            <LinkRow icon="↗" label="Live app" url={result.proposalUrl} highlight />
-          ) : null}
-        </div>
 
-        {/* No-token fallback: prompt user to configure deploy tokens */}
-        {!result.specRepoUrl && !result.appRepoUrl && !result.proposalUrl && (
-          <div className="flex items-start gap-3 p-3.5 rounded-xl border border-amber-200/60 bg-amber-50/40">
-            <span className="text-amber-500 text-sm flex-shrink-0 mt-0.5">⚠</span>
-            <div>
-              <p className="text-xs font-bold text-ink">Deploy tokens not configured</p>
-              <p className="text-[11px] text-ink3 mt-0.5">Your app was built successfully — add GitHub and Vercel tokens in <button onClick={() => window.location.href='/shell?page=deploy'} className="underline font-semibold text-ink2 hover:text-ink">Export &amp; Deploy</button> to push it live.</p>
+        {/* ── LIVE URL — primary CTA, shown prominently when available ── */}
+        {result.proposalUrl && (
+          <div className="rounded-2xl bg-[#c8f23c] p-4 shadow-[0_0_28px_rgba(200,242,60,0.4)]">
+            <p className="text-[9px] font-black font-mono tracking-widest text-black/50 uppercase mb-1">Your app is live</p>
+            <p className="text-[11px] font-mono text-black/70 truncate mb-3">{result.proposalUrl}</p>
+            <div className="flex gap-2">
+              <a
+                href={result.proposalUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl bg-black text-[#c8f23c] text-sm font-black hover:bg-black/80 transition-all shadow-[0_2px_12px_rgba(0,0,0,0.3)] hover:scale-[1.01] active:scale-[0.99]"
+              >
+                Open Live App ↗
+              </a>
+              <button
+                onClick={copyUrl}
+                className={`px-4 py-3 rounded-xl text-xs font-black transition-all ${
+                  urlCopied ? 'bg-black/30 text-black' : 'bg-black/15 text-black/70 hover:bg-black/25'
+                }`}
+              >
+                {urlCopied ? '✓ Copied' : '⎘ Copy'}
+              </button>
             </div>
           </div>
         )}
 
-        {/* Primary CTA — only show when we have a real app repo to clone */}
-        {result.vercelImport && result.appRepoUrl && (
+        {/* Building state */}
+        {isBuilding && !result.proposalUrl && (
+          <div className="flex items-center gap-3 p-3.5 rounded-xl border border-[#c8f23c]/40 bg-[#c8f23c]/5">
+            <span className="w-2.5 h-2.5 rounded-full bg-[#c8f23c] animate-[pulse_0.8s_ease-in-out_infinite] flex-shrink-0 shadow-[0_0_8px_rgba(200,242,60,0.6)]" />
+            <div className="flex-1 min-w-0">
+              <p className="text-[9px] font-bold font-mono text-[#5a6e00] uppercase tracking-widest">Vercel build in progress</p>
+              <p className="text-xs font-mono text-ink3 animate-pulse mt-0.5">Your Next.js app is compiling on Vercel — usually takes 1–2 min after deploy triggers.</p>
+            </div>
+          </div>
+        )}
+
+        {/* Repo links */}
+        <div className="space-y-2">
+          {result.specRepoUrl && (
+            <LinkRow icon="◈" label="Spec repo (private)" url={result.specRepoUrl} />
+          )}
+          {result.appRepoUrl && (
+            <LinkRow icon="⚙" label="App repo (GitHub)" url={result.appRepoUrl} />
+          )}
+        </div>
+
+        {/* Manual deploy CTA — shown when we have a repo but no live URL */}
+        {!result.proposalUrl && result.vercelImport && (
+          <div className="rounded-xl border border-border bg-paper2 p-3.5 space-y-2.5">
+            <div>
+              <p className="text-xs font-bold text-ink">Deploy to Vercel manually</p>
+              <p className="text-[11px] text-ink3 mt-0.5 leading-relaxed">Your code is on GitHub. Click below to import it to Vercel — takes about 30 seconds.</p>
+            </div>
+            <a
+              href={result.vercelImport}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center justify-center gap-2 w-full py-3 rounded-xl bg-ink text-paper text-xs font-black hover:bg-ink/85 transition-all shadow-[0_4px_20px_rgba(0,0,0,0.2)] hover:scale-[1.01] active:scale-[0.99]"
+            >
+              ▲ Import to Vercel — Deploy Now →
+            </a>
+            <p className="text-[10px] text-ink3 text-center">You own the repo + deployment — one click to clone to your account</p>
+          </div>
+        )}
+
+        {/* No-token fallback — shown when nothing was deployed */}
+        {!result.specRepoUrl && !result.appRepoUrl && !result.proposalUrl && (
+          <div className="rounded-xl border-2 border-amber-400 bg-amber-50 p-4 space-y-3">
+            <div className="flex items-start gap-3">
+              <span className="text-amber-500 text-base flex-shrink-0 mt-0.5">⚠</span>
+              <div>
+                <p className="text-sm font-bold text-amber-900">Deploy tokens not configured</p>
+                <p className="text-[11px] text-amber-700 mt-1 leading-relaxed">
+                  Your app was built successfully — all {Object.keys({}).length > 0 ? '' : ''}source code is ready. Add GitHub and Vercel API tokens to push it live automatically on every run.
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => { window.location.href = '/shell?page=deploy' }}
+              className="w-full py-3 rounded-xl bg-amber-500 text-white text-sm font-black hover:bg-amber-600 transition-all shadow-sm"
+            >
+              Configure Deploy Tokens →
+            </button>
+            <p className="text-[10px] text-amber-700 text-center">Takes 2 minutes · GitHub + Vercel tokens only</p>
+          </div>
+        )}
+
+        {/* vercelImport CTA — only show when appRepoUrl exists but proposalUrl is empty (no auto-deploy) */}
+        {result.vercelImport && result.appRepoUrl && !result.proposalUrl && (
           <div className="space-y-2 pt-1">
             <a
               href={result.vercelImport}
@@ -1072,7 +1220,8 @@ export default function PipelinePage() {
   const [finalElapsedSec, setFinalElapsedSec] = useState(0)
 
   // G1: AbortController ref for cancellation
-  const abortRef = useRef<AbortController | null>(null)
+  const abortRef      = useRef<AbortController | null>(null)
+  const isRunningRef  = useRef(false) // tracks pipeline active state — readable inside stale callbacks
 
   // Retry / persistence tracking
   const forgeContentRef = useRef<Record<string, string>>({})
@@ -1098,15 +1247,28 @@ export default function PipelinePage() {
     }).catch(() => setTokenChecked(true))
   }, [])
 
-  // G5: load runs used this month — server-side quota (Upstash) is authoritative
+  // G5: load runs used this month — server-side quota (Upstash) is authoritative.
+  // Auto-resets if count is clearly inflated: the stream route previously called
+  // incrementQuota on every agent call (21×/pipeline), so legitimate count can only
+  // be 0–planLimit. Anything above planLimit×10 is definitively from that bug.
   useEffect(() => {
     if (sessionId === 'anon') return
     const limit = PLAN_RUN_LIMITS[sessionPlan] ?? PLAN_RUN_LIMITS.free
     if (!isFinite(limit)) { setRunsUsed(0); return }
     fetch('/api/quota')
       .then(r => r.json())
-      .then((d: { ok: boolean; data?: { count: number } }) => {
-        if (d.ok && d.data != null) setRunsUsed(d.data.count)
+      .then(async (d: { ok: boolean; data?: { count: number; limit: number } }) => {
+        if (!d.ok || d.data == null) return
+        const { count, limit: serverLimit } = d.data
+        const effectiveLimit = isFinite(serverLimit) ? serverLimit : limit
+        // Inflation detection: count > limit × 10 means the stream-route bug was hit.
+        // Auto-reset once so the user can continue running normally.
+        if (isFinite(effectiveLimit) && count > effectiveLimit * 10) {
+          await fetch('/api/quota', { method: 'DELETE' }).catch(() => {})
+          setRunsUsed(0)
+        } else {
+          setRunsUsed(count)
+        }
       })
       .catch(() => {})
   }, [sessionId, sessionPlan])
@@ -1273,6 +1435,7 @@ export default function PipelinePage() {
   // ── G1: Cancel pipeline ───────────────────────────────────────────────────
 
   const cancelPipeline = useCallback(() => {
+    isRunningRef.current = false
     abortRef.current?.abort()
     setPhase('input')
     setSteps(INITIAL_STEPS.map(s => ({ ...s, status: 'pending' as StepStatus })))
@@ -1314,8 +1477,10 @@ export default function PipelinePage() {
       const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }))
       const errMsg = (err as { error?: string }).error ?? `HTTP ${res.status}`
 
-      // G3: detect quota exhaustion and show upgrade modal
-      if (res.status === 429 && /limit|quota|upgrade/i.test(errMsg)) {
+      // G3: detect NEXUS quota exhaustion — only show upgrade modal when pipeline is NOT running.
+      // Groq/Anthropic rate-limit 429s fire during pipeline execution and are retried by the caller.
+      // isRunningRef is a ref so it's always current even inside this stale callback.
+      if (res.status === 429 && !isRunningRef.current && /run.?limit|quota.?exceed|upgrade.?plan/i.test(errMsg)) {
         setShowUpgrade(true)
       }
 
@@ -1548,14 +1713,14 @@ export default function PipelinePage() {
       FORGE_AGENT_SYSTEMS['orchestrator'] ?? 'You are the NEXUS ORCHESTRATOR.',
       `Mission: ${briefText}\nClient: ${client || 'Client'}\n\n${verticalContext}`,
     )
-    await new Promise(r => setTimeout(r, 200))
+    await abortSleep(200)
 
     // ── Phase B: analyst (sequential — establishes PROJECT_MANIFEST) ──────────
     await runForgeAgent('analyst',
       `${FORGE_AGENT_SYSTEMS['analyst']}\n\n${verticalContext}`,
       `${briefCtx}\n\nPrevious outputs:\n${prevOutputs()}`,
     )
-    await new Promise(r => setTimeout(r, 200))
+    await abortSleep(200)
 
     // ── Phase C: architect (sequential — design must precede specialist agents) ─
     await runForgeAgent('architect',
@@ -1563,11 +1728,11 @@ export default function PipelinePage() {
       `${briefCtx}\n\nPrevious outputs:\n${prevOutputs()}`,
     )
     // (no mid-FORGE announce — the section narration above plays while agents work)
-    await new Promise(r => setTimeout(r, 200))
+    await abortSleep(200)
 
     // ── Phase D: sequential specialist agents (strictly one at a time — no burst) ─
     // planner → test-writer → builder → security → db-opt, 1500ms gap between each.
-    const parallelCtx = `${briefCtx}\n\nPrevious outputs:\n${prevOutputs()}`
+    // Context is recomputed per agent so each specialist sees all prior specialists' outputs.
     const SPECIALIST_AGENTS = ['planner', 'test-writer', 'builder', 'security', 'db-opt']
     log(`FORGE · specialist phase starting (sequential): ${SPECIALIST_AGENTS.join(' → ')}`)
 
@@ -1575,12 +1740,12 @@ export default function PipelinePage() {
       await runForgeAgent(
         id,
         FORGE_AGENT_SYSTEMS[id] ?? `You are the NEXUS ${id.toUpperCase()} agent. Complete your task.`,
-        parallelCtx,
+        `${briefCtx}\n\nPrevious outputs:\n${prevOutputs()}`,
       )
       await abortSleep(1500)
     }
     log('✓ FORGE specialist phase complete — all 5 agents done', 'ok')
-    await new Promise(r => setTimeout(r, 200))
+    await abortSleep(200)
 
     // ── Phase E: QA gate (sequential — needs all specialist outputs) ──────────
     // QA gets a richer context window — 2000 chars per agent is the updated cap
@@ -2069,9 +2234,27 @@ Generate the ${agentId.toUpperCase()} files now. Follow the output contract exac
 
     // ── Step 4: BUILD POLL ───────────────────────────────────────────────────
     setDeploySubStep(4); await tick()
+    if (proposalUrl) {
+      log('Vercel build triggered — checking build state…')
+      log(deployReady ? '✓ Build is already ready (fast deploy)' : 'Build queued on Vercel — it will be live in 1–3 min', deployReady ? 'ok' : 'info')
+    } else if (!liveVercelOk) {
+      log('⚠ Skipped build poll — Vercel deploy did not trigger', 'warn')
+    }
 
     // ── Step 5 → 6: LIVE — set 6 so isDone = (6 > 5) = true for all steps ───
     setDeploySubStep(6); await tick()
+
+    if (proposalUrl) {
+      log(`✓ Live URL: ${proposalUrl}`, 'ok')
+      if (specRepoUrl) log(`◈ Spec repo: ${specRepoUrl}`, 'ok')
+      if (appRepoUrl)  log(`⚙ App repo: ${appRepoUrl}`, 'ok')
+    } else if (vercelImport) {
+      log('⚠ No live URL — use the "Import to Vercel" button below to deploy manually', 'warn')
+      log(`→ One-click deploy: ${vercelImport}`, 'warn')
+    } else {
+      log('⚠ Deploy skipped — configure GitHub and Vercel tokens in Export & Deploy to go live', 'warn')
+    }
+
     const result: DeployResult = { specRepoUrl, appRepoUrl, proposalUrl, vercelImport, deploymentId: deploymentId || undefined, deployReady }
     patchStep('deploy', { status: 'done' })
     log('DEPLOY complete', 'ok')
@@ -2165,6 +2348,7 @@ Generate the ${agentId.toUpperCase()} files now. Follow the output contract exac
     pipelineStartRef.current = Date.now()
 
     // Section 0: launch — single sentence, spoken before FORGE starts
+    isRunningRef.current = true
     announce('Pipeline launched. Twenty-one AI specialists are about to build your product from scratch — spec, code, and live deployment, fully autonomous.')
     setPhase('running')
     setLogLines([])
@@ -2187,6 +2371,7 @@ Generate the ${agentId.toUpperCase()} files now. Follow the output contract exac
       const forge    = await runForge(sanitiseBrief(brief), sanitiseBrief(clientName))
       const appFiles = await runBuild(forge)
       const result   = await runDeploy(forge, appFiles)
+      isRunningRef.current = false
       setDeployResult(result)
       const finalElapsed = Math.floor((Date.now() - pipelineStartRef.current) / 1000)
       setFinalElapsedSec(finalElapsed)
@@ -2213,6 +2398,7 @@ Generate the ${agentId.toUpperCase()} files now. Follow the output contract exac
       void sendCompletionEmail(forge, result)
 
     } catch (err) {
+      isRunningRef.current = false
       const msg = (err as Error).message
       if (msg === 'Pipeline cancelled') {
         // Already handled by cancelPipeline()
@@ -2233,6 +2419,7 @@ Generate the ${agentId.toUpperCase()} files now. Follow the output contract exac
   const retryStep = useCallback(async (stepId: string) => {
     const forge = forgeSpecRef.current
     abortRef.current = new AbortController()
+    isRunningRef.current = true
     pipelineStartRef.current = Date.now()
     setFinalElapsedSec(0)
 
@@ -2283,6 +2470,7 @@ Generate the ${agentId.toUpperCase()} files now. Follow the output contract exac
         void sendCompletionEmail(forge, result)
       }
     } catch (err) {
+      isRunningRef.current = false
       const msg = (err as Error).message
       if (msg === 'Pipeline cancelled') return
       log(`Retry error: ${msg}`, 'err')
@@ -2607,7 +2795,7 @@ Generate the ${agentId.toUpperCase()} files now. Follow the output contract exac
                     )}
                     {step.id === 'deploy' && (step.status === 'running' || step.status === 'done') && deploySubStep > 0 && (
                       <div className="-mt-5 mb-6 ml-[52px]">
-                        <DeploySubGrid currentStep={deploySubStep} />
+                        <DeploySubGrid currentStep={deploySubStep} result={deployResult} />
                       </div>
                     )}
                   </div>

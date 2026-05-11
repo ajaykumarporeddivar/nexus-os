@@ -66,11 +66,14 @@ export const PLAN_RUN_LIMITS: Record<string, number> = {
   enterprise: Infinity,
 }
 
-// Token limits per month
+// Token limits per month — a 21-agent pipeline run uses ~25–35K tokens.
+// Free (3 runs) → 3 × 35K = ~105K needed; set to 150K to give headroom.
+// Starter (20 runs) → 20 × 35K = ~700K needed.
+// Agency → unlimited.
 export const PLAN_TOKEN_LIMITS: Record<string, number> = {
-  free:       10_000,
-  starter:    50_000,
-  agency:     100_000,
+  free:       150_000,
+  starter:    750_000,
+  agency:     Infinity,
   enterprise: Infinity,
 }
 
@@ -80,12 +83,25 @@ export const PLAN_LIMITS = PLAN_RUN_LIMITS
 export async function checkQuota(
   sessionId: string,
   plan = 'free',
+  isAdmin = false,
 ): Promise<{ ok: boolean; count: number; limit: number; remaining: number }> {
+  if (isAdmin) return { ok: true, count: 0, limit: Infinity, remaining: Infinity }
   const limit = PLAN_RUN_LIMITS[plan] ?? PLAN_RUN_LIMITS.free
   if (limit === Infinity) return { ok: true, count: 0, limit: Infinity, remaining: Infinity }
   const count = await redisGet(`quota:runs:${sessionId}`)
   const remaining = Math.max(0, limit - count)
   return { ok: count < limit, count, limit, remaining }
+}
+
+export async function resetQuota(sessionId: string): Promise<void> {
+  const redis = getRedis()
+  if (redis) {
+    await redis.set(`quota:runs:${sessionId}`, 0)
+    await redis.set(`quota:tokens:${sessionId}`, 0)
+  } else {
+    mem.delete(`quota:runs:${sessionId}`)
+    mem.delete(`quota:tokens:${sessionId}`)
+  }
 }
 
 export async function incrementQuota(
@@ -101,7 +117,9 @@ export async function incrementQuota(
 export async function checkTokenQuota(
   sessionId: string,
   plan = 'free',
+  isAdmin = false,
 ): Promise<{ ok: boolean; used: number; limit: number; remaining: number }> {
+  if (isAdmin) return { ok: true, used: 0, limit: Infinity, remaining: Infinity }
   const limit = PLAN_TOKEN_LIMITS[plan] ?? PLAN_TOKEN_LIMITS.free
   if (limit === Infinity) return { ok: true, used: 0, limit: Infinity, remaining: Infinity }
   const used = await redisGet(`quota:tokens:${sessionId}`)

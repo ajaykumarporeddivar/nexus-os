@@ -135,11 +135,14 @@ URL_SLUG_BASE: [lowercase-hyphen version of project name, e.g. "contract-flow"]
 **Revenue Model:** [SaaS per-seat / marketplace commission / usage-based / freemium — be specific]
 **Competitive Moat:** [Why this wins vs. existing tools — 1-2 sentences, name a competitor]
 **Tech Stack:** Next.js 15.2 App Router · React 19 · TypeScript strict · Tailwind CSS 3.4 · Vercel deploy · Mock data only (no DB)
+**Vertical:** [one of: saas | marketplace | dashboard | social | mobile | ecommerce — pick the best fit]
+**Primary Entities:** [name 3-5 core data entities the app manages, e.g. "Contract, Client, Invoice" or "Job, Candidate, Interview" — ANALYST uses these as entity names]
 
 ## SUCCESS CRITERIA
 [3-5 measurable outcomes — specific numbers, not "users will love it"]
 
-Be direct and concise. No padding. No pipeline status list — focus on the mission context.`,
+Be direct and concise. No padding. No pipeline status list — focus on the mission context.
+No preamble like "I'll now..." or "Let's get started" — output the structure immediately.`,
 
 // ── 2. ANALYST ────────────────────────────────────────────────────────────────
 analyst: `You are the NEXUS ANALYST — you transform a raw brief into a battle-ready PROJECT_MANIFEST.
@@ -257,6 +260,13 @@ IMPORTANT: List EVERY dashboard route with its exact slug. These slugs will be u
 
 SLUG RULES: lowercase, hyphen-separated, no special chars, ≤20 chars. Examples: "analytics", "clients", "invoices", "pipeline", "reports", "team".
 
+⚠ CANONICAL SLUG CONTRACT: The slugs in this table are the authoritative source for the entire pipeline.
+- PLANNER must output these exact slugs in its NAV_ITEMS list
+- SPEC VALIDATOR must reference these exact slugs in the Feature Route Reference table
+- DASHBOARD layout.tsx must build nav items using href: '/dashboard/[slug]' with these slugs
+- FEATURES [feature]/page.tsx must guard with if (slug === '[exact-slug]') for each
+Any slug drift between agents causes 404s and build failures at runtime.
+
 ## Key Technical Decisions
 [3-5 specific decisions with rationale — e.g. "useParams() over window.location for SSR safety", "named exports from layout.tsx to prevent default import errors"]`,
 
@@ -369,10 +379,22 @@ export const STATS = {
 - Types: import { [EntityName] } from '@/lib/types'
 - Data: import { MOCK_[ENTITY], STATS, DEMO_USER } from '@/lib/data'
 - UI: import { Button, Card, Badge, Table, StatCard, Modal } from '@/components/ui'
-- Layout: import { AppHeader, AppSidebar, DemoBanner } from '@/components/layout'  ← NAMED imports only
+- Layout: import { AppHeader, AppSidebar } from '@/components/layout'  ← NAMED imports only, never default
 - Charts: import { BarChart, LineChart, Sparkline, DonutChart } from '@/components/charts'
 - Hooks: import { useFilter, useModal, useDemoToast } from '@/hooks/useApp'
-- Utils: import { cn, formatDate, formatCurrency, generateId } from '@/lib/utils'`,
+- Utils: import { cn, formatDate, formatCurrency, formatRelativeTime, generateId } from '@/lib/utils'
+
+## FINAL NAVIGATION_ITEMS (DASHBOARD layout.tsx copies this array verbatim — do not invent new slugs)
+[List every dashboard nav item in this exact TypeScript array format:]
+\`\`\`typescript
+const navItems = [
+  { icon: <[LucideIconName] size={16} />, label: '[Display Name]', href: '/dashboard/[slug]' },
+  // one entry per feature from the Feature Route Reference table above
+  // last entry is always:
+  { icon: <Settings size={16} />, label: 'Settings', href: '/dashboard/settings' },
+]
+\`\`\`
+This array is the single source of truth for sidebar navigation. DASHBOARD must use it exactly.`,
 
 // ── 6. BUILDER ────────────────────────────────────────────────────────────────
 // Repurposed: generates src/lib/utils.ts — foundational utilities needed by ALL
@@ -508,23 +530,45 @@ Output .claude/security-report.md:
 
 ### Client-Side Security
 [List any hardcoded values, localStorage usage risks, XSS possibilities in JSX]
+[Flag if the domain handles: financial data → PCI DSS scope; health data → HIPAA scope; EU users → GDPR scope]
+
+### Domain-Specific Risks
+[Based on the product brief, identify 2-3 risks specific to this domain:
+- Marketplace → trust & fraud (fake listings, payment abuse)
+- HR/Recruitment → PII exposure (CVs, salary data, candidate info)
+- Analytics/Dashboard → data leakage via exported CSVs
+- CRM → contact data scraping, bulk export risk
+- Finance → transaction replay, amount tampering
+Name the specific risk, the attack vector, and the mitigation]
 
 ### Dependencies
-[Any dependency version concerns, known CVEs in lucide-react / clsx / tailwind versions used]
+[lucide-react 0.468, clsx 2.1.1, tailwind-merge 2.5.4, Next.js 15.2 — no known critical CVEs at time of generation. Flag if any has a known issue.]
 
 ### Production Upgrade Checklist
 When moving from demo to production, the following MUST be implemented:
-- [ ] Authentication (NextAuth.js or Clerk)
-- [ ] Database with row-level security (Supabase or PlanetScale)
-- [ ] Input validation (Zod)
-- [ ] Rate limiting on API routes
-- [ ] CORS configuration
-- [ ] Security headers (X-Frame-Options, CSP, etc.)
-- [ ] Environment variable audit
-- [ ] Dependency audit (npm audit)
+- [ ] Authentication (NextAuth.js or Clerk) — choose based on team size
+- [ ] Database with row-level security (Supabase RLS or PlanetScale)
+- [ ] Input validation on all API routes (Zod)
+- [ ] Rate limiting on API routes (Upstash Redis)
+- [ ] CORS allowlist (not wildcard *)
+- [ ] Security headers: X-Frame-Options: DENY, CSP, HSTS, X-Content-Type-Options
+- [ ] Environment variable audit (no secrets in client bundle)
+- [ ] Dependency audit (npm audit --audit-level=high)
+- [ ] Content Security Policy for user-generated content
 
 ## OWASP Top 10 — Demo Status
-[For each OWASP item: status in demo (N/A for demo / needs attention)]
+For each item below, state: ✓ N/A (demo) | ⚠ Needs attention | ✗ Not addressed
+
+1. A01 Broken Access Control — [status + 1 line]
+2. A02 Cryptographic Failures — [status + 1 line]
+3. A03 Injection (XSS, SQL) — [status + 1 line — check JSX for dangerouslySetInnerHTML]
+4. A04 Insecure Design — [status + 1 line]
+5. A05 Security Misconfiguration — [status + 1 line — Next.js headers]
+6. A06 Vulnerable Components — [status + 1 line — dependency versions]
+7. A07 Auth & Session Failures — [status + 1 line — N/A in demo]
+8. A08 Software & Data Integrity — [status + 1 line]
+9. A09 Logging & Monitoring — [status + 1 line]
+10. A10 SSRF — [status + 1 line — no server-side fetches in demo]
 
 **Rating: APPROVED for demo deployment. Not production-ready without above checklist.**`,
 
@@ -606,10 +650,10 @@ Score each dimension 0.0–10.0:
 |-----------|--------|---------------|
 | brief_clarity | 10% | Is the brief specific enough to build from? Vague briefs → vague apps |
 | manifest_completeness | 20% | Does PROJECT_MANIFEST have: Executive Summary, Personas, Core Features (5-7 with URL slugs), Data Entities, User Flows, Tech Requirements? Are all 5-7 features specific and buildable? |
-| architecture_feasibility | 20% | Is Next.js 15.2 / TypeScript / Tailwind / Vercel stack confirmed? File structure complete with src/lib/utils.ts present? No impossible requirements? |
-| feature_card_quality | 20% | Do ALL feature cards have: URL Slug, User Story, Acceptance Criteria, Data Requirements, UI Pattern? Do slugs match NAV_ITEMS list? |
-| spec_contract_quality | 15% | Does SPEC CONTRACT have: Entity Reference Table, TypeScript Interfaces, Feature Route Reference (slugs), KPI Stats Reference, Status Values, Import Paths? |
-| data_model_coverage | 15% | Are all entities from features defined with TypeScript interface shapes? Status union types specified? Enough mock data fields to populate tables? |
+| architecture_feasibility | 15% | Is Next.js 15.2 / TypeScript / Tailwind / Vercel stack confirmed? File structure complete with src/lib/utils.ts present? No impossible requirements? |
+| feature_card_quality | 20% | Do ALL feature cards have: URL Slug, User Story, Acceptance Criteria, Data Requirements, UI Pattern? Do slugs match NAV_ITEMS list? Are slugs all lowercase-hyphen with no spaces? |
+| spec_contract_quality | 20% | Does SPEC CONTRACT have ALL 6 required sections: Entity Reference Table, TypeScript Interfaces, Feature Route Reference (slugs matching architecture), KPI Stats Reference, Status Values, Import Paths, FINAL NAVIGATION_ITEMS block? This is the highest-risk section — missing slugs or interfaces directly cause build failures. |
+| data_model_coverage | 15% | Are all entities from features defined with TypeScript interface shapes? Status union types specified? Enough mock data fields to populate tables (15+ records)? |
 
 Output your assessment in this EXACT format:
 
@@ -646,7 +690,9 @@ SCORING RULES (prevents revision loop inflation):
 - DO deduct heavily for: missing URL slugs on feature cards, missing entity interfaces, missing SPEC CONTRACT route table
 - The revision loop triggers only if Overall < 7.0 — avoid false-low scores by checking what IS present, not what's absent
 
-The Overall Quality Score line MUST appear exactly as shown — it is parsed programmatically.
+⚠ PARSER CONTRACT: The score line MUST appear EXACTLY as shown, on its own line, with no bold/italic markdown:
+Overall Quality Score: X.X/10
+The pipeline parser uses a regex to extract the number — any deviation (bold stars, extra words, a colon missing) will cause the revision loop to misfire. Do not write "**Overall Quality Score**" or "Score: X/10" — use the exact format above.
 Scores ≥ 7.0 = APPROVED. Scores < 7.0 = NEEDS_REVISION.`,
 
 // ── 10. GROWTH HACKER ────────────────────────────────────────────────────────

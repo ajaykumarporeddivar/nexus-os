@@ -10,6 +10,8 @@ export const AGENTS: Omit<Agent, 'status'>[] = [
   { id: 'security',     name: 'SECURITY',           role: 'Security audit' },
   { id: 'db-opt',       name: 'DB OPTIMIZER',       role: 'Schema + migrations' },
   { id: 'qa',           name: 'QA GATE',            role: 'Quality scoring' },
+  { id: 'growth',       name: 'GROWTH HACKER',      role: 'GTM playbook' },
+  { id: 'monetisation', name: 'MONETISATION STRATEGIST', role: 'Revenue model' },
 ]
 
 export const PIPES = ['Boot','Analyze','Architect','Plan','Scaffold','Build','Test','Secure','Deliver'] as const
@@ -103,7 +105,7 @@ CV Upload → S3 → ingestion-service → scoring-service → candidate DB
 - Opt-out handling with immediate suppression
 - **Acceptance:** Sequence completes without manual intervention`,
 
-  'test-writer': `# src/__tests__/specs.md
+  'test-writer': `# .claude/spec-contract.md
 
 ## TDD Specifications
 

@@ -362,13 +362,14 @@ export async function aiComplete(opts: AICompleteOptions): Promise<AICompleteRes
     throw new Error('No AI provider available — set ANTHROPIC_API_KEY, GEMINI_API_KEY, or GROQ_API_KEY')
   }
 
-  const groqCap = Math.min(maxTokens, 4096)
+  // llama-3.3-70b supports up to 32768 output tokens; 8192 covers heavy BUILD agents
+  const groqCap = Math.min(maxTokens, 8192)
   try {
     const groqModel = fastMode ? AI_MODELS.fallbackFast : AI_MODELS.fallback
     const { text }  = await groqComplete(groqModel, groqCap, system, messages)
     return { text, provider: 'groq', model: groqModel }
   } catch {
-    const { text } = await groqComplete(AI_MODELS.fallbackFast, Math.min(groqCap, 2048), system, messages)
+    const { text } = await groqComplete(AI_MODELS.fallbackFast, Math.min(groqCap, 4096), system, messages)
     return { text, provider: 'groq', model: AI_MODELS.fallbackFast }
   }
 }
@@ -425,12 +426,12 @@ export async function* aiStream(opts: AICompleteOptions): AsyncGenerator<string>
   // 3️⃣ Groq streaming (up to 51 keys with cooldown-aware rotation)
   if (getGroqKeys().length === 0) throw new Error('No AI provider available')
 
-  const groqStreamCap = Math.min(maxTokens, 4096)
+  const groqStreamCap = Math.min(maxTokens, 8192)
   try {
     const groqModel = fastMode ? AI_MODELS.fallbackFast : AI_MODELS.fallback
     yield* groqStream(groqModel, groqStreamCap, system, messages)
     return
   } catch {
-    yield* groqStream(AI_MODELS.fallbackFast, Math.min(groqStreamCap, 2048), system, messages)
+    yield* groqStream(AI_MODELS.fallbackFast, Math.min(groqStreamCap, 4096), system, messages)
   }
 }

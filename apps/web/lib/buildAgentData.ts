@@ -327,7 +327,8 @@ module.exports = {
 >>>
 
 FILE: tailwind.config.js
-- content: ["./src/**/*.{ts,tsx}"]
+⚠ CRITICAL: The content array MUST be ["./src/**/*.{ts,tsx}"] — without it, Tailwind purges all classes in production and the app renders unstyled. This is the #1 cause of broken Vercel deployments.
+- content: ["./src/**/*.{ts,tsx}"]  ← non-negotiable
 - theme.extend: add 2-3 custom colors that fit the project domain (use meaningful names like 'brand', 'accent')
 - fontFamily: { sans: ['Inter', 'ui-sans-serif', 'system-ui'] }
 - No plugins
@@ -414,8 +415,10 @@ FILE: src/lib/data.ts
     ...
   ]
 - Helper: export function getById<T extends { id: string }>(arr: T[], id: string): T | undefined { return arr.find(x => x.id === id) }
-- Helper: export function formatCurrency(n: number): string { return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0 }).format(n) }
-- Helper: export function formatDate(iso: string): string { return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) }
+
+⚠ DO NOT add formatCurrency or formatDate helpers in data.ts — these already exist in src/lib/utils.ts.
+Adding them here creates duplicate exports and import confusion (TypeScript errors when a file imports from both sources).
+All formatting should be done by importing from '@/lib/utils' only.
 
 All data must be specific to the FORGE project domain. If building a contract tool, use contract names. If building an HR tool, use employee data. Use the FORGE spec to derive the right entities.`,
 
@@ -462,6 +465,7 @@ FILE: src/app/layout.tsx
   Right side: a href="/dashboard" with "Open Dashboard →" link
 - Children wrapped in a div with pt-9 (to offset the banner height)
 - NO providers, NO auth wrappers
+⚠ BANNER RULE: This root layout banner is the ONLY persistent demo banner. The DemoBanner component in layout.tsx is a secondary dismissible notice — it must NOT be rendered inside the dashboard layout to avoid double-banner stacking. The dashboard/layout.tsx must NOT import or render DemoBanner.
 
 FILE: src/components/ui.tsx
 'use client' — export these components (complete implementations, no stubs):
@@ -553,9 +557,12 @@ export function AppSidebar({ items, projectName }: SidebarProps)
 - items: Array<{ icon: React.ReactNode; label: string; href: string }>
 - bg-zinc-900, w-64, fixed left-0 top-9 bottom-0, flex flex-col
 - Logo area at top: project name in white font-bold, with a colored square icon
-- Nav items: hover:bg-zinc-800, active state detected via window.location.pathname
+- Nav items: hover:bg-zinc-800
+  ACTIVE STATE: import { usePathname } from 'next/navigation' — const pathname = usePathname()
+  Active when: pathname === item.href || pathname.startsWith(item.href + '/')
   Active item: bg-zinc-800 text-white border-l-2 border-indigo-400
   Inactive: text-zinc-400 hover:text-zinc-100
+  ⚠ NEVER use window.location.pathname — it throws on the server and causes hydration mismatch
 - Bottom: user info section with DEMO_USER avatar + name + "Demo Mode" badge
 - Import DEMO_USER from '@/lib/data'
 
@@ -643,10 +650,13 @@ Structure (implement ALL sections with real content from the FORGE spec):
 6. PRICING SECTION
    bg-white py-24 px-6
    H2: "Simple, transparent pricing"
-   3 tiers in a grid:
-   - Free: $0/mo — 3-4 limited features, "Get Started" → /dashboard
-   - Pro: $49/mo — full features, most popular, highlighted (bg-zinc-900 text-white scale-105)
+   READ the MONETISATION STRATEGIST output (PRICING_TIERS block) from the FORGE spec for tier names, prices, features, and CTAs.
+   If PRICING_TIERS is present in the FORGE spec, use it verbatim — do not invent prices.
+   If PRICING_TIERS is absent, fall back to:
+   - Free: ₹0/mo — 3-4 limited features, "Get Started" → /dashboard
+   - Pro: ₹999/mo — full features, most popular, highlighted (bg-zinc-900 text-white scale-105)
    - Enterprise: Custom — everything in Pro + SLA + support, "Contact Us" button
+   3 tiers in a grid — highlighted tier has scale-105 transform + ring-2 ring-indigo-500
    Feature list per tier must come from the FORGE spec features
 
 7. TESTIMONIALS (3 fake but realistic)
@@ -678,14 +688,17 @@ Generate 2 files. Import ALL data from '@/lib/data' — never fetch, never useEf
 
 FILE: src/app/dashboard/layout.tsx
 'use client'
-- import { AppSidebar, DemoBanner } from '@/components/layout'  ← named imports, NOT default
-- Build nav items array from the FORGE feature cards (5-8 items with appropriate lucide-react icons)
+- import { AppSidebar } from '@/components/layout'  ← named import, NOT default
+  ⚠ DO NOT import DemoBanner here — the root layout.tsx already renders the fixed top banner.
+  Adding DemoBanner here creates two banners stacked on every dashboard page.
+- Build nav items array from the FORGE spec FINAL NAVIGATION_ITEMS block (SPEC CONTRACT section)
+  If not available, derive from feature cards: 5-8 items with appropriate lucide-react icons
 - Each nav item: { icon: <LucideIcon size={16} />, label: 'Feature Name', href: '/dashboard/featureslug' }
 - Layout structure:
-  <div className="flex min-h-screen bg-zinc-50 pt-9">  {/* pt-9 for demo banner */}
+  ⚠ NO pt-9 on the outer div — root layout already wraps children in pt-9. Adding it here causes double-offset.
+  <div className="flex min-h-screen bg-zinc-50">
     <AppSidebar items={navItems} projectName="[Project Name]" />
     <div className="flex-1 ml-64 flex flex-col min-h-full">
-      <DemoBanner />
       <main className="flex-1 p-6">
         {children}
       </main>
@@ -694,7 +707,8 @@ FILE: src/app/dashboard/layout.tsx
 
 FILE: src/app/dashboard/page.tsx
 'use client'
-- Import STATS, MOCK_[MAIN_ENTITY], RECENT_ACTIVITY, DEMO_USER, CHART_DATA, SPARKLINE_DATA, formatDate, formatCurrency from '@/lib/data'
+- import { STATS, MOCK_[MAIN_ENTITY], RECENT_ACTIVITY, DEMO_USER, CHART_DATA, SPARKLINE_DATA } from '@/lib/data'
+- import { formatDate, formatCurrency } from '@/lib/utils'  ← utils is the canonical source; NOT from '@/lib/data'
 - Import StatCard, Card, CardHeader, CardTitle, CardContent, Badge, Avatar, Table, Button from '@/components/ui'
 - Import BarChart, Sparkline from '@/components/charts'
 - import { AppHeader } from '@/components/layout'  ← named import, NOT default import
@@ -747,6 +761,12 @@ FILE: src/app/dashboard/[feature]/page.tsx
 2. The file MUST start with exactly: 'use client'
 3. import { AppHeader } from '@/components/layout'  ← NAMED import, never default
 4. NEVER write JSX comment placeholders like {/* implementation here */} — write the actual JSX
+5. ENTITY IMPORT GUARD: Only import MOCK_[ENTITY] arrays that exist in the SPEC CONTRACT Entity Reference Table.
+   If the spec has 2 entities, import only 2. If it has 5, import all 5.
+   NEVER import MOCK_X if X is not defined in src/lib/types.ts — TypeScript strict mode will fail the build.
+6. SLUG COVERAGE: Implement an if (slug === '...') block for EVERY feature slug in the SPEC CONTRACT
+   Feature Route Reference table. If there are 5 slugs, write 5 blocks. The template below shows 3 — extend it.
+   Missing slug coverage means that feature renders the default hub instead of real content.
 
 Read the FORGE spec's FEATURE CARDS and SPEC CONTRACT to get the exact slugs, entity names, and field names. Use them verbatim.
 
@@ -755,10 +775,12 @@ FILE: src/app/dashboard/[feature]/page.tsx
 'use client'
 import { useParams } from 'next/navigation'
 import { useState } from 'react'
-import { Card, CardHeader, CardTitle, CardContent, Badge, Button, Input } from '@/components/ui'
+import { Card, CardHeader, CardTitle, CardContent, Badge, Button } from '@/components/ui'
 import { AppHeader } from '@/components/layout'
-import { MOCK_[MAIN_ENTITY], MOCK_[SECOND_ENTITY], MOCK_[THIRD_ENTITY] } from '@/lib/data'
-import { Search, Filter, Plus, Download, Eye } from 'lucide-react'
+import { formatDate, formatCurrency } from '@/lib/utils'
+// ⚠ Import ONLY the MOCK arrays defined in your SPEC CONTRACT Entity Reference Table:
+import { MOCK_[MAIN_ENTITY], MOCK_[SECOND_ENTITY] /*, MOCK_[THIRD_ENTITY] if it exists */ } from '@/lib/data'
+import { Search, Plus, Download, Eye } from 'lucide-react'
 
 export default function FeaturePage() {
   const params = useParams()
@@ -987,6 +1009,11 @@ REPLACE every placeholder above ([slug-1], [Feature 1 Display Name], [MAIN_ENTIT
 - Get field names from: SPEC CONTRACT "TYPESCRIPT INTERFACE SHAPES"
 - Get status values from: SPEC CONTRACT "STATUS VALUES PER ENTITY"
 
+⚠ SLUG COMPLETENESS: Add an if (slug === '...') block for EVERY slug in the FEATURE ROUTE REFERENCE table.
+The template shows 3 blocks — if the spec has 5 or 6 features, write 5 or 6 blocks. Use the appropriate
+MOCK array and entity fields for each one. Every unimplemented slug falls through to the default hub,
+which means a blank "Features" screen instead of real content — this is a visible product quality failure.
+
 The output must have zero placeholder text — every [bracket] replaced with real product-specific values.`,
 
 // ── 7. API ────────────────────────────────────────────────────────────────────
@@ -1082,7 +1109,9 @@ Import: react (useState), '@/components/ui' (Modal, Badge, Button, Avatar)
    - Search input (auto-focused when open)
    - Filtered list of items
    - Keyboard: ArrowUp/ArrowDown to navigate, Enter to go, Escape to close
-   - window.location.href for navigation
+   - Navigation: import { useRouter } from 'next/navigation'; const router = useRouter(); use router.push(item.href)
+     ⚠ NEVER use window.location.href in Next.js App Router — it bypasses the client router,
+     causes a full page reload, and breaks navigation state. Always use router.push().
 
 FILE: src/hooks/useApp.ts
 'use client'
@@ -1247,6 +1276,28 @@ PATTERN 6 — utils.ts missing or importing wrong packages
   formatRelativeTime, formatDateTime, truncate, capitalize, slugify, generateId,
   clamp, formatNumber, groupBy, sortBy.
   It uses 'clsx' and 'tailwind-merge' — both are in package.json.
+
+PATTERN 7 — tailwind.config.js missing content array
+  Symptom: App deploys but ALL styling is missing — pure HTML with no Tailwind classes applied
+  Root cause: tailwind.config.js has an empty or missing content array, so Tailwind purges every class
+  Fix: tailwind.config.js MUST have content: ["./src/**/*.{ts,tsx}"]
+  Check for: content: [] or content: ["./pages/**/*"] or no content key at all
+  If broken, regenerate the file with the correct content array.
+
+PATTERN 8 — globals.css missing @tailwind directives
+  Symptom: No Tailwind utility classes work, layout breaks completely
+  Root cause: src/app/globals.css missing the three required @tailwind directives
+  Fix: The file MUST start with exactly:
+    @tailwind base;
+    @tailwind components;
+    @tailwind utilities;
+  If globals.css is empty or missing these lines, regenerate it.
+
+PATTERN 9 — dashboard/layout.tsx double pt-9 offset
+  Symptom: Dashboard content starts ~72px down instead of ~36px — visible gap between banner and sidebar
+  Root cause: root layout.tsx wraps {children} in pt-9, AND dashboard/layout.tsx has pt-9 on its outer div
+  Fix: Remove pt-9 from the outer div in src/app/dashboard/layout.tsx — root layout provides the offset.
+  Correct dashboard layout outer div: <div className="flex min-h-screen bg-zinc-50">
 
 ═══════════════════════════════════════════════════════
 STANDARD TASKS

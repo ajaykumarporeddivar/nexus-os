@@ -1,7 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { aiStream } from '@/lib/ai'
 import { NextRequest, NextResponse } from 'next/server'
-import { checkQuota, incrementQuota, checkTokenQuota, incrementTokenQuota } from '@/lib/quota'
+import { checkTokenQuota, incrementTokenQuota } from '@/lib/quota'
 import { checkRateLimit } from '@/lib/ratelimit'
 import { requireSession } from '@/lib/session'
 import { brand } from '@/lib/brand'
@@ -67,8 +67,9 @@ export async function POST(req: NextRequest) {
     const auth = await requireSession()
     if (auth.error) return auth.error
 
-    const sid  = auth.user.id!
-    const plan = auth.user.plan ?? 'free'
+    const sid     = auth.user.id!
+    const plan    = auth.user.plan    ?? 'free'
+    const isAdmin = auth.user.isAdmin ?? false
 
     const body = await req.json()
     const { systemPrompt, userMessage, apiKey } = body
@@ -95,25 +96,16 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // Run quota check
-    const quota = await checkQuota(sid, plan)
-    if (!quota.ok) {
-      return NextResponse.json(
-        { ok: false, error: `Monthly run limit reached (${quota.count}/${quota.limit}). Upgrade your plan at ${brand.domain}/pricing.` },
-        { status: 429 }
-      )
-    }
-
-    // Token quota check
-    const tokenQuota = await checkTokenQuota(sid, plan)
+    // Token quota check — run quota is managed at pipeline level, not per-agent-call.
+    // Checking run quota here would exhaust a 3-run free plan after 3 FORGE agent calls
+    // (out of 21 total). Only token quota is enforced at the stream level.
+    const tokenQuota = await checkTokenQuota(sid, plan, isAdmin)
     if (!tokenQuota.ok) {
       return NextResponse.json(
-        { ok: false, error: `Monthly token limit reached (${tokenQuota.used.toLocaleString()}/${tokenQuota.limit.toLocaleString()} tokens). Upgrade to Agency for 100K tokens/month.` },
+        { ok: false, error: `Monthly token limit reached (${tokenQuota.used.toLocaleString()}/${tokenQuota.limit.toLocaleString()} tokens). Upgrade to Agency for unlimited tokens.` },
         { status: 429 }
       )
     }
-
-    await incrementQuota(sid, plan)
 
     // AAS v4 — resolve {{aasContext}} in GOVERNOR prompt if present (other lenses unaffected)
     let resolvedSystemPrompt: string = safeSystem
