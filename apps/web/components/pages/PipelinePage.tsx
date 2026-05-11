@@ -1535,8 +1535,8 @@ export default function PipelinePage() {
     // Tiered context caps: foundational agents get full output; specialists get rich context; revenue agents get standard
     const AGENT_CTX_CAPS: Record<string, number> = {
       orchestrator: 3000, analyst: 4000, architect: 4000,
-      planner: 2500, 'test-writer': 2000, builder: 2500, security: 2000, 'db-opt': 2500,
-      qa: 2000, growth: 1500, monetisation: 1500,
+      planner: 2500, 'test-writer': 3500, builder: 1200, security: 2000, 'db-opt': 3000,
+      qa: 2500, growth: 1500, monetisation: 1500,
     }
     const prevOutputs = () => Object.entries(content)
       .map(([k, v]) => `[${k}]: ${v.slice(0, AGENT_CTX_CAPS[k] ?? 800)}`)
@@ -1584,8 +1584,13 @@ export default function PipelinePage() {
 
     // ── Phase E: QA gate (sequential — needs all specialist outputs) ──────────
     // QA gets a richer context window — 2000 chars per agent is the updated cap
+    // QA gets richer context: spec-contract and db-opt at higher caps so it can validate slug/entity quality
+    const QA_CAPS: Record<string, number> = {
+      orchestrator: 1500, analyst: 3000, architect: 3000,
+      planner: 2500, 'test-writer': 3500, builder: 800, security: 1500, 'db-opt': 2500,
+    }
     const qaCtx = Object.entries(content)
-      .map(([k, v]) => `[${k}]: ${v.slice(0, 2000)}`)
+      .map(([k, v]) => `[${k}]: ${v.slice(0, QA_CAPS[k] ?? 2000)}`)
       .join('\n\n')
     await runForgeAgent('qa',
       FORGE_AGENT_SYSTEMS['qa'] ?? 'You are the NEXUS QA GATE.',
@@ -1729,6 +1734,7 @@ export default function PipelinePage() {
     const snippet = (key: string, max = 800) =>
       generatedSoFar[key] ? `\n--- ${key} (first ${max} chars) ---\n${generatedSoFar[key].slice(0, max)}` : ''
 
+    // Core context every agent gets
     const prevContext = prevFilesSummary
       + snippet('src/lib/utils.ts', 600)
       + snippet('src/lib/types.ts', 2000)
@@ -1737,6 +1743,9 @@ export default function PipelinePage() {
       + snippet('src/app/layout.tsx', 800)
       + snippet('src/components/layout.tsx', 800)
       + snippet('src/app/globals.css', 400)
+      // Dashboard layout shows nav slugs — critical for FEATURES/INTERACTIONS to stay consistent
+      + snippet('src/app/dashboard/layout.tsx', 600)
+      + snippet('src/app/dashboard/page.tsx', 600)
 
     return `PROJECT: ${forge.projectName}
 BRIEF: ${forge.brief}
