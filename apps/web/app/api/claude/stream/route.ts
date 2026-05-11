@@ -149,13 +149,24 @@ export async function POST(req: NextRequest) {
           } else {
             // Server key — use aiStream() with Anthropic primary + Groq fallback
             let charCount = 0
-            for await (const text of aiStream({
-              system:    resolvedSystemPrompt,
-              messages:  [{ role: 'user', content: safeMessage }],
-              maxTokens: 8000,
-            })) {
-              charCount += text.length
-              controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'chunk', content: text })}\n\n`))
+            const sysLen = resolvedSystemPrompt.length
+            const msgLen = safeMessage.length
+            try {
+              for await (const text of aiStream({
+                system:    resolvedSystemPrompt,
+                messages:  [{ role: 'user', content: safeMessage }],
+                maxTokens: 8000,
+              })) {
+                charCount += text.length
+                controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'chunk', content: text })}\n\n`))
+              }
+            } catch (streamErr) {
+              const streamMsg = streamErr instanceof Error ? streamErr.message : 'aiStream error'
+              console.error(`[stream] aiStream error — sys=${sysLen} msg=${msgLen} err=${streamMsg.slice(0, 200)}`)
+              throw streamErr
+            }
+            if (charCount === 0) {
+              console.warn(`[stream] aiStream yielded 0 chars — sys=${sysLen} msg=${msgLen}`)
             }
             totalTokens = Math.ceil(charCount / 4)
           }
@@ -165,6 +176,7 @@ export async function POST(req: NextRequest) {
           controller.close()
         } catch (err) {
           const msg = err instanceof Error ? err.message : 'Stream error'
+          console.error(`[stream] outer catch: ${msg.slice(0, 200)}`)
           controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'error', message: msg })}\n\n`))
           controller.close()
         }

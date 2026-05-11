@@ -389,12 +389,16 @@ export async function* aiStream(opts: AICompleteOptions): AsyncGenerator<string>
         model: anthropicModel, max_tokens: maxTokens, system, messages,
       })
       let errored = false
+      let anthropicChars = 0
       try {
         for await (const event of stream) {
           if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
+            anthropicChars += event.delta.text.length
             yield event.delta.text
           }
         }
+        if (anthropicChars === 0) console.warn('[ai] Anthropic stream returned 0 chars (empty response)')
+        else console.log(`[ai] Anthropic stream OK — ${anthropicChars} chars`)
         return
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)
@@ -406,6 +410,7 @@ export async function* aiStream(opts: AICompleteOptions): AsyncGenerator<string>
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       if (!isAnthropicFallback(msg)) throw err
+      console.warn('[ai] Anthropic outer catch → fallback:', msg.slice(0, 100))
     }
   }
 
