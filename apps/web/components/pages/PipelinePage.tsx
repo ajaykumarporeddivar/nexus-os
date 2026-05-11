@@ -2290,8 +2290,13 @@ Generate the ${agentId.toUpperCase()} files now. Follow the output contract exac
       // G5: increment Upstash quota counter (server-side source of truth)
       if (status === 'COMPLETE') {
         try {
-          await fetch('/api/quota', { method: 'POST' })
-          setRunsUsed(prev => (prev !== null ? prev + 1 : 1))
+          const qRes  = await fetch('/api/quota', { method: 'POST' })
+          const qData = await qRes.json().catch(() => ({}))
+          // Only increment local counter if the server actually incremented (non-admin users).
+          // Admin users return { incremented: false } — their limit is Infinity, never block.
+          if (qData?.data?.incremented !== false) {
+            setRunsUsed(prev => (prev !== null ? prev + 1 : 1))
+          }
         } catch { /* non-critical */ }
       }
     } catch { /* non-critical — don't surface to user */ }
