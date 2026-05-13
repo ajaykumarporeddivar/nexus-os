@@ -3,8 +3,8 @@
  *
  * Chain (non-streaming and streaming):
  *   1. Anthropic   — claude-sonnet (primary, best quality)
- *   2. Gemini      — gemini-2.0-flash, rotates GEMINI_API_KEY…GEMINI_API_KEY50
- *   3. Groq        — llama-3.3-70b → 8b, rotates GROQ_API_KEY…GROQ_API_KEY50
+ *   2. Gemini      — gemini-2.5-flash, rotates GEMINI_API_KEY plus GEMINI_API_KEY1…GEMINI_API_KEY50
+ *   3. Groq        — llama-3.3-70b → 8b, rotates GROQ_API_KEY plus GROQ_API_KEY1…GROQ_API_KEY50
  *
  * Key manager features:
  *   - Per-key cooldown: a 429'd key is skipped for 60s (Gemini) / 30s (Groq)
@@ -19,8 +19,8 @@ import Anthropic from '@anthropic-ai/sdk'
 export const AI_MODELS = {
   primary:      'claude-sonnet-4-20250514',
   fast:         'claude-haiku-4-5-20251001',
-  gemini:       'gemini-2.0-flash',
-  geminiFast:   'gemini-1.5-flash',
+  gemini:       'gemini-2.5-flash',
+  geminiFast:   'gemini-2.5-flash-lite',
   fallback:     'llama-3.3-70b-versatile',
   fallbackFast: 'llama-3.1-8b-instant',
 } as const
@@ -72,33 +72,30 @@ function setCooldown(key: string, ms: number) {
   keyCooldowns.set(key, Date.now() + ms)
 }
 
-function getGeminiKeys(): string[] {
+function getProviderKeys(prefix: 'GEMINI_API_KEY' | 'GROQ_API_KEY'): string[] {
   const keys: string[] = []
-  if (process.env.GEMINI_API_KEY) keys.push(process.env.GEMINI_API_KEY)
+  const base = process.env[prefix]?.trim()
+  if (base) keys.push(base)
   for (let i = 1; i <= 50; i++) {
-    const k = process.env[`GEMINI_API_KEY${i}`]
-    if (k) keys.push(k)
+    const key = process.env[`${prefix}${i}`]?.trim()
+    if (key) keys.push(key)
   }
   return [...new Set(keys)]
+}
+
+function getGeminiKeys(): string[] {
+  return getProviderKeys('GEMINI_API_KEY')
 }
 
 function getGroqKeys(): string[] {
-  const keys: string[] = []
-  if (process.env.GROQ_API_KEY) keys.push(process.env.GROQ_API_KEY)
-  for (let i = 1; i <= 50; i++) {
-    const k = process.env[`GROQ_API_KEY${i}`]
-    if (k) keys.push(k)
-  }
-  return [...new Set(keys)]
+  return getProviderKeys('GROQ_API_KEY')
 }
 
-/** Returns keys in round-robin order, cooled-down keys moved to end of list */
-function orderedKeys(keys: string[], startIndex: number): string[] {
-  const n      = keys.length
-  const rotated = Array.from({ length: n }, (_, i) => keys[(startIndex + i) % n])
-  const ready   = rotated.filter(k => !isKeyCooledDown(k))
-  const cooling = rotated.filter(k => isKeyCooledDown(k))
-  return [...ready, ...cooling]
+/** Returns non-cooled keys in round-robin order. Cooled-down keys are skipped for this request. */
+function orderedReadyKeys(keys: string[], startIndex: number): string[] {
+  const n = keys.length
+  return Array.from({ length: n }, (_, i) => keys[(startIndex + i) % n])
+    .filter(k => !isKeyCooledDown(k))
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -111,6 +108,17 @@ const ANTHROPIC_FALLBACK = [
 function isAnthropicFallback(msg: string): boolean {
   const l = msg.toLowerCase()
   return ANTHROPIC_FALLBACK.some(t => l.includes(t))
+}
+
+function isGeminiFallback(msg: string, status?: number): boolean {
+  const l = msg.toLowerCase()
+  return status === 404 || status === 429 || (status ?? 0) >= 500 ||
+    l.includes('not found') ||
+    l.includes('no longer available') ||
+    l.includes('not supported') ||
+    l.includes('quota') ||
+    l.includes('rate limit') ||
+    l.includes('resource exhausted')
 }
 
 // ─── Gemini helpers ───────────────────────────────────────────────────────────
@@ -136,7 +144,7 @@ async function geminiComplete(
   if (allKeys.length === 0) throw new Error('No GEMINI_API_KEY configured')
 
   const model = fastMode ? AI_MODELS.geminiFast : AI_MODELS.gemini
-  const keys  = orderedKeys(allKeys, geminiRoundRobin)
+  const keys  = orderedReadyKeys(allKeys, geminiRoundRobin)
   geminiRoundRobin = (geminiRoundRobin + 1) % allKeys.length
 
   for (const apiKey of keys) {
@@ -161,7 +169,7 @@ async function geminiComplete(
     return { text, model }
   }
 
-  throw Object.assign(new Error('All Gemini keys exhausted — quota or rate limit on all accounts'), { status: 429 })
+  throw Object.assign(new Error('All Gemini keys exhausted or cooling down. Configured keys are GEMINI_API_KEY plus GEMINI_API_KEY1…GEMINI_API_KEY50; wait 61s or add more keys.'), { status: 429 })
 }
 
 async function* geminiStream(
@@ -174,7 +182,7 @@ async function* geminiStream(
   if (allKeys.length === 0) throw new Error('No GEMINI_API_KEY configured')
 
   const model = fastMode ? AI_MODELS.geminiFast : AI_MODELS.gemini
-  const keys  = orderedKeys(allKeys, geminiRoundRobin)
+  const keys  = orderedReadyKeys(allKeys, geminiRoundRobin)
   geminiRoundRobin = (geminiRoundRobin + 1) % allKeys.length
 
   for (const apiKey of keys) {
@@ -214,7 +222,7 @@ async function* geminiStream(
     return
   }
 
-  throw Object.assign(new Error('All Gemini stream keys exhausted'), { status: 429 })
+  throw Object.assign(new Error('All Gemini stream keys exhausted or cooling down. Configured keys are GEMINI_API_KEY plus GEMINI_API_KEY1…GEMINI_API_KEY50; wait 61s or add more keys.'), { status: 429 })
 }
 
 // ─── Groq helpers ──────────────────────────────────────────────────────────────
@@ -231,7 +239,7 @@ async function groqComplete(
   const allKeys = getGroqKeys()
   if (allKeys.length === 0) throw new Error('No Groq keys configured')
 
-  const keys = orderedKeys(allKeys, groqRoundRobin)
+  const keys = orderedReadyKeys(allKeys, groqRoundRobin)
   groqRoundRobin = (groqRoundRobin + 1) % allKeys.length
 
   for (const key of keys) {
@@ -266,7 +274,7 @@ async function groqComplete(
     return groqComplete(model, cap, system, messages, false)
   }
 
-  throw new Error('All Groq keys rate-limited — add your own Anthropic key in the Runtime page, or wait 1 min and retry')
+  throw new Error('All Groq keys exhausted or cooling down (' + allKeys.length + ' configured). Wait 31s or add GROQ_API_KEY16-GROQ_API_KEY50.')
 }
 
 async function* groqStream(
@@ -278,7 +286,7 @@ async function* groqStream(
   const allKeys = getGroqKeys()
   if (allKeys.length === 0) throw new Error('No Groq keys configured')
 
-  const keys = orderedKeys(allKeys, groqRoundRobin)
+  const keys = orderedReadyKeys(allKeys, groqRoundRobin)
   groqRoundRobin = (groqRoundRobin + 1) % allKeys.length
 
   for (const key of keys) {
@@ -316,7 +324,7 @@ async function* groqStream(
     return
   }
 
-  throw new Error('All Groq keys rate-limited')
+  throw new Error('All Groq stream keys exhausted or cooling down (' + allKeys.length + ' configured). Wait 31s or add GROQ_API_KEY16-GROQ_API_KEY50.')
 }
 
 // ─── Non-streaming completion ─────────────────────────────────────────────────
@@ -325,6 +333,7 @@ export async function aiComplete(opts: AICompleteOptions): Promise<AICompleteRes
   const { system, messages, maxTokens = 1200, model, fastMode = false } = opts
   const anthropicModel = model ?? (fastMode ? AI_MODELS.fast : AI_MODELS.primary)
   const anthropicKey   = process.env.ANTHROPIC_API_KEY
+  let lastProviderError = ''
 
   // 1️⃣ Anthropic
   if (anthropicKey) {
@@ -339,6 +348,7 @@ export async function aiComplete(opts: AICompleteOptions): Promise<AICompleteRes
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       if (!isAnthropicFallback(msg)) throw err
+      lastProviderError = msg
       console.warn('[ai] Anthropic → Gemini fallback:', msg.slice(0, 100))
     }
   }
@@ -350,15 +360,18 @@ export async function aiComplete(opts: AICompleteOptions): Promise<AICompleteRes
       return { text, provider: 'gemini', model: gModel }
     } catch (err) {
       const e = err as { status?: number; message?: string }
-      const shouldFallback = e.status === 429 || (e.status ?? 0) >= 500 ||
-        isAnthropicFallback(e.message ?? '')
+      const shouldFallback = isGeminiFallback(e.message ?? '', e.status)
       if (!shouldFallback) throw err
+      lastProviderError = e.message ?? lastProviderError
       console.warn('[ai] Gemini → Groq fallback:', String(e.message).slice(0, 100))
     }
   }
 
   // 3️⃣ Groq (up to 51 keys with cooldown-aware rotation)
   if (getGroqKeys().length === 0) {
+    if (lastProviderError) {
+      throw new Error(`Primary AI provider unavailable (${lastProviderError.slice(0, 160)}). Configure GEMINI_API_KEY or GROQ_API_KEY fallback keys, or restore Anthropic credits.`)
+    }
     throw new Error('No AI provider available — set ANTHROPIC_API_KEY, GEMINI_API_KEY, or GROQ_API_KEY')
   }
 
@@ -380,6 +393,7 @@ export async function* aiStream(opts: AICompleteOptions): AsyncGenerator<string>
   const { system, messages, maxTokens = 2000, model, fastMode = false } = opts
   const anthropicModel = model ?? (fastMode ? AI_MODELS.fast : AI_MODELS.primary)
   const anthropicKey   = process.env.ANTHROPIC_API_KEY
+  let lastProviderError = ''
 
   // 1️⃣ Anthropic streaming
   if (anthropicKey) {
@@ -397,12 +411,12 @@ export async function* aiStream(opts: AICompleteOptions): AsyncGenerator<string>
             yield event.delta.text
           }
         }
-        if (anthropicChars === 0) console.warn('[ai] Anthropic stream returned 0 chars (empty response)')
-        else console.log(`[ai] Anthropic stream OK — ${anthropicChars} chars`)
+        if (anthropicChars === 0) console.warn('[ai] Anthropic stream returned 0 chars (empty response — will be retried by caller)')
         return
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)
         if (!isAnthropicFallback(msg)) throw err
+        lastProviderError = msg
         errored = true
         console.warn('[ai] Anthropic stream → Gemini fallback:', msg.slice(0, 100))
       }
@@ -410,6 +424,7 @@ export async function* aiStream(opts: AICompleteOptions): AsyncGenerator<string>
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       if (!isAnthropicFallback(msg)) throw err
+      lastProviderError = msg
       console.warn('[ai] Anthropic outer catch → fallback:', msg.slice(0, 100))
     }
   }
@@ -421,15 +436,20 @@ export async function* aiStream(opts: AICompleteOptions): AsyncGenerator<string>
       return
     } catch (err) {
       const e = err as { status?: number; message?: string }
-      const shouldFallback = e.status === 429 || (e.status ?? 0) >= 500 ||
-        isAnthropicFallback(e.message ?? '')
+      const shouldFallback = isGeminiFallback(e.message ?? '', e.status)
       if (!shouldFallback) throw err
+      lastProviderError = e.message ?? lastProviderError
       console.warn('[ai] Gemini stream → Groq fallback:', String(e.message).slice(0, 100))
     }
   }
 
   // 3️⃣ Groq streaming (up to 51 keys with cooldown-aware rotation)
-  if (getGroqKeys().length === 0) throw new Error('No AI provider available')
+  if (getGroqKeys().length === 0) {
+    if (lastProviderError) {
+      throw new Error(`Primary AI provider unavailable (${lastProviderError.slice(0, 160)}). Configure GEMINI_API_KEY or GROQ_API_KEY fallback keys, or restore Anthropic credits.`)
+    }
+    throw new Error('No AI provider available')
+  }
 
   const groqStreamCap = Math.min(maxTokens, 8192)
   try {
