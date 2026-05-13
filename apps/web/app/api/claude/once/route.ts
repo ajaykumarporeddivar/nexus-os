@@ -1,10 +1,9 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { aiComplete } from '@/lib/ai'
 import { NextRequest, NextResponse } from 'next/server'
-import { checkQuota, incrementQuota, checkTokenQuota, incrementTokenQuota } from '@/lib/quota'
+import { checkTokenQuota, incrementTokenQuota } from '@/lib/quota'
 import { checkRateLimit } from '@/lib/ratelimit'
 import { requireSession } from '@/lib/session'
-import { brand } from '@/lib/brand'
 
 export const runtime    = 'nodejs'
 export const maxDuration = 120
@@ -16,8 +15,9 @@ export async function POST(req: NextRequest) {
     const auth = await requireSession()
     if (auth.error) return auth.error
 
-    const sid  = auth.user.id!
-    const plan = auth.user.plan ?? 'free'
+    const sid     = auth.user.id!
+    const plan    = auth.user.plan ?? 'free'
+    const isAdmin = auth.user.isAdmin ?? false
 
     const body = await req.json()
     const { systemPrompt, userMessage, apiKey } = body
@@ -25,11 +25,20 @@ export async function POST(req: NextRequest) {
     if (!systemPrompt || !userMessage) {
       return NextResponse.json({ ok: false, error: 'Missing systemPrompt or userMessage' }, { status: 400 })
     }
+    if (typeof systemPrompt !== 'string' || typeof userMessage !== 'string') {
+      return NextResponse.json({ ok: false, error: 'systemPrompt and userMessage must be strings' }, { status: 400 })
+    }
+    const sanitise = (s: string) => s.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '')
+    const safeSystem  = sanitise(systemPrompt).slice(0, 32_000)
+    const safeMessage = sanitise(userMessage).slice(0, 32_000)
+    if (safeMessage.trim().length < 10) {
+      return NextResponse.json({ ok: false, error: 'userMessage too short (min 10 chars after sanitisation)' }, { status: 400 })
+    }
 
     const rl = await checkRateLimit(sid)
     if (!rl.success) {
       return NextResponse.json(
-        { ok: false, error: `Rate limit exceeded. Max 20 requests/min. Try again shortly.` },
+        { ok: false, error: `Rate limit exceeded. Max 40 requests/min. Try again shortly.` },
         { status: 429, headers: { 'Retry-After': '60', 'X-RateLimit-Remaining': '0', 'X-RateLimit-Reset': String(Math.ceil(rl.reset / 1000)) } }
       )
     }
@@ -38,23 +47,13 @@ export async function POST(req: NextRequest) {
     if (userProvidedKey && !apiKey) {
       return NextResponse.json({ ok: false, error: 'No API key provided' }, { status: 401 })
     }
-    const quota = await checkQuota(sid, plan)
-    if (!quota.ok) {
-      return NextResponse.json(
-        { ok: false, error: `Monthly run limit reached (${quota.count}/${quota.limit}). Upgrade your plan at ${brand.domain}/pricing.` },
-        { status: 429 }
-      )
-    }
-
-    const tokenQuota = await checkTokenQuota(sid, plan)
+    const tokenQuota = await checkTokenQuota(sid, plan, isAdmin)
     if (!tokenQuota.ok) {
       return NextResponse.json(
         { ok: false, error: `Monthly token limit reached (${tokenQuota.used.toLocaleString()}/${tokenQuota.limit.toLocaleString()} tokens). Upgrade to Agency for 100K tokens/month.` },
         { status: 429 }
       )
     }
-
-    await incrementQuota(sid, plan)
 
     let content: string
     let tokens: number
@@ -66,8 +65,8 @@ export async function POST(req: NextRequest) {
       const message = await client.messages.create({
         model: MODEL,
         max_tokens: 8096,
-        system: systemPrompt,
-        messages: [{ role: 'user', content: userMessage }],
+        system: safeSystem,
+        messages: [{ role: 'user', content: safeMessage }],
       })
       content  = message.content.filter(b => b.type === 'text').map(b => (b as Anthropic.TextBlock).text).join('\n')
       tokens   = message.usage.input_tokens + message.usage.output_tokens
@@ -75,13 +74,17 @@ export async function POST(req: NextRequest) {
     } else {
       // Server key — Anthropic primary + Groq fallback
       const result = await aiComplete({
-        system:    systemPrompt,
-        messages:  [{ role: 'user', content: userMessage }],
+        system:    safeSystem,
+        messages:  [{ role: 'user', content: safeMessage }],
         maxTokens: 8096,
       })
       content   = result.text
       tokens    = result.tokens ?? Math.ceil(result.text.length / 4)
       modelUsed = result.model
+    }
+
+    if (tokens <= 0 || content.trim().length < 20) {
+      return NextResponse.json({ ok: false, error: 'AI provider returned an empty response. Please retry.' }, { status: 502 })
     }
 
     incrementTokenQuota(sid, tokens, plan).catch(console.error)

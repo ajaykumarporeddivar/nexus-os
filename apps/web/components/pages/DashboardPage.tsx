@@ -243,7 +243,7 @@ export default function DashboardPage({ onNavigate }: Props) {
                 <div className="border border-dashed border-acid/30 bg-acid/5 rounded-xl p-8 text-center space-y-3">
                   <p className="text-xs font-mono text-ink3 uppercase tracking-widest">Getting started</p>
                   <p className="text-base font-semibold text-ink">No builds yet — your dashboard populates after your first FORGE run</p>
-                  <p className="text-sm text-ink3 max-w-md mx-auto">Pick a trending idea or describe a product, launch the 9-agent pipeline, and your metrics will appear here automatically.</p>
+                  <p className="text-sm text-ink3 max-w-md mx-auto">Pick a trending idea or describe a product, launch the 21-agent one-click pipeline, and your metrics will appear here automatically.</p>
                   <div className="flex gap-3 justify-center pt-2 flex-wrap">
                     <button onClick={() => onNavigate('forge')} className="btn btn-primary text-sm px-6">⚡ Launch FORGE Engine</button>
                     <button onClick={() => onNavigate('trending' as NavPageId)} className="btn btn-ghost text-sm px-6">↑ Browse Trending Ideas</button>

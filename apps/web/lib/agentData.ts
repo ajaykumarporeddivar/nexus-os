@@ -12,6 +12,7 @@ export const AGENTS: Omit<Agent, 'status'>[] = [
   { id: 'qa',           name: 'QA GATE',            role: 'Quality scoring' },
   { id: 'growth',       name: 'GROWTH HACKER',      role: 'GTM playbook' },
   { id: 'monetisation', name: 'MONETISATION STRATEGIST', role: 'Revenue model' },
+  { id: 'closer',       name: 'SALES CLOSER',       role: 'Booking + objection + close system' },
 ]
 
 export const PIPES = ['Boot','Analyze','Architect','Plan','Scaffold','Build','Test','Secure','Deliver'] as const
@@ -25,12 +26,13 @@ export const agentFileMap: Record<string, string> = {
   security:      '.claude/security-report.md',
   'db-opt':      'db/migrations/001_init.sql',
   qa:            '.forge/qa-report.md',
+  closer:        'SALES_CLOSURE_PLAYBOOK.md',
 }
 
 export const DEMO_FORGE_RESPONSES: Record<string, string> = {
   orchestrator: `[NEXUS ORCHESTRATOR] Session initialized.
 Mission: Build recruitment automation platform for demo agency.
-API validated. 9-agent pipeline armed. Commencing Phase 1.`,
+API validated. 22-agent pipeline armed. Commencing Phase 1.`,
 
   analyst: `# PROJECT_MANIFEST.md
 

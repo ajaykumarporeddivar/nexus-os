@@ -88,13 +88,13 @@ const NEXUS_PRESETS = [
   },
   {
     label:  'Pipeline Ad',
-    prompt: 'Premium dark-mode SaaS ad. Matte black background with subtle grid lines. Center: glowing pipeline showing BRIEF → FORGE → BUILD → LIVE URL as neon green glowing cards. Large headline: ONE CLICK PIPELINE. Sub-headline: 18 AI Agents. One Brief. One Live Product. Stats: 9 FORGE AGENTS · 10 BUILD AGENTS · 4 MINUTES. NEXUS OS wordmark. Color: pure black, neon green #c8f23c, white text. Clean modern premium SaaS aesthetic.',
+    prompt: 'Premium dark-mode SaaS ad. Matte black background with subtle grid lines. Center: glowing pipeline showing BRIEF → FORGE → BUILD → LIVE URL as neon green glowing cards. Large headline: ONE CLICK PIPELINE. Sub-headline: 21 AI Agents. One Brief. One Live Product. Stats: 11 FORGE AGENTS · 10 BUILD AGENTS · 4 MINUTES. NEXUS OS wordmark. Color: pure black, neon green #c8f23c, white text. Clean modern premium SaaS aesthetic.',
     model:  'marketing_studio_image' as ModelId,
     aspect: '16:9' as AspectRatio,
   },
   {
     label:  'Infographic',
-    prompt: 'Sharp 4K dark tech infographic poster. Pure black background. Large glowing neon green pipeline flow: BRIEF (cursor icon) → FORGE (9-agent hexagon cluster) → BUILD (10-agent hexagon cluster) → LIVE URL (globe icon). Each step a sleek dark card with neon green border. Hero headline: ONE CLICK PIPELINE in massive bold white sans-serif. Below: Enter a brief. 18 agents build and deploy automatically. Stat chips: 9 FORGE AGENTS · 10 BUILD AGENTS · 4 MIN TO LIVE. NEXUS OS logo top-right. Hexagonal mesh on background. Ultra sharp, no noise.',
+    prompt: 'Sharp 4K dark tech infographic poster. Pure black background. Large glowing neon green pipeline flow: BRIEF (cursor icon) → FORGE (11-agent hexagon cluster) → BUILD (10-agent hexagon cluster) → LIVE URL (globe icon). Each step a sleek dark card with neon green border. Hero headline: ONE CLICK PIPELINE in massive bold white sans-serif. Below: Enter a brief. 21 agents build and deploy automatically. Stat chips: 11 FORGE AGENTS · 10 BUILD AGENTS · 4 MIN TO LIVE. NEXUS OS logo top-right. Hexagonal mesh on background. Ultra sharp, no noise.',
     model:  'nano_banana_2' as ModelId,
     aspect: '16:9' as AspectRatio,
   },

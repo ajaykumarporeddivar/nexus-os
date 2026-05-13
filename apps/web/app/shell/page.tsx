@@ -64,14 +64,15 @@ function ShellInner() {
 
     if (!localStorage.getItem('nexus_onboarded')) setOnboarded(false)
 
-    // Check server-side API key status — sets the badge correctly on first load
-    fetch('/api/health')
+    // Check server-side AI provider status — any configured provider makes the pipeline runnable.
+    fetch('/api/health', { cache: 'no-store' })
       .then(r => r.json())
       .then((d: { checks?: Record<string, { ok: boolean }> }) => {
-        const anthropicOk = d.checks?.anthropic?.ok ?? false
-        if (anthropicOk) setApiConnected(true)
+        const checks = d.checks ?? {}
+        const aiOk = Boolean(checks.ai?.ok || checks.anthropic?.ok || checks.gemini?.ok || checks.groq?.ok)
+        setApiConnected(aiOk)
       })
-      .catch(() => {})
+      .catch(() => setApiConnected(false))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -104,7 +105,7 @@ function ShellInner() {
       if (e.key === 'Escape') { setShowShortcuts(false); return }
       if (lastKeyRef.current === 'g') {
         const dest = KB_NAV[e.key]
-        if (dest) router.push(`?page=${dest}`, { scroll: false })
+        if (dest) router.push(`/shell?page=${dest}`, { scroll: false })
         lastKeyRef.current = null
         if (lastKeyTimer.current) clearTimeout(lastKeyTimer.current)
       } else if (e.key === 'g') {
@@ -125,7 +126,7 @@ function ShellInner() {
   }, [])
 
   const onNavigate = useCallback((page: PageId) => {
-    router.push(`?page=${page}`, { scroll: false })
+    router.push(`/shell?page=${page}`, { scroll: false })
   }, [router])
 
   const onApiKeyChange = useCallback((connected: boolean) => {

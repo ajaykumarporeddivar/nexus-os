@@ -93,10 +93,50 @@ function parseUseCase(useCase: string) {
   }
 }
 
+function compactSentence(value: string, fallback: string): string {
+  const clean = value.replace(/\s+/g, ' ').trim()
+  if (!clean) return fallback
+  return clean.endsWith('.') ? clean.slice(0, -1) : clean
+}
+
+function buildMvpPainPoints(item: TrendingItem, market: string): string[] {
+  const title = item.title.replace(/^AI-powered\s+/i, '')
+  const audience = market || 'target users'
+  const problem = compactSentence(item.summary, `${audience} need a faster way to operate ${title}`)
+
+  return [
+    `${audience} cannot quickly turn messy intake, requests, or source material into a clean working queue: ${problem}`,
+    `${audience} lack a single dashboard to prioritize the highest-value work and see what needs action now`,
+    `${audience} need exportable, client-ready outputs that prove ROI without manual reporting or spreadsheet cleanup`,
+  ]
+}
+
+function buildDeferredRoadmap(item: TrendingItem): string[] {
+  const tagRoadmap = item.tags
+    .filter(t => !t.startsWith('build:') && !t.startsWith('regime:') && !t.startsWith('E:') && !t.startsWith('X:'))
+    .slice(0, 4)
+    .map(tag => `${tag.replace(/[-_]/g, ' ')} automation`)
+
+  const roadmap = [
+    'Team roles and approval permissions',
+    'Real database persistence and workspace accounts',
+    'Billing, entitlement checks, and upgrade flows',
+    'Advanced analytics and benchmark reports',
+    'Integrations with the buyer workflow stack',
+    'Enterprise audit logs and SLA controls',
+  ]
+
+  return [...tagRoadmap, ...roadmap]
+    .filter((item, index, arr) => item && arr.findIndex(v => v.toLowerCase() === item.toLowerCase()) === index)
+    .slice(0, 8)
+}
+
 function buildForgePrompt(item: TrendingItem): string {
   const { trend, revenue } = parseUseCase(item.useCase)
   const { market }         = parseItemTags(item.tags)
   const niche = NICHE_META[item.category]?.label ?? item.category
+  const painPoints = buildMvpPainPoints(item, market)
+  const roadmap = buildDeferredRoadmap(item)
 
   return `Build a micro-SaaS product: ${item.title}
 
@@ -115,15 +155,31 @@ ${revenue || '$29/mo per user'}
 WHY IT IS TRENDING NOW
 ${trend || 'High market demand and underserved niche.'}
 
-DELIVERABLES
-Build this as a complete, production-ready SaaS product. Include:
-- User authentication and role-based access
-- Core feature set that directly solves the problem above
-- Clean, modern dashboard UI tailored for ${market || 'the target market'}
-- Full REST API with documented endpoints
-- Database schema with migrations
-- Billing integration supporting the ${revenue || 'subscription'} model
-- Onboarding flow for new users`.trim()
+MVP SCOPE STRATEGY
+Build a production-grade MVP that solves exactly the 3 most urgent pain points first. Do not attempt a bloated all-feature platform in the first generated application.
+
+TOP 3 PAIN POINTS TO BUILD NOW
+1. ${painPoints[0]}
+2. ${painPoints[1]}
+3. ${painPoints[2]}
+
+MVP WORKFLOWS TO IMPLEMENT
+- Intake / input workflow: capture the core user input and normalize it into structured records.
+- Operating dashboard: show priorities, status, metrics, and next actions for the ${market || 'target user'}.
+- Output / export workflow: produce a useful handoff, report, or action pack the buyer can use immediately.
+
+DEFERRED ROADMAP / SELLING POINTS
+Highlight these as locked expansion features, not half-built pages:
+${roadmap.map((item, index) => `${index + 1}. ${item}`).join('\n')}
+
+POST-PAYMENT ONE-CLICK EXPANSION
+Include an upgrade CTA such as "Unlock full roadmap". After payment, one button click should be presented as the mechanism that delivers the deferred roadmap features for users, agencies, and enterprises. Do not integrate a real payment SDK in this generated MVP; represent it as a credible locked roadmap and upgrade flow.
+
+PRODUCTION QUALITY BAR
+- The generated app must be interactive, not static: forms, filters, stateful dashboard actions, modals, and CSV/export behavior.
+- Use realistic local TypeScript data with at least 10 records per main entity.
+- Avoid placeholder copy, demo-only language, TODOs, lorem ipsum, or generic screenshots.
+- Build for a paid buyer evaluating whether this can become their operational workflow today.`.trim()
 }
 
 export default function TrendingPage() {
@@ -351,6 +407,12 @@ export default function TrendingPage() {
                         <span className="text-xs font-semibold text-ink border border-border rounded px-2 py-0.5">{revenue}</span>
                       </div>
                     )}
+                    <div className="rounded-lg border border-border bg-paper2/50 p-3">
+                      <p className="text-[9px] font-black font-mono uppercase tracking-widest text-ink3 mb-1">One-Click build scope</p>
+                      <p className="text-xs text-ink2 leading-relaxed">
+                        Builds the 3 highest-value MVP workflows first, then presents the remaining roadmap as locked paid expansion features.
+                      </p>
+                    </div>
                     {topicTags.length > 0 && (
                       <div className="flex flex-wrap gap-1 pt-1">
                         {topicTags.map(tag => (

@@ -20,13 +20,20 @@ function pipelineCompleteHtml(opts: {
   brief:       string
   score:       number | null
   liveUrl:     string
+  deployReady: boolean
   specRepoUrl: string
   appRepoUrl:  string
 }): string {
   const scoreStr  = opts.score !== null ? opts.score.toFixed(1) : '—'
   const scoreColor = opts.score !== null && opts.score >= 8 ? '#22c55e' : opts.score !== null && opts.score >= 7 ? '#c8ff00' : '#f59e0b'
-  const hasLive = !!opts.liveUrl
+  const hasLive = opts.deployReady && !!opts.liveUrl
   const hasRepo = !!opts.appRepoUrl
+  const headline = hasLive
+    ? `<h1>🚀 <span class="accent">${opts.projectName}</span> is live</h1>`
+    : `<h1>🚀 <span class="accent">${opts.projectName}</span> deployment submitted</h1>`
+  const intro = hasLive
+    ? `<p>Hi ${opts.name} — your One-Click Pipeline just completed successfully.</p>`
+    : `<p>Hi ${opts.name} — generation completed successfully and deployment was submitted. Public readiness is still being verified.</p>`
 
   return `<!DOCTYPE html>
 <html>
@@ -46,9 +53,9 @@ function pipelineCompleteHtml(opts: {
   .footer{font-size:11px;color:#555;margin-top:28px;border-top:1px solid #222;padding-top:16px}
 </style></head>
 <body><div class="card">
-  <div class="logo">${brand.name} · Pipeline Complete</div>
-  <h1>🚀 <span class="accent">${opts.projectName}</span> is live</h1>
-  <p>Hi ${opts.name} — your One-Click Pipeline just completed successfully.</p>
+  <div class="logo">${brand.name} · ${hasLive ? 'Pipeline Complete' : 'Deployment Submitted'}</div>
+  ${headline}
+  ${intro}
 
   <div class="score-chip" style="color:${scoreColor};border-color:${scoreColor}40;background:${scoreColor}15">
     QA Score: ${scoreStr}/10
@@ -107,6 +114,7 @@ export async function POST(req: NextRequest) {
       brief:       string
       score:       number | null
       liveUrl:     string
+      deployReady: boolean
       specRepoUrl: string
       appRepoUrl:  string
     }

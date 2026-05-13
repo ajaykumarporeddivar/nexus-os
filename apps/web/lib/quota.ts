@@ -107,11 +107,28 @@ export async function resetQuota(sessionId: string): Promise<void> {
 export async function incrementQuota(
   sessionId: string,
   plan = 'free',
+  isAdmin = false,
 ): Promise<{ count: number; limit: number; exceeded: boolean }> {
+  if (isAdmin) return { count: 0, limit: Infinity, exceeded: false }
   const limit = PLAN_RUN_LIMITS[plan] ?? PLAN_RUN_LIMITS.free
   if (limit === Infinity) return { count: 0, limit: Infinity, exceeded: false }
   const count = await redisIncr(`quota:runs:${sessionId}`, 1, monthTTL())
   return { count, limit, exceeded: count > limit }
+}
+
+export async function decrementQuota(
+  sessionId: string,
+  plan = 'free',
+  isAdmin = false,
+): Promise<{ count: number; limit: number }> {
+  if (isAdmin) return { count: 0, limit: Infinity }
+  const limit = PLAN_RUN_LIMITS[plan] ?? PLAN_RUN_LIMITS.free
+  if (limit === Infinity) return { count: 0, limit }
+  const key = `quota:runs:${sessionId}`
+  const current = await redisGet(key)
+  if (current <= 0) return { count: 0, limit }
+  const count = await redisIncr(key, -1, monthTTL())
+  return { count: Math.max(0, count), limit }
 }
 
 export async function checkTokenQuota(

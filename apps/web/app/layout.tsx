@@ -8,7 +8,7 @@ const brandDomain = process.env.NEXT_PUBLIC_BRAND_DOMAIN ?? 'nexus-os.ai'
 const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? `https://${brandDomain}`
 
 const title = `${brandName} — ${brandTagline}`
-const description = `${brandName} is an AI operating system for digital growth agencies. 9-agent autonomous code delivery (FORGE), 11-lens reasoning engine with hallucination firewall, and a production-grade prompt vault with A/B scoring. Ship client work in hours.`
+const description = `${brandName} is an AI operating system for digital growth agencies. 21-agent autonomous delivery pipeline (FORGE + BUILD), 11-lens reasoning engine with hallucination firewall, and a production-grade prompt vault with A/B scoring. Ship client work in hours.`
 
 export const metadata: Metadata = {
   title,

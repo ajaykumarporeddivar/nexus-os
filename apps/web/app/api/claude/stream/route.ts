@@ -4,7 +4,6 @@ import { NextRequest, NextResponse } from 'next/server'
 import { checkTokenQuota, incrementTokenQuota } from '@/lib/quota'
 import { checkRateLimit } from '@/lib/ratelimit'
 import { requireSession } from '@/lib/session'
-import { brand } from '@/lib/brand'
 import { prisma } from '@/lib/prisma'
 import { computeFatigueZone } from '@/lib/fatigueZone'
 import { killThreshold, pipelineCap } from '@/lib/crCompute'
@@ -91,7 +90,7 @@ export async function POST(req: NextRequest) {
     const rl = await checkRateLimit(sid)
     if (!rl.success) {
       return NextResponse.json(
-        { ok: false, error: `Rate limit exceeded. Max ${20} requests/min. Try again shortly.` },
+        { ok: false, error: `Rate limit exceeded. Max ${40} requests/min. Try again shortly.` },
         { status: 429, headers: { 'Retry-After': '60', 'X-RateLimit-Remaining': '0', 'X-RateLimit-Reset': String(Math.ceil(rl.reset / 1000)) } }
       )
     }
@@ -111,7 +110,7 @@ export async function POST(req: NextRequest) {
     let resolvedSystemPrompt: string = safeSystem
     if (safeSystem.includes('{{aasContext}}')) {
       const aasContext = await buildAASContext(plan)
-      resolvedSystemPrompt = systemPrompt.replace('{{aasContext}}', aasContext)
+      resolvedSystemPrompt = safeSystem.replace('{{aasContext}}', aasContext)
     }
 
     const userProvidedKey = !!apiKey
@@ -167,6 +166,7 @@ export async function POST(req: NextRequest) {
             }
             if (charCount === 0) {
               console.warn(`[stream] aiStream yielded 0 chars — sys=${sysLen} msg=${msgLen}`)
+              throw new Error('AI provider returned an empty response. This is treated as a failed agent call and will be retried.')
             }
             totalTokens = Math.ceil(charCount / 4)
           }
@@ -195,3 +195,5 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false, error: msg }, { status: 500 })
   }
 }
+
+

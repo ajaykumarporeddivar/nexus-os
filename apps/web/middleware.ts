@@ -4,6 +4,7 @@ import type { NextRequest } from 'next/server'
 
 // Public API routes that never require auth (webhooks, health, public data)
 const PUBLIC_API = new Set([
+  '/api/ping',
   '/api/health',
   '/api/pipeline-stats',
   '/api/demo-booking',
@@ -20,8 +21,8 @@ const PUBLIC_PAGES = new Set([
 ])
 
 // Query-param-based public pages on /shell — accessible without login
-// 'pricing' lets anyone pay; 'pipeline' lets anyone see the pipeline demo
-const PUBLIC_SHELL_PAGES = new Set(['pricing', 'pipeline', 'overview'])
+// Public onboarding path: browse ideas -> pipeline demo -> pricing.
+const PUBLIC_SHELL_PAGES = new Set(['pricing', 'pipeline', 'overview', 'trending'])
 
 export default withAuth(
   function middleware(req: NextRequest) {
@@ -81,6 +82,7 @@ export default withAuth(
 
         // Always allow health + checkout + public APIs (payment flow must work even logged-out)
         if (
+          pathname === '/api/ping' ||
           pathname === '/api/health' ||
           pathname === '/api/pipeline-stats' ||
           pathname.startsWith('/api/checkout') ||

@@ -132,7 +132,7 @@ export default function OverviewPage({ onNavigate }: Props) {
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           {[
             { step: '01', icon: '⚡', label: 'Client Delivery', desc: 'Brief → proposal, spec & market analysis in 3 min', page: 'client-delivery' as PageId },
-            { step: '02', icon: '⚙', label: 'FORGE Engine',     desc: '9 agents build production-ready code from the spec', page: 'forge' as PageId },
+            { step: '02', icon: '⚙', label: 'FORGE Engine',     desc: '21 agents turn a trend or brief into a deploy-ready app', page: 'forge' as PageId },
             { step: '03', icon: '◎', label: 'Reasoning Engine', desc: 'Validate assumptions with 11 adversarial AI lenses', page: 'reasoning' as PageId },
             { step: '04', icon: '↗', label: 'Export & Deploy',  desc: 'Download, integrate via API, or open in Claude', page: 'deploy' as PageId },
           ].map(item => (

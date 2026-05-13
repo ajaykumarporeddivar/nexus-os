@@ -1,5 +1,5 @@
 // 5 seed briefs for the evaluation harness.
-// Each maps to a real agency use-case and drives a full 9-agent FORGE run
+// Each maps to a real agency use-case and drives a full 21-agent NEXUS run
 // so PromptVersion.avgScore populates with real quality scores.
 
 export interface EvalBrief {

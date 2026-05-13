@@ -16,11 +16,11 @@ export const BUILD_AGENTS: BuildAgent[] = [
   { id: 'ui-core',      name: 'UI CORE',        icon: '◻',  role: 'Design system · layout · charts · shared components',       files: ['src/app/globals.css','src/app/layout.tsx','src/components/ui.tsx','src/components/charts.tsx','src/components/layout.tsx'] },
   { id: 'landing',      name: 'LANDING',        icon: '▣',  role: 'Hero · features · pricing · CTA — full marketing homepage', files: ['src/app/page.tsx'] },
   { id: 'dashboard',    name: 'DASHBOARD',      icon: '▦',  role: 'KPIs · SVG charts · data table · activity feed',            files: ['src/app/dashboard/page.tsx','src/app/dashboard/layout.tsx'] },
-  { id: 'features',     name: 'FEATURES',       icon: '⊕',  role: '3 complete feature pages with real interactive UI',         files: ['src/app/dashboard/[feature]/page.tsx'] },
+  { id: 'features',     name: 'FEATURES',       icon: '⊕',  role: '3 MVP pain-point workflows with real interactive UI',      files: ['src/app/dashboard/[feature]/page.tsx'] },
   { id: 'api',          name: 'API',            icon: '⟨⟩', role: 'Route handlers · health · data · search — mock JSON',       files: ['src/app/api/health/route.ts','src/app/api/data/route.ts','src/app/api/search/route.ts'] },
   { id: 'interactions', name: 'INTERACTIONS',   icon: '↔',  role: 'Forms · modals · toasts · command palette — client-side',  files: ['src/components/forms.tsx','src/components/modals.tsx','src/hooks/useApp.ts'] },
   { id: 'shell',        name: 'SHELL',          icon: '✓',  role: 'error.tsx · not-found.tsx · loading.tsx',                  files: ['src/app/error.tsx','src/app/not-found.tsx','src/app/loading.tsx'] },
-  { id: 'repair',       name: 'REPAIR',         icon: '⚡',  role: 'QA pass — fix imports · add missing files · ensure build', files: ['src/lib/utils.ts','src/app/dashboard/settings/page.tsx'] },
+  { id: 'repair',       name: 'REPAIR',         icon: '⚡',  role: 'QA pass — fix imports · add missing files · ensure build', files: [] },
 ]
 
 // ─── File parser — handles all Claude/Groq/Gemini output formats ─────────────
@@ -129,7 +129,6 @@ export function buildRepairMessage(forge: { projectName: string; brief: string }
     'src/hooks/useApp.ts',
     'src/app/dashboard/page.tsx',
     'src/app/dashboard/layout.tsx',
-    'src/app/dashboard/settings/page.tsx',
   ]
   const missing = CRITICAL.filter(f => !accumulated[f])
 
@@ -186,7 +185,7 @@ ${snippet('src/app/dashboard/page.tsx', 800)}
 2. Generate EVERY file listed in MISSING CRITICAL FILES — complete implementations, no stubs
 3. Ensure src/lib/utils.ts exports: cn, formatCurrency, formatDate, formatRelativeTime, formatDateTime, truncate, capitalize, slugify, generateId, clamp, formatNumber, groupBy, sortBy
 4. Ensure src/hooks/useApp.ts starts with 'use client' and exports: useLocalStorage, useFilter, useModal, useDemoToast
-5. Generate src/app/dashboard/settings/page.tsx if missing (Profile / Notifications / Appearance tabs)
+5. Generate src/app/dashboard/settings/page.tsx only if it is listed in MISSING CRITICAL FILES or ERROR MANIFEST
 6. Fix all named import violations: import { AppHeader, AppSidebar, DemoBanner } from '@/components/layout'
 
 Follow the output contract exactly. Generate COMPLETE files only.`
@@ -229,6 +228,15 @@ REQUIRED:
   ✓ Tailwind CSS utility classes only — no inline style= unless for dynamic values
   ✓ Import ONLY: next, react, react-dom, lucide-react, clsx, tailwind-merge
   ✓ Every file must be complete — the full content from first to last line
+PRODUCTION APP BAR - non-negotiable for paid users:
+  - The generated output must be a usable application, not a static presentation page.
+  - Include at least one real end-to-end workflow: create/edit/filter/search/export/approve/archive.
+  - Include domain-specific records, statuses, actions, and validation derived from the FORGE spec.
+  - Include client state via useState/useReducer/custom hooks and visible state changes from user actions.
+  - Include forms with inline validation, filter/search controls, modal/detail views, and export or mutation behavior.
+  - Include JSON API routes backed by src/lib/data.ts for health, data, and search.
+  - Dashboard and feature pages must consume the same typed data and expose usable workflows.
+  - Do not ship brochureware, placeholder dashboards, static metric cards only, or decorative mock screens.
 `.trim()
 
 const STACK = `
@@ -369,6 +377,11 @@ ${STACK}
 ${CONTRACT}
 
 Analyze the FORGE spec deeply. Generate 2 files with rich, realistic, domain-specific data.
+Return only the contract payload. The response must contain BOTH required FILE blocks and no prose outside them.
+OUTPUT BUDGET:
+- The route caps every BUILD response at 8000 output tokens.
+- Keep the combined src/lib/types.ts + src/lib/data.ts payload under 5200 tokens so both files and both closing >>> markers are emitted.
+- Prefer dense but complete arrays over commentary, and use 10 records per primary entity. Do not exceed 12 records unless the FORGE spec explicitly requires it.
 
 FILE: src/lib/types.ts
 - TypeScript interfaces for EVERY entity in the FORGE spec
@@ -383,7 +396,7 @@ FILE: src/lib/types.ts
 FILE: src/lib/data.ts
 - Import all types from './types'
 - DEMO_USER: realistic user (not "John Doe" — use a specific name like "Sarah Chen" or "Marcus Webb")
-- MOCK_[ENTITY] arrays: MINIMUM 15 records each, highly realistic:
+- MOCK_[ENTITY] arrays: exactly 10 records each, highly realistic:
   • Real-sounding names (mix of demographics)
   • Realistic dollar amounts ($1,234.56 not $100)
   • Dates within last 12 months (2024-2025 era)
@@ -430,6 +443,13 @@ ${DESIGN}
 ${CONTRACT}
 
 Generate these 5 files. Use ONLY: next, react, lucide-react, clsx, tailwind-merge. No other imports.
+Return only the contract payload. The response must contain ALL 5 required FILE blocks and no prose outside them.
+OUTPUT BUDGET:
+- The route caps every BUILD response at 8000 output tokens.
+- Keep the combined UI CORE payload under 6200 tokens so every file wrapper closes.
+- Allocation target: globals/layout together ≤900 tokens, ui.tsx ≤2600, charts.tsx ≤1200, layout.tsx ≤1500.
+- Emit ALL 5 FILE blocks even if each implementation must stay compact. Missing a FILE block is worse than a lean implementation.
+- Favor compact reusable component implementations over decorative duplication.
 
 FILE: src/app/globals.css
 <<<
@@ -588,6 +608,17 @@ ${DESIGN}
 ${CONTRACT}
 
 Generate ONE file. This must look like a $25,000 agency-built landing page for an AI-native product.
+Return only the contract payload. The response must begin with exactly:
+FILE: src/app/page.tsx
+<<<
+and must end with:
+>>>
+Do not add prose, markdown fences, or commentary before or after the file payload.
+OUTPUT BUDGET:
+- The route caps every BUILD response at 8000 output tokens.
+- Keep the complete src/app/page.tsx payload under 6500 tokens so the closing >>> marker is always emitted.
+- Prefer compact JSX, small reusable constant arrays inside the file, and concise section copy.
+- Never expand testimonials, pricing bullets, feature cards, or footer links beyond what is required below.
 
 MODERN AI-PRODUCT DESIGN RULES (2025):
 • The product category is likely AI-powered — frame it as "AI-native" not "AI-assisted"
@@ -633,17 +664,25 @@ Structure (implement ALL sections with real content from the FORGE spec):
 
 4. FEATURES SECTION
    bg-white py-24 px-6
-   H2: "Everything you need to [core benefit]" text-zinc-900 font-black text-4xl text-center
+   H2: "The 3 workflows that solve [core pain]" text-zinc-900 font-black text-4xl text-center
    Subheading: text-zinc-500 mt-3 text-center max-w-2xl mx-auto
    3-col grid (grid-cols-1 md:grid-cols-3) of feature cards:
-   - Use EXACTLY the features from the FORGE spec feature-cards (5-8 features shown)
-   - Each card: lucide-react icon in a colored rounded-xl bg-indigo-100 p-3 + feature name + 1-sentence description
+   - Use EXACTLY the 3 MVP pain-point features from the FORGE spec feature-cards
+   - Each card: lucide-react icon in a colored rounded-xl bg-indigo-100 p-3 + feature name + pain point solved + 1-sentence workflow description
    - bg-zinc-50 rounded-2xl border border-zinc-100 p-6 hover:shadow-md transition-shadow
+
+4B. LOCKED ROADMAP / SELLING POINTS SECTION
+   bg-zinc-950 text-white py-20 px-6
+   H2: "Unlock the full roadmap in one click"
+   Render 6-10 deferred expansion features from PROJECT_MANIFEST section 3B as locked cards.
+   Each card: lock icon, feature name, buyer value, tier label, and muted "Available after upgrade" text.
+   Include one primary CTA: "Unlock full roadmap" that links to "#pricing".
+   Explain that after payment, one button click delivers the rest of the feature roadmap. This is a demo CTA only; do not import payment SDKs.
 
 5. HOW IT WORKS
    bg-zinc-50 py-24 px-6
    H2: "How [Product Name] works" text-center
-   3-4 numbered steps specific to the FORGE workflow (not generic)
+   Exactly 3 numbered steps specific to the FORGE workflow (not generic)
    Each step: large number in indigo circle + step title + description + arrow icon between steps
    Horizontal on desktop (flex), vertical on mobile
 
@@ -657,9 +696,10 @@ Structure (implement ALL sections with real content from the FORGE spec):
    - Pro: ₹999/mo — full features, most popular, highlighted (bg-zinc-900 text-white scale-105)
    - Enterprise: Custom — everything in Pro + SLA + support, "Contact Us" button
    3 tiers in a grid — highlighted tier has scale-105 transform + ring-2 ring-indigo-500
-   Feature list per tier must come from the FORGE spec features
+   Feature list per tier must come from the FORGE spec features, capped at 4 bullets per tier
+   Pro/Enterprise tiers must explicitly mention the one-click roadmap unlock from MONETISATION "Post-Payment One-Click Expansion".
 
-7. TESTIMONIALS (3 fake but realistic)
+7. TESTIMONIALS (exactly 3 fake but realistic)
    bg-zinc-50 py-24 px-6
    3-col grid of quote cards
    Each: quote text (2-3 sentences specific to the product's value), 5-star rating, person name + role + company
@@ -748,13 +788,25 @@ SECTION 5 — Quick Actions row
 All data visible, no loading spinners, no empty states — the dashboard looks alive from the first render.`,
 
 // ── 6. FEATURES ───────────────────────────────────────────────────────────────
-features: `You are NEXUS FEATURES — you build the complete feature sub-pages of the dashboard.
+features: `You are NEXUS FEATURES — you build the 3 MVP pain-point workflow pages of the dashboard.
 
 ${STACK}
 ${DESIGN}
 ${CONTRACT}
 
+OUTPUT BUDGET:
+- The route caps every BUILD response at 8000 output tokens.
+- Keep the complete src/app/dashboard/[feature]/page.tsx payload under 6500 tokens so the closing >>> marker is always emitted.
+- Implement every required route branch, but keep each branch compact: one summary panel, one primary data view, and one secondary action area.
+- Do not duplicate large helper components per slug; share concise helper functions/components within the same file where useful.
+
 FILE: src/app/dashboard/[feature]/page.tsx
+Return only the contract payload. The response must begin with exactly:
+FILE: src/app/dashboard/[feature]/page.tsx
+<<<
+and must end with:
+>>>
+Do not add prose, markdown fences, or commentary before or after the file payload.
 
 ⚠️ CRITICAL RULES (build failures if violated):
 1. ALL return statements MUST be INSIDE export default function FeaturePage() { } — NEVER at module top level
@@ -764,8 +816,9 @@ FILE: src/app/dashboard/[feature]/page.tsx
 5. ENTITY IMPORT GUARD: Only import MOCK_[ENTITY] arrays that exist in the SPEC CONTRACT Entity Reference Table.
    If the spec has 2 entities, import only 2. If it has 5, import all 5.
    NEVER import MOCK_X if X is not defined in src/lib/types.ts — TypeScript strict mode will fail the build.
-6. SLUG COVERAGE: Implement an if (slug === '...') block for EVERY feature slug in the SPEC CONTRACT
-   Feature Route Reference table. If there are 5 slugs, write 5 blocks. The template below shows 3 — extend it.
+6. SLUG COVERAGE: Implement an if (slug === '...') block for EVERY MVP feature slug in the SPEC CONTRACT
+   Feature Route Reference table. There must be exactly 3 MVP route blocks. Do not create routes for deferred roadmap features.
+   MVP OVERRIDE: There must be exactly 3 MVP route blocks. Do not create routes for deferred roadmap features.
    Missing slug coverage means that feature renders the default hub instead of real content.
 
 Read the FORGE spec's FEATURE CARDS and SPEC CONTRACT to get the exact slugs, entity names, and field names. Use them verbatim.
@@ -1010,8 +1063,8 @@ REPLACE every placeholder above ([slug-1], [Feature 1 Display Name], [MAIN_ENTIT
 - Get status values from: SPEC CONTRACT "STATUS VALUES PER ENTITY"
 
 ⚠ SLUG COMPLETENESS: Add an if (slug === '...') block for EVERY slug in the FEATURE ROUTE REFERENCE table.
-The template shows 3 blocks — if the spec has 5 or 6 features, write 5 or 6 blocks. Use the appropriate
-MOCK array and entity fields for each one. Every unimplemented slug falls through to the default hub,
+The template shows 3 blocks because the MVP must have exactly 3 pain-point workflows. Use the appropriate
+MOCK array and entity fields for each one. Deferred roadmap items belong in locked selling-point cards, not routes. Every unimplemented slug falls through to the default hub,
 which means a blank "Features" screen instead of real content — this is a visible product quality failure.
 
 The output must have zero placeholder text — every [bracket] replaced with real product-specific values.`,
@@ -1060,6 +1113,13 @@ ${DESIGN}
 ${CONTRACT}
 
 Generate 3 files. All 'use client'. Zero server calls. No external state libs.
+Return only the contract payload. The response must contain ALL 3 required FILE blocks and no prose outside them.
+OUTPUT BUDGET:
+- The route caps every BUILD response at 8000 output tokens.
+- Keep the combined interactions payload under 5800 tokens so forms.tsx, modals.tsx, and useApp.ts all complete.
+- Allocation target: forms.tsx ≤2100, modals.tsx ≤2200, useApp.ts ≤1200.
+- Emit ALL 3 FILE blocks even if each implementation must stay compact. Missing a FILE block is worse than extra polish.
+- Favor concise reusable helpers and compact UI states over verbose mock copy.
 
 FILE: src/components/forms.tsx
 'use client'
@@ -1305,7 +1365,7 @@ STANDARD TASKS
 
 1. Generate ALL missing files listed in MISSING CRITICAL FILES
 2. Generate src/lib/utils.ts if it doesn't exist (utility functions)
-3. Generate src/app/dashboard/settings/page.tsx — a complete settings page
+3. Generate src/app/dashboard/settings/page.tsx only when it appears in MISSING CRITICAL FILES or ERROR MANIFEST
 4. If src/app/globals.css is missing: generate it
 5. If postcss.config.js is missing: generate it (CRITICAL for Tailwind)
 
@@ -1343,6 +1403,5 @@ module.exports = {
 }
 >>>
 
-After generating all missing files, output a repair summary:
-REPAIR COMPLETE: Generated [n] files to fix [list of issues].`,
+After generating all missing files, output only FILE blocks. Do not append a prose repair summary.`,
 }

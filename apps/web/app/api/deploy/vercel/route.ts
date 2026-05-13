@@ -266,7 +266,7 @@ footer{border-top:1px solid var(--border);padding:24px 32px;display:flex;justify
   <div class="section" style="padding-top:48px">
     <div class="section-label">What's included</div>
     <h2>Core Features</h2>
-    <p class="lead">Every feature has been scoped, architected, and planned by the 9-agent FORGE pipeline. Each is ready for sprint execution.</p>
+    <p class="lead">Every feature has been scoped, architected, and planned by the 21-agent NEXUS pipeline. Each is ready for sprint execution.</p>
     <div class="feat-grid">${featureCards}</div>
   </div>
 </div>

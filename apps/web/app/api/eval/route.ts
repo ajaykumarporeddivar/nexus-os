@@ -83,7 +83,7 @@ async function runAgent(
   const systemPrompt = activeVersion?.prompt
     ?? `You are the ${agentMeta?.name ?? agentId} agent for ${brand.name}, an AI delivery platform.
 Role: ${agentMeta?.role ?? 'Produce high-quality agency deliverables.'}
-Context: You are part of a 9-agent pipeline. Previous agents have already produced context shown below.
+Context: You are part of the 21-agent NEXUS pipeline. Previous agents have already produced context shown below.
 Instructions:
 - Be specific, production-ready, and agency-appropriate
 - Use the client brief to tailor every output

@@ -108,11 +108,11 @@ export const AUTO_STEPS: AutoStep[] = [
     title:      'FORGE Engine — 9 AI agents build the full product spec',
     laymanTitle:'The AI Product Builder',
     laymanDesc: 'FORGE is the centrepiece. Maya types her idea in plain English and 9 specialised AI agents take over — one analyses the features, one designs the technical system, one writes the database schema, one checks security, and a final QA agent scores the whole thing. What takes a team 3 days takes FORGE 8 minutes.',
-    what:  'FORGE runs 9 agents in sequence — ANALYST → ARCHITECT → PLANNER → BUILDER → SECURITY → DB → QA GATE — producing a complete product spec.',
+    what:  'The one-click pipeline runs 22 agents in sequence — product experts, growth, monetisation, sales closure, BUILD, and deploy — producing a complete product plus a commercial next-step package.',
     maya:  'Maya pastes her brief. Three agents run live — ANALYST, ARCHITECT, QA Gate. What would take 3 days of planning takes 8 minutes.',
     gets:  'Full architecture, feature cards, code scaffold, security report, DB schema, and a cross-model QA score.',
     noticeItems: [
-      'Watch 3 agents run sequentially — each builds on the previous output',
+      'Watch the agent chain run sequentially — each agent builds on the previous output',
       'The QA GATE at the end scores the spec 0–10 and approves or rejects it',
       'All output is saved automatically — Maya can come back and continue',
     ],
@@ -450,7 +450,7 @@ export function AutoPilotProvider({ children }: { children: ReactNode }) {
 
         emit('▶ [3/3] QA GATE — Scoring deliverable…\n\n')
         await streamGroq(FORGE_QA, 'Score the OnboardKit spec for delivery readiness.', emit, signal)
-        emit('\n\n✓ All 3 agents complete')
+        emit('\n\n✓ Agent chain complete')
         break
       }
 

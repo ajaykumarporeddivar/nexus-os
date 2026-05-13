@@ -1,6 +1,6 @@
 // Burst rate limiter — Upstash Ratelimit when Redis is configured, Map-based fallback otherwise.
 // Two limiters:
-//   checkRateLimit(id)       — authenticated routes: 20 req / 60 s per userId
+//   checkRateLimit(id)       — authenticated routes: 40 req / 60 s per userId
 //   checkPublicRateLimit(ip) — public/unauthenticated routes: 5 req / 60 s per IP
 
 import { NextRequest } from 'next/server'

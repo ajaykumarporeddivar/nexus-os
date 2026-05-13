@@ -11,11 +11,11 @@
 
 **One-Click Pipeline** is a fully autonomous, end-to-end code delivery workflow that takes a plain-text brief and produces a live URL in 4–14 minutes. The user types a project description, clicks **LAUNCH →**, and the pipeline:
 
-1. Runs **FORGE** — 9 AI agents that produce a full software specification (sequential, ~9 LLM calls)
+1. Runs **FORGE** — 12 AI agents that produce a full software specification plus GTM, monetisation, and sales-closure playbooks
 2. Runs **BUILD** — 10 AI agents that generate a real, deployable Next.js app from the spec (5 parallel stages, ~10 LLM calls)
 3. Runs **DEPLOY** — pushes spec + app to GitHub and auto-deploys to Vercel
 
-Total: **19 agent calls**, 4–14 minutes wall-clock, zero human in the loop.
+Total: **22 agent calls**, 4–14 minutes wall-clock, zero human in the loop.
 
 ---
 
@@ -99,9 +99,9 @@ PipelinePage
 
 ---
 
-## 4. FORGE Phase — 9 Agents
+## 4. FORGE Phase — 12 Agents
 
-**Purpose:** Brief → complete software specification. 9 sequential LLM calls. Outputs markdown files stored in `specFiles: Record<string, string>`.
+**Purpose:** Brief → complete software specification plus commercial execution assets. 12 sequential LLM calls. Outputs markdown files stored in `specFiles: Record<string, string>`.
 
 ### 4.1 Agent Roster
 
@@ -116,6 +116,9 @@ PipelinePage
 | 7 | `security` | SECURITY | OWASP audit, threat model | `.claude/security-report.md` |
 | 8 | `db-opt` | DB OPTIMIZER | SQL schema, indexes, migrations | `db/migrations/001_init.sql` |
 | 9 | `qa` | QA GATE | Quality score /10, gap analysis | `.forge/qa-report.md` |
+| 10 | `growth` | GROWTH HACKER | GTM strategy, acquisition loops, traction plan | `GROWTH_PLAYBOOK.md` |
+| 11 | `monetisation` | MONETISATION STRATEGIST | Pricing, expansion revenue, upgrade path | `.claude/monetisation.md` |
+| 12 | `closer` | SALES CLOSER | Booking hooks, discovery script, objection matrix, follow-up cadence | `SALES_CLOSURE_PLAYBOOK.md` |
 
 ### 4.2 Vertical Detection
 
@@ -348,7 +351,7 @@ if (vercelOk && buildFiles.length > 0):
 - `beforeunload` event listener → warns user on tab close while phase = 'running'
 
 ### G2 — Token / Call Tracking
-- `totalTokensRef` and `totalCallsRef` accumulate across all 19 agent calls
+- `totalTokensRef` and `totalCallsRef` accumulate across all 22 agent calls
 - `tokens = msg.tokens ?? Math.ceil(content.length / 4)` (estimated if not returned)
 - Saved to DB via `POST /api/executions` on: COMPLETE, ERROR (if forge spec exists), CANCELLED (if forge spec exists)
 

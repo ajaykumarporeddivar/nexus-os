@@ -82,7 +82,7 @@ const GROUPS: NavGroup[] = [
         id: 'forge',
         label: 'FORGE Engine',
         icon: '⚙',
-        description: '9 agents → production-ready codebase',
+        description: '21 agents → deploy-ready application',
         flowNext: 'build',
       },
       {
@@ -527,13 +527,13 @@ export default function Nav({
                 : 'border-amber-300 bg-amber-50 text-amber-700'
             } ${collapsed ? 'text-center' : ''}`}
             title={apiConnected
-              ? 'Anthropic API connected — pipeline ready'
-              : 'ANTHROPIC_API_KEY not detected — pipeline will not run'}
+              ? 'AI provider connected - pipeline ready'
+              : 'No AI provider key detected - configure Anthropic, Gemini, or Groq'}
           >
             <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
               apiConnected ? 'bg-green-500' : 'bg-amber-400 animate-pulse'
             }`} />
-            {!collapsed && <span>API {apiConnected ? 'READY' : 'OFF'}</span>}
+            {!collapsed && <span>API {apiConnected ? 'KEY SET' : 'OFF'}</span>}
           </div>
 
           <button

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useCallback } from 'react'
+import { useState, useRef, useCallback, useEffect } from 'react'
 import type { ClientBrief } from '@/app/api/client-autopilot/stream/route'
 
 // ─── Pipeline steps ───────────────────────────────────────────────────────────
@@ -579,6 +579,19 @@ export default function ClientDeliveryPage() {
   const [paymentSent,    setPaymentSent]    = useState(false)
   const abortRef = useRef<AbortController | null>(null)
 
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem('nexus-client-delivery-prefill')
+      if (!raw) return
+      const parsed = JSON.parse(raw) as Partial<ClientBrief>
+      setBrief(prev => ({
+        ...prev,
+        ...parsed,
+      }))
+      sessionStorage.removeItem('nexus-client-delivery-prefill')
+    } catch { /* ignore invalid handoff payload */ }
+  }, [])
+
   const set = (k: keyof ClientBrief, v: string) => {
     setBrief(p => ({ ...p, [k]: v }))
     // Clear suggestion when user edits
@@ -1142,7 +1155,7 @@ export default function ClientDeliveryPage() {
                   <span className="w-5 h-5 rounded border border-border flex items-center justify-center text-[9px] font-black font-mono text-ink3 flex-shrink-0">03</span>
                   <p className="text-xs font-bold text-ink">Start building</p>
                 </div>
-                <p className="text-[10px] text-ink3 leading-relaxed">Open FORGE Engine with this brief pre-loaded. Run 9 agents to generate the full application spec, codebase scaffold, and QA report.</p>
+                <p className="text-[10px] text-ink3 leading-relaxed">Open FORGE Engine with this brief pre-loaded. Run the 22-agent one-click pipeline to generate the full spec, application codebase, repair pass, closure package, and deploy bundle.</p>
                 <button
                   onClick={() => {
                     // Store brief in sessionStorage so FORGE can pick it up

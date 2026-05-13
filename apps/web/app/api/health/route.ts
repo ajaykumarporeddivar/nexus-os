@@ -15,12 +15,36 @@ export async function GET() {
     checks.db = { ok: false, label: 'Database offline — check DATABASE_URL', error: (err as Error).message }
   }
 
-  // Anthropic key check (presence only — don't call API)
+  // AI provider check (presence only — don't call external APIs)
+  const countProviderKeys = (prefix: string) => {
+    let count = process.env[prefix]?.trim() ? 1 : 0
+    for (let i = 1; i <= 50; i++) {
+      if (process.env[`${prefix}${i}`]?.trim()) count++
+    }
+    return count
+  }
+  const anthropicCount = process.env.ANTHROPIC_API_KEY?.trim() ? 1 : 0
+  const geminiCount    = countProviderKeys('GEMINI_API_KEY')
+  const groqCount      = countProviderKeys('GROQ_API_KEY')
+  const aiProviderOk   = anthropicCount + geminiCount + groqCount > 0
+
+  checks.ai = {
+    ok: aiProviderOk,
+    label: aiProviderOk
+      ? `AI providers ready: Anthropic ${anthropicCount}, Gemini ${geminiCount}, Groq ${groqCount}`
+      : 'No AI provider keys configured — set ANTHROPIC_API_KEY, GEMINI_API_KEY, or GROQ_API_KEY',
+  }
   checks.anthropic = {
-    ok: !!process.env.ANTHROPIC_API_KEY,
-    label: process.env.ANTHROPIC_API_KEY
-      ? 'Anthropic API'
-      : 'ANTHROPIC_API_KEY missing — pipeline agents will not run',
+    ok: !!anthropicCount,
+    label: anthropicCount ? 'Anthropic API' : 'ANTHROPIC_API_KEY missing — fallback providers will be used if configured',
+  }
+  checks.gemini = {
+    ok: geminiCount > 0,
+    label: geminiCount > 0 ? `Gemini API key pool (${geminiCount})` : 'No Gemini fallback keys configured',
+  }
+  checks.groq = {
+    ok: groqCount > 0,
+    label: groqCount > 0 ? `Groq API key pool (${groqCount})` : 'No Groq fallback keys configured',
   }
 
   // Razorpay key check
@@ -72,10 +96,13 @@ export async function GET() {
       : 'RESEND_API_KEY missing — transactional emails (welcome, receipts) disabled',
   }
 
-  const allOk = Object.values(checks).every(c => c.ok)
+  const requiredChecks = ['db', 'ai']
+  const allOk = requiredChecks.every(key => checks[key]?.ok)
 
   return NextResponse.json(
     { ok: allOk, version: '11.0.0', timestamp: new Date().toISOString(), checks },
-    { status: allOk ? 200 : 503 }
+    // Keep health reachable for local startup/readiness even when Neon is cold
+    // or an optional provider is degraded. Callers should inspect `ok`.
+    { status: 200 }
   )
 }

@@ -23,6 +23,12 @@ async function generateOpportunities(): Promise<MicroSaaSOpportunity[]> {
 
 Focus on specific niches with real revenue potential — not generic ideas. Think: what are people actually paying for and searching for today?
 
+Each opportunity must be ready for the One-Click Pipeline's MVP strategy:
+- The problem must be concrete enough to derive exactly 3 MVP workflows.
+- The target market must name the buyer/user sharply, not "businesses" or "everyone".
+- Tags should include workflow nouns the app can turn into screens, such as "intake", "triage", "approval", "reporting", "exports", "analytics", or the domain-specific equivalents.
+- Avoid ideas that require regulated infrastructure, real medical/legal/financial decisions, or external integrations to be useful at MVP stage.
+
 Return a JSON array ONLY (no preamble, no markdown). Each object must have EXACTLY these fields:
 {
   "title": "Short catchy app name (e.g. 'Proposal PDF Autopilot', 'Churn Signal Detector')",
@@ -59,6 +65,77 @@ Spread across niches: 2-3 AI-powered tools, 2-3 automation/workflow tools, 2-3 c
 }
 
 // GET — return latest batch, optionally filtered
+function fallbackOpportunities(): MicroSaaSOpportunity[] {
+  return [
+    {
+      title: 'Client Proof Pack Builder',
+      niche: 'b2b',
+      problem: 'Agencies struggle to turn scattered campaign results into client-ready proof packs that justify retainers and renewals.',
+      targetMarket: 'Small digital agency owners',
+      revenueModel: '$49/mo per workspace',
+      trendReason: 'Service buyers increasingly demand measurable proof before renewing retainers.',
+      buildComplexity: 'medium',
+      tags: ['intake', 'reporting', 'exports'],
+      opportunityScore: 91,
+    },
+    {
+      title: 'Returns Triage Desk',
+      niche: 'ecommerce',
+      problem: 'Shopify teams lose margin because return requests are manually reviewed without a consistent priority queue.',
+      targetMarket: 'E-commerce operations managers',
+      revenueModel: '$79/mo per store',
+      trendReason: 'Return costs remain high while lean teams need faster exception handling.',
+      buildComplexity: 'medium',
+      tags: ['triage', 'approval', 'analytics'],
+      opportunityScore: 89,
+    },
+    {
+      title: 'Creator Sponsor Pipeline',
+      niche: 'creator',
+      problem: 'Creators miss sponsor revenue because outreach, deliverables, and approval status live across disconnected tools.',
+      targetMarket: 'Independent creators and creator managers',
+      revenueModel: '$29/mo per creator',
+      trendReason: 'More creators are monetizing directly and need lightweight business operations.',
+      buildComplexity: 'low',
+      tags: ['intake', 'pipeline', 'exports'],
+      opportunityScore: 88,
+    },
+    {
+      title: 'Invoice Exception Radar',
+      niche: 'finance',
+      problem: 'Finance teams waste hours finding invoice exceptions, missing approvals, and payment-risk items before month close.',
+      targetMarket: 'Fractional finance teams',
+      revenueModel: '$99/mo per team',
+      trendReason: 'Lean finance teams are automating close workflows without buying heavy ERP modules.',
+      buildComplexity: 'medium',
+      tags: ['approval', 'triage', 'reporting'],
+      opportunityScore: 87,
+    },
+    {
+      title: 'Course Cohort Signal',
+      niche: 'education',
+      problem: 'Course operators cannot quickly identify stalled learners, weak lessons, and refund-risk cohorts from basic engagement data.',
+      targetMarket: 'Cohort course operators',
+      revenueModel: '$59/mo per course',
+      trendReason: 'Education businesses are optimizing retention as acquisition costs rise.',
+      buildComplexity: 'medium',
+      tags: ['analytics', 'triage', 'exports'],
+      opportunityScore: 86,
+    },
+    {
+      title: 'Clinic Follow-up Queue',
+      niche: 'health',
+      problem: 'Wellness clinics lose repeat visits because follow-up tasks, reminders, and client readiness are tracked manually.',
+      targetMarket: 'Wellness clinic operators',
+      revenueModel: '$69/mo per location',
+      trendReason: 'Service clinics are adopting lightweight workflow tools that avoid regulated diagnosis decisions.',
+      buildComplexity: 'medium',
+      tags: ['intake', 'queue', 'reporting'],
+      opportunityScore: 85,
+    },
+  ]
+}
+
 export async function GET(req: NextRequest) {
   const { searchParams } = req.nextUrl
   const category = searchParams.get('category')
@@ -153,7 +230,13 @@ export async function POST(req: NextRequest) {
     )
 
     console.log('[trending] generating micro-SaaS opportunities with Groq…')
-    const opportunities = await generateOpportunities()
+    let opportunities: MicroSaaSOpportunity[]
+    try {
+      opportunities = await generateOpportunities()
+    } catch (err) {
+      console.error('[trending] AI generation failed, using deterministic fallback opportunities:', err)
+      opportunities = fallbackOpportunities()
+    }
     console.log(`[trending] got ${opportunities.length} opportunities`)
 
     const rows = opportunities.slice(0, KEEP_TOP).map((op, idx) => {

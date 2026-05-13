@@ -550,7 +550,7 @@ Contact NEXUS OS support or re-run the FORGE engine with a more detailed brief t
             {input.trim() && !isRunning && !isDone && (
               <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-acid/5 border border-acid/20 text-xs text-acid/80 font-mono">
                 <span className="inline-block w-1.5 h-1.5 rounded-full bg-acid animate-[pulse_1s_ease-in-out_infinite]" />
-                <span>9 agents ready · {AGENTS.length} phases · hit launch</span>
+                <span>FORGE agents ready · {AGENTS.length} phases · hit launch</span>
               </div>
             )}
             <div className="flex flex-wrap gap-3">

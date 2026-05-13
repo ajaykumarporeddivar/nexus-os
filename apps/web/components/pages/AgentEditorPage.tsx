@@ -229,7 +229,7 @@ export default function AgentEditorPage() {
           <div className="flex items-center justify-between flex-wrap gap-3">
             <div>
               <p className="text-sm text-ink3">
-                Run real agency briefs through the full 9-agent pipeline to seed quality scores.
+                Run real agency briefs through the full 21-agent one-click pipeline to seed quality scores.
                 Results populate <code className="text-xs bg-paper3 px-1 rounded">PromptVersion.avgScore</code> and feed the learning cycle.
               </p>
             </div>

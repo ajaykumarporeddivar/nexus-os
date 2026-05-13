@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { checkQuota, incrementQuota, resetQuota, PLAN_RUN_LIMITS, PLAN_TOKEN_LIMITS } from '@/lib/quota'
+import { checkQuota, decrementQuota, incrementQuota, resetQuota, PLAN_RUN_LIMITS, PLAN_TOKEN_LIMITS } from '@/lib/quota'
 import { requireSession } from '@/lib/session'
 
 export async function GET(req: NextRequest) {
@@ -38,10 +38,23 @@ export async function POST(req: NextRequest) {
         { status: 429 }
       )
     }
-    await incrementQuota(sessionId, plan)
+    await incrementQuota(sessionId, plan, isAdmin)
   }
 
   return NextResponse.json({ ok: true, data: { incremented: !isAdmin } })
+}
+
+// Refund one reserved pipeline run when launch fails before any AI call succeeds.
+export async function PATCH(req: NextRequest) {
+  const auth = await requireSession()
+  if (auth.error) return auth.error
+
+  const sessionId = auth.user.id!
+  const plan    = auth.user.plan    ?? 'free'
+  const isAdmin = auth.user.isAdmin ?? false
+
+  const status = await decrementQuota(sessionId, plan, isAdmin)
+  return NextResponse.json({ ok: true, data: { refunded: !isAdmin, ...status } })
 }
 
 // Admin or self: reset quota counters (clears inflated counters from bugs)
