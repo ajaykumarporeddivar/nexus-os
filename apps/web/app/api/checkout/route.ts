@@ -4,12 +4,13 @@ import { checkPublicRateLimit, rateLimitHeaders } from '@/lib/ratelimit'
 
 const B = process.env.NEXT_PUBLIC_BRAND_NAME ?? 'NEXUS OS'
 
-// Amounts in smallest currency unit: USD cents ($49 = 4900, $199 = 19900)
-// Requires international payments enabled on Razorpay dashboard.
+// Amounts in INR paise for Razorpay (works on all Indian accounts).
+// Display prices are in USD ($49/$199) but payment is collected in INR equivalent.
+// Switch to USD cents (4900/19900) only after enabling international payments on Razorpay dashboard.
 const PLANS = {
-  starter:    { amount: 4900,  name: `${B} Starter`,    currency: 'USD' },
-  agency:     { amount: 19900, name: `${B} Agency`,     currency: 'USD' },
-  enterprise: { amount: 0,     name: `${B} Enterprise`, currency: 'USD' },
+  starter:    { amount: 4100_00,  name: `${B} Starter`,    currency: 'INR' },  // ~$49
+  agency:     { amount: 16600_00, name: `${B} Agency`,     currency: 'INR' },  // ~$199
+  enterprise: { amount: 0,        name: `${B} Enterprise`, currency: 'INR' },
 } as const
 
 type PlanId = keyof typeof PLANS

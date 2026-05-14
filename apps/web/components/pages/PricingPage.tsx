@@ -106,6 +106,7 @@ export default function PricingPage({ onNavigate }: Props) {
   const [submitted, setSubmitted] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [bookingError, setBookingError] = useState<string | null>(null)
   const [paying, setPaying] = useState<TierId | null>(null)
   const [paySuccess, setPaySuccess] = useState(false)
   const [paidPlan, setPaidPlan] = useState<string>('Starter')
@@ -129,8 +130,8 @@ export default function PricingPage({ onNavigate }: Props) {
     e.preventDefault()
     if (!form.name || !form.email) return
     const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())
-    if (!emailOk) { setError('Please enter a valid email address.'); return }
-    setSubmitting(true); setError(null)
+    if (!emailOk) { setBookingError('Please enter a valid email address.'); return }
+    setSubmitting(true); setBookingError(null)
     try {
       const res = await fetch('/api/demo-booking', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form),
@@ -140,7 +141,7 @@ export default function PricingPage({ onNavigate }: Props) {
       setWhatsappUrl(data.data?.whatsappUrl ?? null)
       setSubmitted(true)
     } catch {
-      setError(`Submission failed. Please email us directly at ${brand.supportEmail}`)
+      setBookingError(`Submission failed. Please email us directly at ${brand.supportEmail}`)
     } finally { setSubmitting(false) }
   }, [form])
 
@@ -303,8 +304,11 @@ export default function PricingPage({ onNavigate }: Props) {
       </div>
 
       {error && (
-        <div className="card border-rose/30 text-center py-4">
+        <div className="card border-rose/30 text-center py-4 space-y-2">
           <p className="text-sm text-rose">{error}</p>
+          <p className="text-xs text-ink3">
+            Payment issue? <a href={`https://wa.me/${process.env.NEXT_PUBLIC_WHATSAPP_PHONE ?? '918919843305'}?text=${encodeURIComponent('Hi! I want to subscribe to NEXUS OS. Can you help me complete payment?')}`} target="_blank" rel="noreferrer" className="text-acid underline">WhatsApp us to pay manually →</a>
+          </p>
         </div>
       )}
 
@@ -467,7 +471,7 @@ export default function PricingPage({ onNavigate }: Props) {
                 />
               </div>
             </div>
-            {error && <p className="text-xs text-rose">{error}</p>}
+            {bookingError && <p className="text-xs text-rose">{bookingError}</p>}
             <button type="submit" disabled={submitting || !form.name || !form.email}
               className="btn btn-primary w-full justify-center disabled:opacity-50">
               {submitting ? '⟳ Submitting…' : "Submit & We'll WhatsApp You →"}

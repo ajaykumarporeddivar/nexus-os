@@ -4,8 +4,8 @@ import { prisma } from '@/lib/prisma'
 import { sendPlanUpgradeEmail } from '@/lib/email'
 
 const PLAN_AMOUNTS: Record<string, number> = {
-  starter:    4900,
-  agency:     19900,
+  starter:    4100_00,  // INR paise — ~$49
+  agency:     16600_00, // INR paise — ~$199
   enterprise: 0,
 }
 
@@ -35,7 +35,7 @@ export async function POST(req: NextRequest) {
     }
 
     const resolvedPlan = plan === 'agency' ? 'agency' : 'starter'
-    const amount = PLAN_AMOUNTS[resolvedPlan] ?? 4900
+    const amount = PLAN_AMOUNTS[resolvedPlan] ?? 4100_00
 
     // Persist: upsert user plan + create subscription record
     if (email) {
