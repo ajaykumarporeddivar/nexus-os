@@ -96,7 +96,7 @@ export function planUpgradeHtml(opts: {
 }): string {
   const label = PLAN_LABELS[opts.plan] ?? opts.plan
   const features = PLAN_FEATURES[opts.plan] ?? []
-  const amountStr = opts.amount > 0 ? `₹${(opts.amount / 100).toLocaleString('en-IN')}` : 'Custom'
+  const amountStr = opts.amount > 0 ? `$${(opts.amount / 100).toFixed(2)}` : 'Custom'
 
   return baseHtml(
     `Plan activated <span class="accent">✓</span>`,
@@ -126,7 +126,7 @@ export function paymentInternalHtml(opts: {
   paymentId: string
   amount: number
 }): string {
-  const amountStr = opts.amount > 0 ? `₹${(opts.amount / 100).toLocaleString('en-IN')}` : '₹0'
+  const amountStr = opts.amount > 0 ? `$${(opts.amount / 100).toFixed(2)}` : '$0'
   return `<div style="font-family:monospace;font-size:13px;background:#0f0f0f;color:#e5e5e5;padding:24px;border-radius:8px">
   <strong style="color:#c8ff00">💰 New payment — ${amountStr}</strong><br><br>
   Plan: ${opts.plan}<br>

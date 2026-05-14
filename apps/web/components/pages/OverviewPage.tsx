@@ -13,7 +13,7 @@ const TESTIMONIALS = [
     quote: "NEXUS OS delivered a complete recruitment automation stack in 2 hours. Our engineers were stunned — the code actually worked.",
     author: "Priya Sharma",
     role: "CTO, TalentForge India",
-    result: "₹18L ARR in 3 months",
+    result: "$25K ARR in 3 months",
   },
   {
     quote: "We went from a client brief to a deployed WhatsApp outreach bot in one afternoon. NEXUS is the only AI system that actually finishes.",
@@ -185,7 +185,7 @@ export default function OverviewPage({ onNavigate }: Props) {
         {[
           { val: '9.1', label: 'Avg output quality score' },
           { val: '2hrs', label: 'Avg time from brief to working codebase' },
-          { val: '₹12L', label: 'Avg annual retainer value enabled' },
+          { val: '$14K', label: 'Avg annual retainer value enabled' },
           { val: '9', label: 'Delivery agents in FORGE' },
         ].map(({ val, label }) => (
           <div key={val} className="text-center">

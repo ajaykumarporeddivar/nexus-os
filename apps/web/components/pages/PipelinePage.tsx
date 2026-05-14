@@ -1399,7 +1399,7 @@ function UpgradeModal({ onClose }: { onClose: () => void }) {
           {[
             { stat: '2 hrs', label: 'Brief → Live URL' },
             { stat: '21', label: 'AI agents per run' },
-            { stat: '₹18L', label: 'ARR by one user in 3 months' },
+            { stat: '$21K', label: 'MRR by one user in 3 months' },
           ].map(({ stat, label }) => (
             <div key={label} className="flex-1 bg-paper2 rounded-xl py-3 border border-border">
               <p className="text-lg font-black text-ink">{stat}</p>
@@ -1420,7 +1420,7 @@ function UpgradeModal({ onClose }: { onClose: () => void }) {
             <div>
               <p className="text-sm font-bold text-ink">Starter</p>
               <p className="text-[11px] text-ink3">20 runs/month · Priority queue · Email support</p>
-              <p className="text-[11px] font-black text-ink mt-0.5">₹4,900 / month</p>
+              <p className="text-[11px] font-black text-ink mt-0.5">$49 / month</p>
             </div>
             <a
               href="/shell?page=pricing"
@@ -1443,7 +1443,7 @@ function UpgradeModal({ onClose }: { onClose: () => void }) {
                 <span className="text-[9px] font-black px-1.5 py-0.5 bg-[#c8f23c] text-black rounded uppercase tracking-wider">Best Value</span>
               </p>
               <p className="text-[11px] text-ink3">Unlimited runs · White-label · API access · Slack support</p>
-              <p className="text-[11px] font-black text-ink mt-0.5">₹12,000 / month — ROI in 1 client project</p>
+              <p className="text-[11px] font-black text-ink mt-0.5">$199 / month — ROI in 1 client project</p>
             </div>
             <a
               href="/shell?page=pricing"

@@ -21,8 +21,8 @@ export function requiresPlan(userPlan: Plan, minPlan: Plan): boolean {
 export function planLimitError(feature: string, required: Plan) {
   const labels: Record<Plan, string> = {
     free:       'a free account',
-    starter:    'Starter (₹49,000/mo)',
-    agency:     'Agency (₹1,20,000/mo)',
+    starter:    'Starter ($49/mo)',
+    agency:     'Agency ($199/mo)',
     enterprise: 'Enterprise',
   }
   return {

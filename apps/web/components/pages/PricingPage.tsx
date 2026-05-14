@@ -111,7 +111,7 @@ export default function PricingPage({ onNavigate }: Props) {
   const [paidPlan, setPaidPlan] = useState<string>('Starter')
   const [whatsappUrl, setWhatsappUrl] = useState<string | null>(null)
   const [roiProjects, setRoiProjects] = useState(4)
-  const [roiRate, setRoiRate] = useState(3000)
+  const [roiRate, setRoiRate] = useState(75)
   const [openFaq, setOpenFaq] = useState<number | null>(null)
 
   // Pre-fill form from signed-in session
@@ -330,15 +330,15 @@ export default function PricingPage({ onNavigate }: Props) {
           </div>
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <label className="text-sm font-medium">Your hourly rate (₹)</label>
-              <span className="text-acid font-bold font-mono text-lg">{roiRate.toLocaleString('en-IN')}</span>
+              <label className="text-sm font-medium">Your hourly rate ($)</label>
+              <span className="text-acid font-bold font-mono text-lg">${roiRate}</span>
             </div>
             <input
-              type="range" min={500} max={10000} step={500} value={roiRate}
+              type="range" min={10} max={250} step={5} value={roiRate}
               onChange={e => setRoiRate(Number(e.target.value))}
               className="w-full accent-acid"
             />
-            <div className="flex justify-between text-[10px] text-ink3 font-mono"><span>₹500</span><span>₹10,000</span></div>
+            <div className="flex justify-between text-[10px] text-ink3 font-mono"><span>$10</span><span>$250</span></div>
           </div>
         </div>
         {(() => {
@@ -346,13 +346,13 @@ export default function PricingPage({ onNavigate }: Props) {
           const forgeSavedHours = 32
           const savedHoursTotal = roiProjects * forgeSavedHours
           const savedValue      = savedHoursTotal * roiRate
-          const cost            = 120000
+          const cost            = 199
           const roi             = Math.round(((savedValue - cost) / cost) * 100)
           return (
             <div className="grid grid-cols-3 gap-3 pt-2 border-t border-border">
               {[
                 { label: 'Hours saved/mo', val: `${savedHoursTotal}h`, highlight: false },
-                { label: 'Value reclaimed', val: `₹${(savedValue / 1000).toFixed(0)}K`, highlight: true },
+                { label: 'Value reclaimed', val: savedValue >= 1000 ? `$${(savedValue / 1000).toFixed(0)}K` : `$${savedValue}`, highlight: true },
                 { label: 'Return on invest', val: `${roi > 0 ? '+' : ''}${roi}%`, highlight: true },
               ].map(({ label, val, highlight }) => (
                 <div key={label} className={`rounded-xl p-4 text-center ${highlight ? 'bg-acid/8 border border-acid/20' : 'bg-paper2'}`}>
@@ -363,7 +363,7 @@ export default function PricingPage({ onNavigate }: Props) {
             </div>
           )
         })()}
-        <p className="text-[10px] text-ink3 text-center">Based on: Agency plan ₹1,20,000/mo · {roiProjects} projects · {roiProjects * 32}h saved (avg 32h per project vs 40h manual)</p>
+        <p className="text-[10px] text-ink3 text-center">Based on: Agency plan $199/mo · {roiProjects} projects · {roiProjects * 32}h saved (avg 32h per project vs 40h manual)</p>
       </section>
 
       {/* Guarantee */}

@@ -113,7 +113,7 @@ export default function PromptVaultPage({ onNavigate }: Props) {
   // ── Edit handlers ────────────────────────────────────────────────────────────
   const handleEditOpen = useCallback(() => {
     if (!canWrite) {
-      showToast('Vault editing requires Agency plan (₹1,20,000/mo). Upgrade at nexus-os.ai/pricing.', 'err')
+      showToast('Vault editing requires Agency plan ($199/mo). Upgrade at nexus-os.ai/pricing.', 'err')
       return
     }
     setDraftContent(displayPrompt)
