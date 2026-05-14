@@ -484,6 +484,112 @@ Contact NEXUS OS support or re-run the FORGE engine with a more detailed brief t
     }
   }, [files, clientName, totalTokens, qaScore, log])
 
+  const downloadWhiteLabelZIP = useCallback(async () => {
+    try {
+      const JSZip = (await import('jszip')).default
+      const zip = new JSZip()
+
+      // Strip NEXUS OS branding from each file's content
+      const brandTerms = [
+        /NEXUS OS FORGE Engine/gi,
+        /NEXUS FORGE/gi,
+        /NEXUS OS/gi,
+        /nexus-os\.ai/gi,
+        /Contact NEXUS OS support[^.]*\./gi,
+        /Package integrity verified[^\n]*/gi,
+      ]
+      const agencyName = (session?.user?.name ?? '').trim() || 'Your Agency'
+      Object.entries(files).forEach(([path, content]) => {
+        let clean = content
+        brandTerms.forEach(re => { clean = clean.replace(re, agencyName) })
+        zip.file(path, clean)
+      })
+
+      const safeClient = clientName || 'Client'
+      const qaLabel = qaScore !== null ? `${qaScore}/10` : 'N/A'
+      const approval = qaScore !== null && qaScore >= 8 ? 'APPROVED' : 'QUALITY REVIEW'
+      const readme = `# Software Delivery Package
+## ${safeClient}
+
+> Prepared by ${agencyName} on ${new Date().toLocaleString()}
+> QA Score: **${qaLabel}** · Status: **${approval}**
+
+---
+
+## What's in this package
+
+| File | What it does |
+|------|-------------|
+| \`PROJECT_MANIFEST.md\` | Full project scope, features, success criteria, timeline — your Statement of Work |
+| \`.claude/architecture.md\` | System design: services, data flow, infrastructure, API contracts |
+| \`.claude/features/feature-cards.md\` | Sprint-ready feature cards with user stories and acceptance criteria |
+| \`src/__tests__/specs.md\` | Test specifications — hand off to your dev team |
+| \`src/index.ts\` | Core application scaffold — production-ready TypeScript starting point |
+| \`.claude/security-report.md\` | OWASP security audit with CRITICAL/HIGH/MEDIUM/LOW findings |
+| \`db/migrations/001_init.sql\` | Database schema with indexes and constraints — run this first |
+
+---
+
+## How to use this package
+
+### Step 1 — Client delivery (today)
+1. Open \`PROJECT_MANIFEST.md\` — this is your **Statement of Work**
+2. Review features, timeline, and success criteria with your client
+3. Get sign-off before development begins
+
+### Step 2 — Hand off to your dev team
+1. Share the entire ZIP with your development team
+2. They start with \`db/migrations/001_init.sql\` — run this against your database first
+3. \`src/index.ts\` is the application entry point — scaffold from here
+4. \`.claude/architecture.md\` answers every "how does X connect to Y?" question
+5. \`.claude/features/feature-cards.md\` maps directly to Jira/Linear tickets
+
+### Step 3 — Development setup
+\`\`\`bash
+# Install dependencies (adjust for your stack)
+npm install
+
+# Set up environment
+cp .env.example .env
+
+# Run the database migration
+psql $DATABASE_URL < db/migrations/001_init.sql
+
+# Start development
+npm run dev
+\`\`\`
+
+### Step 4 — Quality & security
+- Read \`.claude/security-report.md\` — fix CRITICAL and HIGH findings before launch
+- Use \`src/__tests__/specs.md\` as your test suite baseline
+
+---
+
+## QA Score breakdown
+
+This deliverable scored **${qaLabel}** across instruction clarity, schema completeness, code quality, security posture, test coverage, and deliverability.
+
+${qaScore !== null && qaScore >= 8
+  ? '**This package is APPROVED for client delivery.**'
+  : '**Review findings before delivery.**'
+}
+
+*Prepared by ${agencyName}*
+`
+      zip.file('README.md', readme)
+      const blob = await zip.generateAsync({ type: 'blob' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `${safeClient.toLowerCase().replace(/\s+/g, '-')}-delivery-${Date.now()}.zip`
+      a.click()
+      URL.revokeObjectURL(url)
+      await auditEvent('forge_whitelabel_download', { client: clientName, files: Object.keys(files).length })
+    } catch (err) {
+      log(`White-label ZIP failed: ${(err as Error).message}`, 'err')
+    }
+  }, [files, clientName, qaScore, session, log])
+
   return (
     <div className="max-w-7xl mx-auto px-6 py-10">
       <div className="mb-8">
@@ -575,6 +681,19 @@ Contact NEXUS OS support or re-run the FORGE engine with a more detailed brief t
               {isDone && (
                 <>
                   <button onClick={downloadZIP} className="btn btn-dark">⬇ Download ZIP</button>
+                  {(sessionPlan === 'agency' || sessionPlan === 'enterprise') ? (
+                    <button onClick={downloadWhiteLabelZIP} className="btn btn-dark" title="Download with your agency name — no NEXUS OS branding">
+                      ⬇ White-Label ZIP
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => { window.location.href = '/shell?page=pricing' }}
+                      className="btn btn-ghost opacity-60 text-xs"
+                      title="Agency plan required"
+                    >
+                      🔒 White-Label ZIP
+                    </button>
+                  )}
                   <button
                     onClick={() => setPreviewOpen(true)}
                     className="btn btn-ghost"
@@ -767,9 +886,20 @@ Contact NEXUS OS support or re-run the FORGE engine with a more detailed brief t
                 <div key={path} className="text-xs font-mono text-ink2 py-0.5">◈ {path}</div>
               ))}
             </div>
-            <button onClick={() => { setPreviewOpen(false); downloadZIP() }} className="btn btn-primary w-full">
-              ⬇ Download ZIP →
-            </button>
+            <div className="flex flex-col gap-2">
+              <button onClick={() => { setPreviewOpen(false); downloadZIP() }} className="btn btn-primary w-full">
+                ⬇ Download ZIP →
+              </button>
+              {(sessionPlan === 'agency' || sessionPlan === 'enterprise') ? (
+                <button onClick={() => { setPreviewOpen(false); downloadWhiteLabelZIP() }} className="btn btn-dark w-full text-sm">
+                  ⬇ White-Label ZIP — no NEXUS branding
+                </button>
+              ) : (
+                <button onClick={() => { setPreviewOpen(false); window.location.href = '/shell?page=pricing' }} className="btn btn-ghost w-full text-xs opacity-60">
+                  🔒 White-Label ZIP — Agency plan required
+                </button>
+              )}
+            </div>
           </div>
         </div>
       )}
