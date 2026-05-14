@@ -42,6 +42,7 @@ interface AnalyticsData {
   scoreDist: { label: string; count: number }[]
   topActions: { action: string; count: number }[]
   window: string
+  isBasic?: boolean
 }
 
 type Section = 'overview' | 'executions' | 'kits' | 'feed' | 'funnel'
@@ -80,6 +81,7 @@ export default function DashboardPage({ onNavigate }: Props) {
   const [activatedKitIds, setActivatedKitIds] = useState<Set<string>>(new Set())
   const [analytics,       setAnalytics]       = useState<AnalyticsData | null>(null)
   const [analyticsWindow, setAnalyticsWindow] = useState<'7d' | '30d' | '90d'>('7d')
+  const [analyticsGated,  setAnalyticsGated]  = useState(false)
   const [learning,        setLearning]        = useState<LearningData | null>(null)
   const [kitLoading,      setKitLoading]      = useState<string | null>(null)
   const [healthLoading,   setHealthLoading]   = useState(true)
@@ -105,7 +107,10 @@ export default function DashboardPage({ onNavigate }: Props) {
   useEffect(() => {
     fetch(`/api/analytics?window=${analyticsWindow}`)
       .then(r => r.json())
-      .then(d => { if (d.ok) setAnalytics(d as AnalyticsData) })
+      .then(d => {
+        if (d.ok) { setAnalytics(d as AnalyticsData); setAnalyticsGated(false) }
+        else if (d.upgrade === 'starter') setAnalyticsGated(true)
+      })
       .catch(() => {})
   }, [analyticsWindow])
 
@@ -507,8 +512,17 @@ export default function DashboardPage({ onNavigate }: Props) {
                 </div>
               </div>
 
-              {analytics ? (
+              {analyticsGated ? (
+                /* Free plan — clear gate, not infinite spinner */
+                <div className="border border-dashed border-acid/30 bg-acid/5 rounded-xl p-10 text-center space-y-4">
+                  <p className="text-2xl">◈</p>
+                  <p className="text-sm font-semibold text-ink">Analytics requires Starter plan or higher</p>
+                  <p className="text-xs text-ink3 max-w-xs mx-auto">Track runs, pass rates, score trends, and audit events. Upgrade to Starter ($49/mo) to unlock.</p>
+                  <button className="btn btn-primary text-sm" onClick={() => onNavigate('pricing')}>View Plans →</button>
+                </div>
+              ) : analytics ? (
                 <>
+                  {/* KPI cards — shown for all plans */}
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                     {[
                       { label: 'Total Runs',  val: analytics.kpis.totalRuns || '—',   delta: analytics.deltas.runs,   chip: '' },
@@ -524,6 +538,14 @@ export default function DashboardPage({ onNavigate }: Props) {
                       </div>
                     ))}
                   </div>
+
+                  {/* Starter upgrade nudge */}
+                  {analytics.isBasic && (
+                    <div className="flex items-center justify-between gap-4 rounded-xl border border-acid/20 bg-acid/5 px-4 py-3">
+                      <p className="text-xs text-ink2">Trends, score distribution, session breakdown, and top actions are available on the <span className="text-acid font-semibold">Agency plan</span>.</p>
+                      <button className="text-xs text-acid font-semibold whitespace-nowrap hover:underline" onClick={() => onNavigate('pricing')}>Upgrade →</button>
+                    </div>
+                  )}
 
                   {analytics.trend.length > 0 && (
                     <div>

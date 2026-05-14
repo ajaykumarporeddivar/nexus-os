@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { requireSession } from '@/lib/session'
+import { requireSession, getPlan, requiresPlan, planLimitError } from '@/lib/session'
 import { encrypt } from '@/lib/keyUtils'
 
 export const runtime = 'nodejs'
@@ -30,11 +30,16 @@ export async function GET() {
   }
 }
 
-// POST /api/keys — save a new Anthropic API key
+// POST /api/keys — save a new Anthropic API key (Agency+ only)
 export async function POST(req: NextRequest) {
   try {
     const auth = await requireSession()
     if (auth.error) return auth.error
+
+    const plan = await getPlan(req)
+    if (!requiresPlan(plan, 'agency')) {
+      return NextResponse.json(planLimitError('API key storage', 'agency'), { status: 403 })
+    }
 
     const { apiKey } = await req.json()
     if (!apiKey || typeof apiKey !== 'string') {

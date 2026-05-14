@@ -644,14 +644,25 @@ ${qaScore !== null && qaScore >= 8
                 className="px-3 py-2 rounded-lg text-sm border border-border bg-paper2 outline-none focus:border-acid"
                 disabled={isRunning}
               />
-              <input
-                type="password"
-                value={apiKey}
-                onChange={e => setApiKey(e.target.value)}
-                placeholder="Anthropic API key (optional)"
-                className="px-3 py-2 rounded-lg text-sm border border-border bg-paper2 outline-none focus:border-acid font-mono"
-                disabled={isRunning}
-              />
+              {(sessionPlan === 'agency' || sessionPlan === 'enterprise') ? (
+                <input
+                  type="password"
+                  value={apiKey}
+                  onChange={e => setApiKey(e.target.value)}
+                  placeholder="Anthropic API key (optional)"
+                  className="px-3 py-2 rounded-lg text-sm border border-border bg-paper2 outline-none focus:border-acid font-mono"
+                  disabled={isRunning}
+                />
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => { window.location.href = '/shell?page=pricing' }}
+                  className="px-3 py-2 rounded-lg text-sm border border-border bg-paper2 text-ink3 text-left font-mono opacity-60 hover:opacity-80 transition-opacity cursor-pointer"
+                  title="Agency plan required to use your own API key"
+                >
+                  🔒 BYO API key — Agency plan
+                </button>
+              )}
             </div>
             {input.trim() && !isRunning && !isDone && (
               <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-acid/5 border border-acid/20 text-xs text-acid/80 font-mono">

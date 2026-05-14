@@ -13,6 +13,33 @@ interface ApiKeyRow {
 
 export default function KeysPage() {
   const { data: session } = useSession()
+  const sessionPlan = (session?.user as { plan?: string } | null)?.plan ?? 'free'
+
+  // Agency+ only — show upsell for free/starter
+  if (sessionPlan !== 'agency' && sessionPlan !== 'enterprise') {
+    return (
+      <div className="p-6 max-w-2xl mx-auto">
+        <div className="rounded-xl border border-border bg-paper p-10 text-center space-y-5">
+          <p className="text-3xl">🔑</p>
+          <h1 className="text-xl font-bold text-ink">API Key Management</h1>
+          <p className="text-sm text-ink3 max-w-sm mx-auto">
+            Save your Anthropic API key to bypass shared quotas and bill directly to your account.
+            This feature is available on the <span className="text-acid font-semibold">Agency plan</span>.
+          </p>
+          <div className="rounded-lg border border-border bg-paper2 p-4 text-left space-y-2 max-w-xs mx-auto">
+            <p className="text-xs font-semibold text-ink">Agency — $199/mo includes:</p>
+            {['BYO Anthropic API key', 'Unlimited FORGE runs', 'White-label ZIP export', 'Full analytics dashboard'].map(f => (
+              <p key={f} className="text-xs text-ink2">✓ {f}</p>
+            ))}
+          </div>
+          <a href="/shell?page=pricing" className="btn btn-primary inline-block">Upgrade to Agency →</a>
+          <p className="text-xs text-ink3">
+            Signed in as <span className="font-medium text-ink">{session?.user?.email}</span> · Current plan: {sessionPlan}
+          </p>
+        </div>
+      </div>
+    )
+  }
 
   const [keys,      setKeys]      = useState<ApiKeyRow[]>([])
   const [loading,   setLoading]   = useState(true)

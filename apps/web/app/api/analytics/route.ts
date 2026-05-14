@@ -24,12 +24,14 @@ export async function GET(req: NextRequest) {
 
   const isAdmin = auth.user.isAdmin ?? false
   const plan    = (auth.user.plan ?? 'free') as string
-  if (!isAdmin && !requiresPlan(plan as Parameters<typeof requiresPlan>[0], 'agency')) {
+  // Free users: blocked. Starter: basic KPIs only. Agency+: full dataset.
+  if (!isAdmin && !requiresPlan(plan as Parameters<typeof requiresPlan>[0], 'starter')) {
     return NextResponse.json(
-      { ok: false, error: 'Analytics requires Agency plan or higher.' },
+      { ok: false, error: 'Analytics requires Starter plan or higher.', upgrade: 'starter' },
       { status: 403 }
     )
   }
+  const isBasic = !isAdmin && !requiresPlan(plan as Parameters<typeof requiresPlan>[0], 'agency')
 
   // Non-admin users scope analytics to their own session (their userId)
   const scopeId = isAdmin ? undefined : auth.user.id
@@ -218,6 +220,7 @@ export async function GET(req: NextRequest) {
       ok: true,
       window,
       days,
+      isBasic,
       kpis: {
         totalRuns,
         totalTokens,
@@ -229,22 +232,32 @@ export async function GET(req: NextRequest) {
         auditEvents: auditCurrent,
         activeSessions: topSessions.length,
       },
-      deltas: {
-        runs: prevRuns > 0 ? Math.round(((totalRuns - prevRuns) / prevRuns) * 100) : null,
-        tokens: prevTokens > 0 ? Math.round(((totalTokens - prevTokens) / prevTokens) * 100) : null,
-        score: prevAvgScore !== null && avgScore !== null
-          ? Math.round((avgScore - prevAvgScore) * 10) / 10
-          : null,
-      },
-      trend,
-      byStatus,
-      scoreDist,
-      topActions: auditByAction.map(a => ({ action: a.action, count: a._count.id })),
-      topSessions: isAdmin
-        ? topSessions.map(s => ({ sessionId: s.sessionId, events: s._count.id }))
-        : [],
-      // AAS v4 — Compound Rate block (new, additive — won't break existing consumers)
-      aas: crBlock,
+      // Starter (isBasic) gets KPIs only — no deltas, trends, distributions, or AAS
+      ...(isBasic ? {
+        deltas:     { runs: null, tokens: null, score: null },
+        trend:      [],
+        byStatus:   {},
+        scoreDist:  [],
+        topActions: [],
+        topSessions: [],
+        aas:        {},
+      } : {
+        deltas: {
+          runs: prevRuns > 0 ? Math.round(((totalRuns - prevRuns) / prevRuns) * 100) : null,
+          tokens: prevTokens > 0 ? Math.round(((totalTokens - prevTokens) / prevTokens) * 100) : null,
+          score: prevAvgScore !== null && avgScore !== null
+            ? Math.round((avgScore - prevAvgScore) * 10) / 10
+            : null,
+        },
+        trend,
+        byStatus,
+        scoreDist,
+        topActions: auditByAction.map(a => ({ action: a.action, count: a._count.id })),
+        topSessions: isAdmin
+          ? topSessions.map(s => ({ sessionId: s.sessionId, events: s._count.id }))
+          : [],
+        aas: crBlock,
+      }),
     })
   } catch (err) {
     console.error('[analytics GET]', err)
