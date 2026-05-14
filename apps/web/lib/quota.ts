@@ -93,14 +93,16 @@ export async function checkQuota(
   return { ok: count < limit, count, limit, remaining }
 }
 
-export async function resetQuota(sessionId: string): Promise<void> {
+export async function resetQuota(sessionId: string, target: 'all' | 'runs' | 'tokens' = 'all'): Promise<void> {
   const redis = getRedis()
+  const resetRuns   = target === 'all' || target === 'runs'
+  const resetTokens = target === 'all' || target === 'tokens'
   if (redis) {
-    await redis.set(`quota:runs:${sessionId}`, 0)
-    await redis.set(`quota:tokens:${sessionId}`, 0)
+    if (resetRuns)   await redis.set(`quota:runs:${sessionId}`, 0)
+    if (resetTokens) await redis.set(`quota:tokens:${sessionId}`, 0)
   } else {
-    mem.delete(`quota:runs:${sessionId}`)
-    mem.delete(`quota:tokens:${sessionId}`)
+    if (resetRuns)   mem.delete(`quota:runs:${sessionId}`)
+    if (resetTokens) mem.delete(`quota:tokens:${sessionId}`)
   }
 }
 

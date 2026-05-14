@@ -66,6 +66,9 @@ export async function PATCH(req: NextRequest) {
 }
 
 // Admin or self: reset quota counters (clears inflated counters from bugs)
+// ?target=runs  — reset run counter only (token usage preserved)
+// ?target=tokens — reset token counter only
+// ?target=all   — reset both (default for admin; 'runs' default for self to avoid wiping token history)
 export async function DELETE(req: NextRequest) {
   const auth = await requireSession()
   if (auth.error) return auth.error
@@ -73,10 +76,17 @@ export async function DELETE(req: NextRequest) {
   const sessionId = auth.user.id!
   const isAdmin   = auth.user.isAdmin ?? false
 
-  // Allow admin to reset any user, or user to reset their own quota
-  const body    = await req.json().catch(() => ({}))
+  const url    = new URL(req.url)
+  const body   = await req.json().catch(() => ({}))
   const targetId = (isAdmin && body.userId) ? body.userId : sessionId
 
-  await resetQuota(targetId)
-  return NextResponse.json({ ok: true, message: `Quota reset for ${targetId}` })
+  // Non-admin auto-resets (inflation detection) should only clear run counter,
+  // preserving accurate token usage history.
+  const rawTarget = url.searchParams.get('target') ?? (isAdmin ? 'all' : 'runs')
+  const target = (['all', 'runs', 'tokens'] as const).includes(rawTarget as 'all' | 'runs' | 'tokens')
+    ? rawTarget as 'all' | 'runs' | 'tokens'
+    : 'runs'
+
+  await resetQuota(targetId, target)
+  return NextResponse.json({ ok: true, message: `Quota (${target}) reset for ${targetId}` })
 }

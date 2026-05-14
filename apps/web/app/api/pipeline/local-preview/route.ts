@@ -218,6 +218,16 @@ async function startPreviewServer(previewDir: string, appRoot: string, port: num
 }
 
 export async function POST(req: NextRequest) {
+  // Local preview requires a writable filesystem — unavailable on Vercel serverless.
+  // Return a clear skip signal so the pipeline continues without failing.
+  if (process.env.VERCEL || process.env.VERCEL_ENV || process.env.AWS_LAMBDA_FUNCTION_NAME) {
+    return NextResponse.json({
+      ok: false,
+      error: 'Local preview is not available in serverless deployments. Files have been generated and will be pushed to GitHub.',
+      isServerless: true,
+    }, { status: 200 })
+  }
+
   const session = await requireSession()
   if (session.error) return session.error
 

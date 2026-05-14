@@ -2113,10 +2113,10 @@ function PipelineVoiceBar({
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
-const TOTAL_AGENTS = 12 + 10  // FORGE (12: +GROWTH HACKER +MONETISATION STRATEGIST +SALES CLOSER) + BUILD (10)
+const TOTAL_AGENTS = 13 + 10  // FORGE (13: orchestrator+analyst+architect+planner+spec+utils+security+db+qa+workflow-mapper+growth+monetisation+closer) + BUILD (10)
 
 const INITIAL_STEPS: PipelineStep[] = [
-  { id: 'forge',  label: 'FORGE',  detail: '12 agents → spec, architecture, GTM, pricing, closure system',  status: 'pending' },
+  { id: 'forge',  label: 'FORGE',  detail: '13 agents → spec, architecture, workflow map, GTM, pricing, closure system',  status: 'pending' },
   { id: 'build',  label: 'BUILD',  detail: '10 agents → real Next.js app code + REPAIR pass', status: 'pending' },
   { id: 'deploy', label: 'DEPLOY', detail: 'Push to GitHub → Next.js build on Vercel',       status: 'pending' },
 ]
@@ -2231,7 +2231,8 @@ export default function PipelinePage() {
         // Inflation detection: count > limit × 10 means the stream-route bug was hit.
         // Auto-reset once so the user can continue running normally.
         if (isFinite(effectiveLimit) && count > effectiveLimit * 10) {
-          await fetch('/api/quota', { method: 'DELETE' }).catch(() => {})
+          // Inflation detected — reset run counter only (preserve token usage history)
+          await fetch('/api/quota?target=runs', { method: 'DELETE' }).catch(() => {})
           setRunsUsed(0)
         } else {
           setRunsUsed(count)
@@ -2372,7 +2373,7 @@ export default function PipelinePage() {
       setClientName(spec.projectName.replace(/-/g, ' '))
       setForgeQaScore(spec.score)
       setSteps([
-        { id: 'forge',  label: 'FORGE',  detail: '12 agents → spec, architecture, GTM, pricing, closure system', status: 'done' },
+        { id: 'forge',  label: 'FORGE',  detail: '13 agents → spec, architecture, workflow map, GTM, pricing, closure system', status: 'done' },
         { id: 'build',  label: 'BUILD',  detail: '10 agents → real Next.js app code + REPAIR pass',    status: 'done' },
         { id: 'deploy', label: 'DEPLOY', detail: 'Push to GitHub → Next.js build on Vercel',           status: 'error', error: 'Session refreshed — click Retry to push to GitHub and deploy' },
       ])
@@ -2441,6 +2442,12 @@ export default function PipelinePage() {
           logPath?: string
           nodeModulesLinked?: boolean
         }
+      }
+      // Serverless skip — not an error, pipeline continues normally
+      if ((payload as { isServerless?: boolean }).isServerless) {
+        setLocalPreview({ status: 'error', path: '', projectName, fileCount, error: 'Serverless — local preview skipped' })
+        log('Local preview skipped (serverless environment — files pushed to GitHub instead)', 'info')
+        return null
       }
       if (!res.ok || !payload.ok || !payload.data) {
         throw new Error(payload.error || `Local preview failed with HTTP ${res.status}`)
@@ -2892,7 +2899,11 @@ export default function PipelinePage() {
         if (lpData.ok && lpData.data) {
           learnedPrompts = lpData.data
           const count = Object.keys(learnedPrompts).length
-          if (count > 0) log(`Learning system: ${count} improved agent prompt${count > 1 ? 's' : ''} loaded from previous cycles`, 'ok')
+          if (count > 0) {
+            log(`Learning system: ${count} improved agent prompt${count > 1 ? 's' : ''} active from previous cycles`, 'ok')
+          } else {
+            log('Learning system: 0 improved prompts — using factory defaults (first run or cycle not yet triggered)', 'info')
+          }
         }
       }
     } catch {
@@ -3318,14 +3329,17 @@ export default function PipelinePage() {
   // ── BUILD phase ─────────────────────────────────────────────────────────────
 
   const buildUserMessage = useCallback((agentId: string, forge: ForgeBuild, generatedSoFar: Record<string, string>): string => {
-    const manifest     = forge.files['PROJECT_MANIFEST.md'] ?? ''
-    const arch         = forge.files['.claude/architecture.md'] ?? ''
-    const features     = forge.files['.claude/features/feature-cards.md'] ?? ''
-    const specContract = forge.files['.claude/spec-contract.md'] ?? ''
-    const sql          = forge.files['db/migrations/001_init.sql'] ?? ''
-    const qa           = forge.files['.forge/qa-report.md'] ?? ''
-    const monetisation = forge.files['.claude/monetisation.md'] ?? ''
-    // security-report is available but kept separate; not included for token efficiency
+    const manifest      = forge.files['PROJECT_MANIFEST.md'] ?? ''
+    const arch          = forge.files['.claude/architecture.md'] ?? ''
+    const features      = forge.files['.claude/features/feature-cards.md'] ?? ''
+    const specContract  = forge.files['.claude/spec-contract.md'] ?? ''
+    const sql           = forge.files['db/migrations/001_init.sql'] ?? ''
+    const qa            = forge.files['.forge/qa-report.md'] ?? ''
+    const monetisation  = forge.files['.claude/monetisation.md'] ?? ''
+    const workflowMap   = forge.files['.claude/workflow-map.md'] ?? ''
+    // security-report fed to security-sensitive agents (api, interactions, shell) only
+    const securityReport = forge.files['.claude/security-report.md'] ?? ''
+    const SECURITY_AGENTS = new Set(['api', 'interactions', 'shell'])
 
     const prevFilesSummary = Object.keys(generatedSoFar).length > 0
       ? `\nPREVIOUSLY GENERATED FILES (${Object.keys(generatedSoFar).length} total — do NOT re-generate these):\n${Object.keys(generatedSoFar).join('\n')}\n`
@@ -3370,7 +3384,7 @@ ${monetisation.slice(0, 1600)}
 
 QA REPORT:
 ${qa.slice(0, 800)}
-${prevContext}
+${workflowMap ? `\nWORKFLOW MAP (user journeys, edge cases, cross-feature deps — implement these patterns):\n${workflowMap.slice(0, 1200)}\n` : ''}${SECURITY_AGENTS.has(agentId) && securityReport ? `\nSECURITY REPORT (OWASP findings — apply every remediation listed for your layer):\n${securityReport.slice(0, 1200)}\n` : ''}${prevContext}
 Generate the ${agentId.toUpperCase()} files now. Follow the output contract exactly.`
   }, [])
 
@@ -3389,7 +3403,13 @@ Generate the ${agentId.toUpperCase()} files now. Follow the output contract exac
       const blRes = await fetch('/api/learning/active-prompts', { signal: abortRef.current?.signal })
       if (blRes.ok) {
         const blData = await blRes.json() as { ok: boolean; data?: Record<string, string> }
-        if (blData.ok && blData.data) buildLearnedPrompts = blData.data
+        if (blData.ok && blData.data) {
+          buildLearnedPrompts = blData.data
+          const buildCount = Object.keys(buildLearnedPrompts).length
+          if (buildCount > 0) {
+            log(`BUILD learning: ${buildCount} improved BUILD prompt${buildCount > 1 ? 's' : ''} active`, 'ok')
+          }
+        }
       }
     } catch { /* non-fatal */ }
 
