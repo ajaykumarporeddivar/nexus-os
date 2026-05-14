@@ -63,7 +63,17 @@ export async function POST(req: NextRequest) {
       },
     })
   } catch (err) {
-    console.error('[checkout POST]', err)
-    return NextResponse.json({ ok: false, error: 'Failed to create order' }, { status: 500 })
+    // Log full Razorpay error as string so Vercel logs show the complete message
+    const detail = typeof err === 'object' && err !== null
+      ? JSON.stringify(err, Object.getOwnPropertyNames(err))
+      : String(err)
+    console.error('[checkout POST] FULL ERROR:', detail)
+    // Surface Razorpay description to client for debugging (safe — no secrets in this field)
+    const rzpDesc = (err as { error?: { description?: string } })?.error?.description
+    return NextResponse.json({
+      ok: false,
+      error: rzpDesc ?? 'Failed to create order',
+      detail: rzpDesc ?? detail.slice(0, 200),
+    }, { status: 500 })
   }
 }
