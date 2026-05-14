@@ -38,7 +38,7 @@ const TIERS = [
   {
     id: 'starter',
     name: 'Starter',
-    price: '₹49,000',
+    price: '$49',
     period: '/month',
     highlight: false,
     features: [
@@ -53,7 +53,7 @@ const TIERS = [
   {
     id: 'agency',
     name: 'Agency',
-    price: '₹1,20,000',
+    price: '$199',
     period: '/month',
     highlight: true,
     features: [

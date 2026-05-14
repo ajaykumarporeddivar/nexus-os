@@ -19,6 +19,9 @@ const PUBLIC_API = new Set([
 const PUBLIC_PAGES = new Set([
   '/',
   '/auth/signin',
+  '/terms',
+  '/privacy',
+  '/og',
 ])
 
 // Query-param-based public pages on /shell — accessible without login
@@ -88,7 +91,10 @@ export default withAuth(
           pathname === '/api/groq/stream' ||
           pathname === '/api/categories' ||
           pathname === '/auth/signin' ||
-          pathname === '/'
+          pathname === '/' ||
+          pathname === '/terms' ||
+          pathname === '/privacy' ||
+          pathname === '/og'
         ) return true
 
         // Allow /shell?page=pricing and other public shell pages without login

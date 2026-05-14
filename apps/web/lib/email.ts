@@ -45,7 +45,7 @@ export function welcomeHtml(name: string): string {
     `<p>Hi ${name || 'there'} — you're in. Your workspace is live on the free plan.</p>
      <p>Here's what you can do right now:</p>
      <div class="box">
-       <span>FORGE Engine</span><strong>Run your first AI delivery pipeline (3 runs/month free)</strong>
+       <span>FORGE Engine</span><strong>Run your first 23-agent pipeline (3 runs/month on free plan)</strong>
        <span style="margin-top:12px;display:block">Reasoning Engine</span><strong>11-lens hallucination-proof reasoning — unlimited</strong>
        <span style="margin-top:12px;display:block">Prompt Vault</span><strong>Browse and read production-tested agency prompts</strong>
      </div>
@@ -56,14 +56,14 @@ export function welcomeHtml(name: string): string {
 
 // ── Plan upgrade confirmation ──────────────────────────────────────────────
 const PLAN_LABELS: Record<string, string> = {
-  starter:    'Starter — ₹49,000/mo',
-  agency:     'Agency — ₹1,20,000/mo',
+  starter:    'Starter — $49/mo',
+  agency:     'Agency — $199/mo',
   enterprise: 'Enterprise',
 }
 
 const PLAN_FEATURES: Record<string, string[]> = {
   starter: [
-    '3 FORGE Engine runs/month',
+    '20 FORGE Engine runs/month',
     'All 11 reasoning lenses',
     'Prompt Vault read access',
     '5 active kits',
