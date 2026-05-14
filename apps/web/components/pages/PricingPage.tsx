@@ -62,9 +62,9 @@ const TIERS = [
       'Prompt Vault (read + write + versions)',
       'Unlimited active kits',
       'Priority WhatsApp support (4h SLA)',
-      'Full dashboard + DB integration',
-      'White-label ready',
-      'API access (100K tokens/month)',
+      'Full analytics dashboard',
+      'White-label ZIP export',
+      'API access + bring your own key',
     ],
   },
   {

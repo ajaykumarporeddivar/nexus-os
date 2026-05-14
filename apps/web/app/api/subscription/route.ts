@@ -51,7 +51,7 @@ export async function GET() {
           ...s,
           activatedAt: s.activatedAt.toISOString(),
           expiresAt: s.expiresAt.toISOString(),
-          amountStr: s.amount > 0 ? `₹${(s.amount / 100).toLocaleString('en-IN')}` : '₹0',
+          amountStr: s.amount > 0 ? `$${(s.amount / 100).toFixed(2)}` : '$0.00',
         })),
       },
     })

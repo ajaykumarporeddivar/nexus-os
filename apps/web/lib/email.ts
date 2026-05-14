@@ -137,6 +137,23 @@ export function paymentInternalHtml(opts: {
 </div>`
 }
 
+// ── Plan expiry notification ────────────────────────────────────────────────
+function planExpiryHtml(name: string, plan: string): string {
+  return baseHtml(
+    `Your ${plan} plan has expired`,
+    `<p>Hi ${name || 'there'} — your <strong style="color:#fff">${plan.charAt(0).toUpperCase() + plan.slice(1)}</strong> plan has expired and your account has been moved back to the free tier.</p>
+     <p>You still have full access to:</p>
+     <div class="box">
+       <span>Free Plan</span><strong>3 FORGE pipeline runs/month — no credit card needed</strong>
+       <span style="margin-top:10px;display:block">Reasoning Engine</span><strong>All 11 lenses — unlimited</strong>
+       <span style="margin-top:10px;display:block">Prompt Vault</span><strong>Read access to all prompts</strong>
+     </div>
+     <p>To continue with unlimited runs and all Agency features, renew your plan:</p>
+     <a href="${appUrl}/shell?page=pricing" class="cta">Renew now — $199/month →</a>
+     <p style="margin-top:20px;font-size:12px;color:#666">Questions? Reply to this email or message us on WhatsApp.</p>`
+  )
+}
+
 // ── Send helpers ────────────────────────────────────────────────────────────
 export async function sendWelcomeEmail(to: string, name: string): Promise<void> {
   const resend = getResend()
@@ -147,6 +164,33 @@ export async function sendWelcomeEmail(to: string, name: string): Promise<void> 
     subject: `Welcome to ${brand.name} — your workspace is live`,
     html: welcomeHtml(name),
   })
+}
+
+export async function sendPlanExpiryEmail(opts: {
+  to:   string
+  name: string
+  plan: string
+}): Promise<void> {
+  const resend = getResend()
+  if (!resend) return
+  const internalEmail = process.env.INTERNAL_NOTIFY_EMAIL ?? 'aporeddiporeddy8@gmail.com'
+  await Promise.all([
+    resend.emails.send({
+      from:    FROM(),
+      to:      opts.to,
+      subject: `Your ${brand.name} ${opts.plan} plan has expired — renew to continue`,
+      html:    planExpiryHtml(opts.name, opts.plan),
+    }),
+    resend.emails.send({
+      from:    FROM(),
+      to:      internalEmail,
+      subject: `Plan expired — ${opts.plan} — ${opts.to}`,
+      html:    `<div style="font-family:monospace;font-size:13px;background:#0f0f0f;color:#e5e5e5;padding:24px;border-radius:8px">
+        <strong style="color:#ff6b6b">⏰ Subscription expired</strong><br><br>
+        Plan: ${opts.plan}<br>Email: ${opts.to}<br>Time: ${new Date().toISOString()}
+      </div>`,
+    }),
+  ])
 }
 
 export async function sendPlanUpgradeEmail(opts: {

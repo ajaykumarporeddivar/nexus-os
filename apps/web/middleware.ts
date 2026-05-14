@@ -60,7 +60,8 @@ export default withAuth(
       pathname === '/api/learning/update-deltas' ||
       pathname === '/api/eval' ||
       pathname === '/api/cron/trending' ||
-      pathname === '/api/cron/workspace-scheduler'
+      pathname === '/api/cron/workspace-scheduler' ||
+      pathname === '/api/cron/subscription-expiry'
     ) {
       const secret = req.headers.get('x-cron-secret') ?? req.nextUrl.searchParams.get('secret')
       if (secret === process.env.CRON_SECRET) return NextResponse.next()
