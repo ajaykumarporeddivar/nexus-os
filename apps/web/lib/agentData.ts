@@ -25,8 +25,9 @@ export const agentFileMap: Record<string, string> = {
   builder:       'src/lib/utils.ts',
   security:      '.claude/security-report.md',
   'db-opt':      'db/migrations/001_init.sql',
-  qa:            '.forge/qa-report.md',
-  closer:        'SALES_CLOSURE_PLAYBOOK.md',
+  qa:               '.forge/qa-report.md',
+  'workflow-mapper': '.claude/workflow-map.md',
+  closer:           'SALES_CLOSURE_PLAYBOOK.md',
 }
 
 export const DEMO_FORGE_RESPONSES: Record<string, string> = {

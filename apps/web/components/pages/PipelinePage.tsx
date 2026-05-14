@@ -2993,7 +2993,7 @@ export default function PipelinePage() {
     const AGENT_CTX_CAPS: Record<string, number> = {
       orchestrator: 3000, analyst: 4000, architect: 4000,
       planner: 2500, 'test-writer': 3500, builder: 1200, security: 2000, 'db-opt': 3000,
-      qa: 2500, growth: 1500, monetisation: 1500, closer: 1800,
+      qa: 2500, 'workflow-mapper': 2000, growth: 1500, monetisation: 1500, closer: 1800,
     }
     const QA_CAPS: Record<string, number> = {
       orchestrator: 1800, analyst: 4200, architect: 4200,
@@ -3184,6 +3184,31 @@ export default function PipelinePage() {
       log(`✓ FORGE QA score ${qaScore}/10 — APPROVED for BUILD`, 'ok')
       announce(`QA completed its review at ${qaScore} out of ten. The FORGE specification is accepted and BUILD can start.`, { priority: 'high', tag: 'qa-pass' })
     }
+
+    // ── Agent 13: WORKFLOW MAPPER — runs after QA, before revenue agents ─────────
+    // Reads ARCHITECT + PLANNER + SPEC CONTRACT to map all user journeys and edge cases.
+    // Output feeds BUILD's FEATURES and INTERACTIONS agents.
+    setForgeActiveAgents(new Set(['workflow-mapper']))
+    log('FORGE · WORKFLOW MAPPER — mapping end-to-end user journeys and cross-feature dependencies')
+    announce('The workflow mapper is tracing every end-to-end user journey through the product, identifying edge cases and cross-feature dependencies that individual agents miss.', { tag: 'forge-workflow-mapper-start', minGapMs: 0 })
+    const workflowMapperStartedAt = Date.now()
+    const workflowMapperCtx = [
+      `Brief: ${briefText}`,
+      `Vertical: ${vertical}`,
+      `PROJECT_MANIFEST:\n${content['analyst'] ?? ''}`,
+      `ARCHITECTURE:\n${content['architect'] ?? ''}`,
+      `FEATURE CARDS:\n${content['planner'] ?? ''}`,
+      `SPEC CONTRACT:\n${content['test-writer'] ?? ''}`,
+    ].join('\n\n')
+    await runForgeAgent(
+      'workflow-mapper',
+      resolveSystem('workflow-mapper', FORGE_AGENT_SYSTEMS['workflow-mapper'] ?? 'You are the NEXUS WORKFLOW MAPPER.'),
+      workflowMapperCtx,
+    )
+    specFiles['.claude/workflow-map.md'] = content['workflow-mapper'] ?? ''
+    log(`✓ FORGE WORKFLOW MAPPER (${Date.now() - workflowMapperStartedAt}ms)`, 'ok')
+    announce('The workflow map is complete. User journeys, edge cases, and cross-feature dependencies are locked into the spec.', { tag: 'forge-workflow-mapper-finish', minGapMs: 0 })
+    await new Promise(r => setTimeout(r, 200))
 
     // ── Revenue agents 10, 11, 12 — growth + monetisation run in parallel ────────
     // growth and monetisation are independent of each other — both only read the QA-passed spec.
