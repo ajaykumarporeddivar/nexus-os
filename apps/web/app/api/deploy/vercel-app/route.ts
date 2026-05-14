@@ -202,6 +202,156 @@ export async function POST(req: NextRequest) {
       }, null, 2)])
     }
 
+    // ── 3a-inject. Auto-detect missing npm packages from import statements ───
+    // AI agents freely import recharts, framer-motion, @radix-ui/*, etc.
+    // `ignoreBuildErrors` doesn't help with Module not found — we must add them.
+    {
+      // Curated registry of packages AI models commonly import → pinned safe versions
+      const KNOWN_PACKAGES: Record<string, string> = {
+        // Charts / data viz
+        'recharts':                    '2.12.7',
+        'd3':                          '7.9.0',
+        'victory':                     '37.3.2',
+        'chart.js':                    '4.4.3',
+        'react-chartjs-2':             '5.2.0',
+        'apexcharts':                  '3.54.0',
+        'react-apexcharts':            '1.4.0',
+        // Animation
+        'framer-motion':               '11.11.17',
+        '@motionone/react':            '10.18.0',
+        // Radix UI primitives
+        '@radix-ui/react-accordion':   '1.2.0',
+        '@radix-ui/react-alert-dialog':'1.1.1',
+        '@radix-ui/react-avatar':      '1.1.0',
+        '@radix-ui/react-checkbox':    '1.1.1',
+        '@radix-ui/react-collapsible': '1.1.0',
+        '@radix-ui/react-context-menu':'2.2.1',
+        '@radix-ui/react-dialog':      '1.1.1',
+        '@radix-ui/react-dropdown-menu':'2.1.1',
+        '@radix-ui/react-hover-card':  '1.1.1',
+        '@radix-ui/react-label':       '2.1.0',
+        '@radix-ui/react-menubar':     '1.1.1',
+        '@radix-ui/react-navigation-menu':'1.2.0',
+        '@radix-ui/react-popover':     '1.1.1',
+        '@radix-ui/react-progress':    '1.1.0',
+        '@radix-ui/react-radio-group': '1.2.0',
+        '@radix-ui/react-scroll-area': '1.1.0',
+        '@radix-ui/react-select':      '2.1.1',
+        '@radix-ui/react-separator':   '1.1.0',
+        '@radix-ui/react-slider':      '1.2.0',
+        '@radix-ui/react-slot':        '1.1.0',
+        '@radix-ui/react-switch':      '1.1.0',
+        '@radix-ui/react-tabs':        '1.1.0',
+        '@radix-ui/react-toast':       '1.2.1',
+        '@radix-ui/react-toggle':      '1.1.0',
+        '@radix-ui/react-tooltip':     '1.1.2',
+        // Shadcn/ui deps
+        'cmdk':                        '1.0.0',
+        'vaul':                        '0.9.9',
+        'sonner':                      '1.7.1',
+        'react-resizable-panels':      '2.1.7',
+        'embla-carousel-react':        '8.5.1',
+        'input-otp':                   '1.4.1',
+        'react-day-picker':            '8.10.1',
+        // Utilities
+        'date-fns':                    '3.6.0',
+        'dayjs':                       '1.11.13',
+        'lodash':                      '4.17.21',
+        'lodash-es':                   '4.17.21',
+        'zod':                         '3.23.8',
+        'react-hook-form':             '7.54.2',
+        '@hookform/resolvers':         '3.9.1',
+        'zustand':                     '5.0.1',
+        'jotai':                       '2.10.1',
+        'immer':                       '10.1.1',
+        'uuid':                        '10.0.0',
+        'nanoid':                      '5.0.7',
+        // Table / list
+        '@tanstack/react-table':       '8.20.5',
+        '@tanstack/react-query':       '5.62.8',
+        // Icons beyond lucide
+        'react-icons':                 '5.3.0',
+        '@heroicons/react':            '2.1.5',
+        'phosphor-react':              '1.4.1',
+        // UI kits
+        '@headlessui/react':           '2.2.0',
+        'flowbite-react':              '0.10.2',
+        'react-aria':                  '3.35.2',
+        // Misc React utilities
+        'react-use':                   '17.5.1',
+        'usehooks-ts':                 '3.1.0',
+        '@uidotdev/usehooks':          '2.4.1',
+        'react-intersection-observer': '9.13.1',
+        'react-hot-toast':             '2.4.1',
+        'notistack':                   '3.0.1',
+        // Math / formatting
+        'numeral':                     '2.0.6',
+        'accounting':                  '0.4.1',
+        // Markdown
+        'react-markdown':              '9.0.1',
+        'remark-gfm':                  '4.0.0',
+        'marked':                      '12.0.0',
+        // Syntax highlighting
+        'highlight.js':                '11.10.0',
+        'prismjs':                     '1.29.0',
+        // Dnd
+        '@dnd-kit/core':               '6.3.1',
+        '@dnd-kit/sortable':           '8.0.0',
+        'react-beautiful-dnd':         '13.1.1',
+        // Next.js specific
+        'next-themes':                 '0.4.3',
+        'next-auth':                   '4.24.10',
+        '@next/font':                  '14.2.5',
+      }
+
+      // Find the package.json in sourceFiles
+      const pkgIdx = sourceFiles.findIndex(([p]) => p === 'package.json')
+      if (pkgIdx >= 0) {
+        let pkg: Record<string, unknown>
+        try { pkg = JSON.parse(sourceFiles[pkgIdx][1] as string) } catch { pkg = {} }
+        const deps = (pkg.dependencies ?? {}) as Record<string, string>
+        const devDeps = (pkg.devDependencies ?? {}) as Record<string, string>
+
+        // Scan all TS/TSX files for bare package imports
+        const importRe = /(?:^|\n)\s*(?:import|export)[^'"]*['"]([^.'"@][^'"]*)['"]/g
+        const dynamicRe = /(?:require|import)\s*\(\s*['"]([^.'"@][^'"]*)['"]\s*\)/g
+        const detected = new Set<string>()
+
+        for (const [filePath, content] of sourceFiles) {
+          if (!filePath.match(/\.(ts|tsx|js|jsx)$/)) continue
+          const src = content as string
+          for (const re of [importRe, dynamicRe]) {
+            re.lastIndex = 0
+            let m: RegExpExecArray | null
+            while ((m = re.exec(src)) !== null) {
+              // Extract the package name (handle scoped packages like @radix-ui/react-dialog)
+              const raw = m[1]
+              const pkg = raw.startsWith('@')
+                ? raw.split('/').slice(0, 2).join('/')  // @scope/package
+                : raw.split('/')[0]                       // bare package
+              if (pkg && !deps[pkg] && !devDeps[pkg]) detected.add(pkg)
+            }
+          }
+        }
+
+        // Add missing packages that are in our registry
+        const added: string[] = []
+        for (const pkgName of detected) {
+          const version = KNOWN_PACKAGES[pkgName]
+          if (version) {
+            deps[pkgName] = version
+            added.push(pkgName)
+          }
+        }
+
+        if (added.length > 0) {
+          console.info(`[vercel-app] Auto-injected ${added.length} missing packages:`, added.join(', '))
+          pkg.dependencies = deps
+          sourceFiles[pkgIdx] = ['package.json', JSON.stringify(pkg, null, 2)]
+        }
+      }
+    }
+
     // globals.css — Tailwind directives (required for any styles)
     if (!has('src/app/globals.css')) {
       sourceFiles.push(['src/app/globals.css', `@tailwind base;\n@tailwind components;\n@tailwind utilities;\n\n@layer base {\n  body { @apply bg-zinc-50 text-zinc-900 antialiased; }\n}\n`])
@@ -281,33 +431,182 @@ export type SortDir = 'asc' | 'desc'
 export interface PaginationMeta { total: number; page: number; pageSize: number; totalPages: number }
 `,
         'src/components/ui.tsx': `'use client'
-import { type ReactNode, useState } from 'react'
+import { type ReactNode, useState, forwardRef } from 'react'
 import { twMerge } from 'tailwind-merge'
 import { clsx, type ClassValue } from 'clsx'
 function cn(...i: ClassValue[]) { return twMerge(clsx(i)) }
-export function Button({ children, onClick, className, variant = 'primary', disabled, type = 'button' }: { children: ReactNode; onClick?: () => void; className?: string; variant?: 'primary'|'secondary'|'ghost'|'danger'; disabled?: boolean; type?: 'button'|'submit' }) {
-  const v = { primary: 'bg-zinc-900 text-white hover:bg-zinc-700', secondary: 'bg-zinc-100 text-zinc-900 hover:bg-zinc-200', ghost: 'bg-transparent text-zinc-600 hover:bg-zinc-100', danger: 'bg-red-600 text-white hover:bg-red-700' }
-  return <button type={type} onClick={onClick} disabled={disabled} className={cn('px-4 py-2 rounded-lg text-sm font-semibold transition-colors disabled:opacity-50', v[variant], className)}>{children}</button>
+// ── Button ──────────────────────────────────────────────────────────────────
+type BtnVariant = 'primary'|'secondary'|'ghost'|'danger'|'outline'|'link'|'default'|'destructive'
+export function Button({ children, onClick, className, variant = 'primary', disabled, type = 'button', size }: { children: ReactNode; onClick?: () => void; className?: string; variant?: BtnVariant; disabled?: boolean; type?: 'button'|'submit'; size?: 'sm'|'md'|'lg'|'icon'|'default' }) {
+  const v: Record<BtnVariant,string> = { primary:'bg-zinc-900 text-white hover:bg-zinc-700', secondary:'bg-zinc-100 text-zinc-900 hover:bg-zinc-200', ghost:'bg-transparent text-zinc-600 hover:bg-zinc-100', danger:'bg-red-600 text-white hover:bg-red-700', outline:'border border-zinc-300 bg-white text-zinc-900 hover:bg-zinc-50', link:'underline-offset-4 hover:underline text-zinc-900 bg-transparent', default:'bg-zinc-900 text-white hover:bg-zinc-700', destructive:'bg-red-600 text-white hover:bg-red-700' }
+  const s = { sm:'px-3 py-1.5 text-xs', md:'px-4 py-2 text-sm', lg:'px-5 py-2.5 text-base', icon:'p-2', default:'px-4 py-2 text-sm' }
+  return <button type={type} onClick={onClick} disabled={disabled} className={cn('rounded-lg font-semibold transition-colors disabled:opacity-50', v[variant], s[size ?? 'default'], className)}>{children}</button>
 }
+// ── Card family ──────────────────────────────────────────────────────────────
 export function Card({ children, className }: { children: ReactNode; className?: string }) {
-  return <div className={cn('bg-white border border-zinc-200 rounded-xl shadow-sm p-6', className)}>{children}</div>
+  return <div className={cn('bg-white border border-zinc-200 rounded-xl shadow-sm', className)}>{children}</div>
 }
-export function Badge({ children, variant = 'default' }: { children: ReactNode; variant?: 'default'|'success'|'warning'|'danger'|'info' }) {
-  const v = { default: 'bg-zinc-100 text-zinc-700', success: 'bg-emerald-50 text-emerald-700 border-emerald-200', warning: 'bg-amber-50 text-amber-700 border-amber-200', danger: 'bg-red-50 text-red-700 border-red-200', info: 'bg-blue-50 text-blue-700 border-blue-200' }
-  return <span className={cn('inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium border', v[variant])}>{children}</span>
+export function CardHeader({ children, className }: { children: ReactNode; className?: string }) {
+  return <div className={cn('flex flex-col space-y-1.5 p-6', className)}>{children}</div>
 }
-export function Input({ value, onChange, placeholder, className, type = 'text' }: { value: string; onChange: (v: string) => void; placeholder?: string; className?: string; type?: string }) {
-  return <input type={type} value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} className={cn('w-full px-3 py-2 border border-zinc-200 rounded-lg text-sm outline-none focus:border-zinc-900 bg-white', className)} />
+export function CardTitle({ children, className }: { children: ReactNode; className?: string }) {
+  return <h3 className={cn('text-lg font-semibold leading-none tracking-tight text-zinc-900', className)}>{children}</h3>
 }
-export function StatCard({ label, value, change, trend }: { label: string; value: string | number; change?: number; trend?: 'up'|'down'|'flat' }) {
-  return <Card className="space-y-1"><p className="text-xs text-zinc-500 font-medium">{label}</p><p className="text-2xl font-bold text-zinc-900">{value}</p>{change !== undefined && <p className={cn('text-xs font-semibold', trend === 'up' ? 'text-emerald-600' : trend === 'down' ? 'text-red-600' : 'text-zinc-500')}>{trend === 'up' ? '↑' : trend === 'down' ? '↓' : '→'} {Math.abs(change)}%</p>}</Card>
+export function CardDescription({ children, className }: { children: ReactNode; className?: string }) {
+  return <p className={cn('text-sm text-zinc-500', className)}>{children}</p>
 }
-export function Table({ headers, rows }: { headers: string[]; rows: (string | number | ReactNode)[][] }) {
-  return <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="border-b border-zinc-200">{headers.map(h => <th key={h} className="text-left py-3 px-4 text-xs font-semibold text-zinc-500 uppercase tracking-wide">{h}</th>)}</tr></thead><tbody>{rows.map((row, i) => <tr key={i} className="border-b border-zinc-100 hover:bg-zinc-50"><td className="py-3 px-4" colSpan={headers.length}>{row.join ? row.join(' · ') : row[0]}</td></tr>)}</tbody></table></div>
+export function CardContent({ children, className }: { children: ReactNode; className?: string }) {
+  return <div className={cn('p-6 pt-0', className)}>{children}</div>
 }
+export function CardFooter({ children, className }: { children: ReactNode; className?: string }) {
+  return <div className={cn('flex items-center p-6 pt-0', className)}>{children}</div>
+}
+// ── Badge ────────────────────────────────────────────────────────────────────
+type BadgeVariant = 'default'|'success'|'warning'|'danger'|'info'|'secondary'|'outline'|'destructive'
+export function Badge({ children, variant = 'default', className }: { children: ReactNode; variant?: BadgeVariant; className?: string }) {
+  const v: Record<BadgeVariant,string> = { default:'bg-zinc-100 text-zinc-700', success:'bg-emerald-50 text-emerald-700 border-emerald-200', warning:'bg-amber-50 text-amber-700 border-amber-200', danger:'bg-red-50 text-red-700 border-red-200', info:'bg-blue-50 text-blue-700 border-blue-200', secondary:'bg-zinc-100 text-zinc-600', outline:'border border-zinc-300 text-zinc-700', destructive:'bg-red-100 text-red-700' }
+  return <span className={cn('inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium border border-transparent', v[variant], className)}>{children}</span>
+}
+// ── Input / Textarea / Label / Select ────────────────────────────────────────
+export const Input = forwardRef<HTMLInputElement, { value?: string; onChange?: (v: string) => void; placeholder?: string; className?: string; type?: string; name?: string; id?: string; disabled?: boolean }>(
+  ({ value, onChange, placeholder, className, type = 'text', name, id, disabled }, ref) =>
+    <input ref={ref} type={type} value={value} name={name} id={id} disabled={disabled} onChange={e => onChange?.(e.target.value)} placeholder={placeholder} className={cn('w-full px-3 py-2 border border-zinc-200 rounded-lg text-sm outline-none focus:border-zinc-900 bg-white disabled:opacity-50', className)} />
+)
+Input.displayName = 'Input'
+export function Textarea({ value, onChange, placeholder, className, rows = 3 }: { value?: string; onChange?: (v: string) => void; placeholder?: string; className?: string; rows?: number }) {
+  return <textarea value={value} rows={rows} onChange={e => onChange?.(e.target.value)} placeholder={placeholder} className={cn('w-full px-3 py-2 border border-zinc-200 rounded-lg text-sm outline-none focus:border-zinc-900 bg-white resize-none', className)} />
+}
+export function Label({ children, htmlFor, className }: { children: ReactNode; htmlFor?: string; className?: string }) {
+  return <label htmlFor={htmlFor} className={cn('block text-sm font-medium text-zinc-700', className)}>{children}</label>
+}
+export function Select({ value, onChange, options, className }: { value?: string; onChange?: (v: string) => void; options: { value: string; label: string }[]; className?: string }) {
+  return <select value={value} onChange={e => onChange?.(e.target.value)} className={cn('w-full px-3 py-2 border border-zinc-200 rounded-lg text-sm outline-none focus:border-zinc-900 bg-white', className)}>{options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}</select>
+}
+// ── Separator ────────────────────────────────────────────────────────────────
+export function Separator({ className, orientation = 'horizontal' }: { className?: string; orientation?: 'horizontal'|'vertical' }) {
+  return <div className={cn(orientation === 'horizontal' ? 'h-px w-full' : 'w-px h-full', 'bg-zinc-200', className)} />
+}
+// ── Avatar ───────────────────────────────────────────────────────────────────
+export function Avatar({ src, alt, fallback, className }: { src?: string; alt?: string; fallback?: string; className?: string }) {
+  return src ? <img src={src} alt={alt ?? ''} className={cn('w-8 h-8 rounded-full object-cover', className)} /> : <div className={cn('w-8 h-8 rounded-full bg-zinc-900 text-white flex items-center justify-center text-xs font-bold', className)}>{fallback ?? '?'}</div>
+}
+export function AvatarImage({ src, alt, className }: { src?: string; alt?: string; className?: string }) {
+  return <img src={src} alt={alt ?? ''} className={cn('w-full h-full object-cover rounded-full', className)} />
+}
+export function AvatarFallback({ children, className }: { children: ReactNode; className?: string }) {
+  return <div className={cn('flex items-center justify-center w-full h-full bg-zinc-200 text-zinc-700 text-xs font-semibold rounded-full', className)}>{children}</div>
+}
+// ── Progress ─────────────────────────────────────────────────────────────────
+export function Progress({ value = 0, className }: { value?: number; className?: string }) {
+  return <div className={cn('w-full h-2 bg-zinc-100 rounded-full overflow-hidden', className)}><div className="h-full bg-zinc-900 transition-all" style={{ width: \`\${Math.min(100, Math.max(0, value))}%\` }} /></div>
+}
+// ── Switch / Checkbox ─────────────────────────────────────────────────────────
+export function Switch({ checked, onCheckedChange, disabled }: { checked?: boolean; onCheckedChange?: (v: boolean) => void; disabled?: boolean }) {
+  return <button role="switch" aria-checked={checked} disabled={disabled} onClick={() => onCheckedChange?.(!checked)} className={cn('w-10 h-6 rounded-full transition-colors relative', checked ? 'bg-zinc-900' : 'bg-zinc-200', disabled && 'opacity-50')}><span className={cn('absolute top-1 w-4 h-4 rounded-full bg-white shadow transition-transform', checked ? 'translate-x-5' : 'translate-x-1')} /></button>
+}
+export function Checkbox({ checked, onCheckedChange, disabled, className }: { checked?: boolean; onCheckedChange?: (v: boolean) => void; disabled?: boolean; className?: string }) {
+  return <button role="checkbox" aria-checked={checked} disabled={disabled} onClick={() => onCheckedChange?.(!checked)} className={cn('w-4 h-4 rounded border border-zinc-300 flex items-center justify-center transition-colors', checked ? 'bg-zinc-900 border-zinc-900' : 'bg-white', disabled && 'opacity-50', className)}>{checked && <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 12 12"><path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>}</button>
+}
+// ── Skeleton ──────────────────────────────────────────────────────────────────
+export function Skeleton({ className }: { className?: string }) {
+  return <div className={cn('animate-pulse rounded-md bg-zinc-200', className)} />
+}
+// ── Alert ─────────────────────────────────────────────────────────────────────
+export function Alert({ children, variant = 'default', className }: { children: ReactNode; variant?: 'default'|'destructive'; className?: string }) {
+  return <div className={cn('rounded-lg border p-4 text-sm', variant === 'destructive' ? 'border-red-200 bg-red-50 text-red-800' : 'border-zinc-200 bg-zinc-50 text-zinc-800', className)}>{children}</div>
+}
+export function AlertTitle({ children, className }: { children: ReactNode; className?: string }) {
+  return <p className={cn('font-semibold mb-1', className)}>{children}</p>
+}
+export function AlertDescription({ children, className }: { children: ReactNode; className?: string }) {
+  return <p className={cn('text-sm opacity-90', className)}>{children}</p>
+}
+// ── Tabs ──────────────────────────────────────────────────────────────────────
+export function Tabs({ children, defaultValue, className }: { children: ReactNode; defaultValue?: string; className?: string }) {
+  return <div className={cn('w-full', className)} data-default={defaultValue}>{children}</div>
+}
+export function TabsList({ children, className }: { children: ReactNode; className?: string }) {
+  return <div className={cn('inline-flex h-9 items-center rounded-lg bg-zinc-100 p-1 gap-1', className)}>{children}</div>
+}
+export function TabsTrigger({ children, value, className }: { children: ReactNode; value?: string; className?: string }) {
+  return <button className={cn('px-3 py-1 rounded-md text-sm font-medium transition-colors text-zinc-600 hover:text-zinc-900', className)} data-value={value}>{children}</button>
+}
+export function TabsContent({ children, value, className }: { children: ReactNode; value?: string; className?: string }) {
+  return <div className={cn('mt-4', className)} data-value={value}>{children}</div>
+}
+// ── Table ─────────────────────────────────────────────────────────────────────
+export function Table({ headers, rows, children, className }: { headers?: string[]; rows?: (string | number | ReactNode)[][]; children?: ReactNode; className?: string }) {
+  if (children) return <div className={cn('overflow-x-auto', className)}><table className="w-full text-sm">{children}</table></div>
+  return <div className={cn('overflow-x-auto', className)}><table className="w-full text-sm"><thead><tr className="border-b border-zinc-200">{(headers ?? []).map(h => <th key={h} className="text-left py-3 px-4 text-xs font-semibold text-zinc-500 uppercase tracking-wide">{h}</th>)}</tr></thead><tbody>{(rows ?? []).map((row, i) => <tr key={i} className="border-b border-zinc-100 hover:bg-zinc-50">{Array.isArray(row) ? row.map((cell, j) => <td key={j} className="py-3 px-4">{cell}</td>) : <td className="py-3 px-4">{row}</td>}</tr>)}</tbody></table></div>
+}
+export function TableHeader({ children }: { children: ReactNode }) { return <thead>{children}</thead> }
+export function TableBody({ children }: { children: ReactNode }) { return <tbody>{children}</tbody> }
+export function TableRow({ children, className }: { children: ReactNode; className?: string }) { return <tr className={cn('border-b border-zinc-100 hover:bg-zinc-50', className)}>{children}</tr> }
+export function TableHead({ children, className }: { children: ReactNode; className?: string }) { return <th className={cn('text-left py-3 px-4 text-xs font-semibold text-zinc-500 uppercase tracking-wide', className)}>{children}</th> }
+export function TableCell({ children, className }: { children: ReactNode; className?: string }) { return <td className={cn('py-3 px-4 text-sm', className)}>{children}</td> }
+// ── Dialog / Modal ────────────────────────────────────────────────────────────
 export function Modal({ open, onClose, title, children }: { open: boolean; onClose: () => void; title: string; children: ReactNode }) {
   if (!open) return null
   return <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}><div className="bg-white rounded-xl shadow-xl p-6 w-full max-w-lg mx-4" onClick={e => e.stopPropagation()}><div className="flex items-center justify-between mb-4"><h2 className="text-lg font-bold text-zinc-900">{title}</h2><button onClick={onClose} className="text-zinc-400 hover:text-zinc-600 text-xl">×</button></div>{children}</div></div>
+}
+export function Dialog({ open, onOpenChange, children }: { open?: boolean; onOpenChange?: (v: boolean) => void; children: ReactNode }) {
+  if (!open) return null
+  return <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => onOpenChange?.(false)}><div onClick={e => e.stopPropagation()}>{children}</div></div>
+}
+export function DialogContent({ children, className }: { children: ReactNode; className?: string }) {
+  return <div className={cn('bg-white rounded-xl shadow-xl p-6 w-full max-w-lg mx-4', className)}>{children}</div>
+}
+export function DialogHeader({ children, className }: { children: ReactNode; className?: string }) {
+  return <div className={cn('flex flex-col space-y-1.5 mb-4', className)}>{children}</div>
+}
+export function DialogTitle({ children, className }: { children: ReactNode; className?: string }) {
+  return <h2 className={cn('text-lg font-bold text-zinc-900', className)}>{children}</h2>
+}
+export function DialogDescription({ children, className }: { children: ReactNode; className?: string }) {
+  return <p className={cn('text-sm text-zinc-500', className)}>{children}</p>
+}
+export function DialogFooter({ children, className }: { children: ReactNode; className?: string }) {
+  return <div className={cn('flex justify-end gap-2 mt-4', className)}>{children}</div>
+}
+// ── Dropdown ──────────────────────────────────────────────────────────────────
+export function DropdownMenu({ children }: { children: ReactNode }) { return <div className="relative inline-block">{children}</div> }
+export function DropdownMenuTrigger({ children, asChild }: { children: ReactNode; asChild?: boolean }) { return <div>{children}</div> }
+export function DropdownMenuContent({ children, className }: { children: ReactNode; className?: string }) {
+  return <div className={cn('absolute right-0 mt-1 w-48 bg-white border border-zinc-200 rounded-lg shadow-lg z-50 py-1', className)}>{children}</div>
+}
+export function DropdownMenuItem({ children, onClick, className }: { children: ReactNode; onClick?: () => void; className?: string }) {
+  return <button onClick={onClick} className={cn('w-full text-left px-3 py-2 text-sm text-zinc-700 hover:bg-zinc-50 transition-colors', className)}>{children}</button>
+}
+export function DropdownMenuSeparator({ className }: { className?: string }) { return <div className={cn('my-1 h-px bg-zinc-100', className)} /> }
+export function DropdownMenuLabel({ children, className }: { children: ReactNode; className?: string }) { return <div className={cn('px-3 py-1.5 text-xs font-semibold text-zinc-400 uppercase tracking-wide', className)}>{children}</div> }
+// ── Tooltip ───────────────────────────────────────────────────────────────────
+export function Tooltip({ children }: { children: ReactNode }) { return <div className="relative group inline-flex">{children}</div> }
+export function TooltipTrigger({ children, asChild }: { children: ReactNode; asChild?: boolean }) { return <div>{children}</div> }
+export function TooltipContent({ children, className }: { children: ReactNode; className?: string }) {
+  return <div className={cn('absolute bottom-full mb-1 left-1/2 -translate-x-1/2 px-2 py-1 bg-zinc-900 text-white text-xs rounded-md opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none', className)}>{children}</div>
+}
+export function TooltipProvider({ children }: { children: ReactNode }) { return <>{children}</> }
+// ── Popover ───────────────────────────────────────────────────────────────────
+export function Popover({ children }: { children: ReactNode }) { return <div className="relative inline-block">{children}</div> }
+export function PopoverTrigger({ children, asChild }: { children: ReactNode; asChild?: boolean }) { return <div>{children}</div> }
+export function PopoverContent({ children, className }: { children: ReactNode; className?: string }) {
+  return <div className={cn('absolute z-50 mt-1 bg-white border border-zinc-200 rounded-lg shadow-lg p-3 w-64', className)}>{children}</div>
+}
+// ── Sheet ─────────────────────────────────────────────────────────────────────
+export function Sheet({ children, open, onOpenChange }: { children: ReactNode; open?: boolean; onOpenChange?: (v: boolean) => void }) {
+  if (!open) return null
+  return <div className="fixed inset-0 z-50 flex"><div className="flex-1 bg-black/40" onClick={() => onOpenChange?.(false)} />{children}</div>
+}
+export function SheetContent({ children, className, side = 'right' }: { children: ReactNode; className?: string; side?: 'left'|'right'|'top'|'bottom' }) {
+  const pos = { right:'right-0 top-0 h-full w-80', left:'left-0 top-0 h-full w-80', top:'top-0 left-0 w-full h-80', bottom:'bottom-0 left-0 w-full h-80' }
+  return <div className={cn('absolute bg-white shadow-xl p-6', pos[side], className)}>{children}</div>
+}
+export function SheetHeader({ children, className }: { children: ReactNode; className?: string }) { return <div className={cn('mb-4', className)}>{children}</div> }
+export function SheetTitle({ children, className }: { children: ReactNode; className?: string }) { return <h2 className={cn('text-lg font-bold text-zinc-900', className)}>{children}</h2> }
+export function SheetDescription({ children, className }: { children: ReactNode; className?: string }) { return <p className={cn('text-sm text-zinc-500 mt-1', className)}>{children}</p> }
+// ── StatCard ──────────────────────────────────────────────────────────────────
+export function StatCard({ label, value, change, trend }: { label: string; value: string | number; change?: number; trend?: 'up'|'down'|'flat' }) {
+  return <Card><CardContent className="pt-6"><p className="text-xs text-zinc-500 font-medium">{label}</p><p className="text-2xl font-bold text-zinc-900 mt-1">{value}</p>{change !== undefined && <p className={cn('text-xs font-semibold mt-1', trend === 'up' ? 'text-emerald-600' : trend === 'down' ? 'text-red-600' : 'text-zinc-500')}>{trend === 'up' ? '↑' : trend === 'down' ? '↓' : '→'} {Math.abs(change)}%</p>}</CardContent></Card>
 }
 `,
         'src/components/layout.tsx': `'use client'
@@ -452,6 +751,51 @@ export const USERS: DemoUser[] = Array.from({ length: 8 }, (_, i) => ({
   avatar: ['AJ','MS','TW','SK','CL','ED','RP','ZC'][i],
   joinedAt: new Date(2024, i % 12, (i + 1) * 2).toISOString(),
 }))
+// ── Navigation / Layout exports AI agents commonly reference ─────────────────
+export const NAV_ITEMS = [
+  { label: 'Dashboard', href: '/dashboard', icon: 'LayoutDashboard' },
+  { label: 'Analytics', href: '/dashboard/analytics', icon: 'BarChart2' },
+  { label: 'Users', href: '/dashboard/users', icon: 'Users' },
+  { label: 'Settings', href: '/dashboard/settings', icon: 'Settings' },
+]
+export const SIDEBAR_LINKS = NAV_ITEMS
+export const NAVIGATION = NAV_ITEMS
+export const NAV_LINKS = NAV_ITEMS
+export const MENU_ITEMS = NAV_ITEMS
+// ── Plans / Pricing ───────────────────────────────────────────────────────────
+export const PLANS = [
+  { id: 'free', name: 'Free', price: 0, features: ['Up to 3 projects', 'Basic analytics', 'Email support'] },
+  { id: 'starter', name: 'Starter', price: 29, features: ['Up to 10 projects', 'Advanced analytics', 'Priority support', 'API access'] },
+  { id: 'pro', name: 'Pro', price: 79, features: ['Unlimited projects', 'Full analytics suite', '24/7 support', 'API access', 'Custom domains'] },
+]
+export const PRICING_PLANS = PLANS
+export const SUBSCRIPTION_PLANS = PLANS
+// ── Testimonials / Social proof ───────────────────────────────────────────────
+export const TESTIMONIALS = [
+  { id: 't1', name: 'Sarah Chen', role: 'CTO at TechFlow', text: 'This product transformed how our team works. Highly recommended.', avatar: 'SC', rating: 5 },
+  { id: 't2', name: 'Marcus Rivera', role: 'Founder at BuildFast', text: 'The best investment we made this year. ROI was immediate.', avatar: 'MR', rating: 5 },
+  { id: 't3', name: 'Priya Patel', role: 'Head of Product at Scale', text: 'Incredibly intuitive. Our team was up and running in minutes.', avatar: 'PP', rating: 5 },
+]
+// ── Features / Landing page ───────────────────────────────────────────────────
+export const FEATURES = [
+  { id: 'f1', title: 'Lightning Fast', description: 'Built for speed and performance from the ground up.', icon: 'Zap' },
+  { id: 'f2', title: 'Secure by Default', description: 'Enterprise-grade security with zero configuration.', icon: 'Shield' },
+  { id: 'f3', title: 'Easy Integration', description: 'Connect with your existing tools in minutes.', icon: 'Plug' },
+  { id: 'f4', title: 'Real-time Analytics', description: 'Understand your users with live data.', icon: 'BarChart' },
+  { id: 'f5', title: 'Team Collaboration', description: 'Work together seamlessly with your entire team.', icon: 'Users' },
+  { id: 'f6', title: '24/7 Support', description: 'Expert support whenever you need it.', icon: 'HeadphonesIcon' },
+]
+export const FEATURE_LIST = FEATURES
+export const APP_FEATURES = FEATURES
+// ── Stats / KPIs ──────────────────────────────────────────────────────────────
+export const STATS = [
+  { label: 'Active Users', value: '12,847', change: 8.2, trend: 'up' as const },
+  { label: 'Revenue MRR', value: '$48,295', change: 12.5, trend: 'up' as const },
+  { label: 'Conversion Rate', value: '3.6%', change: -0.4, trend: 'down' as const },
+  { label: 'Avg. Session', value: '4m 32s', change: 5.1, trend: 'up' as const },
+]
+export const KPI_STATS = STATS
+export const DASHBOARD_STATS = STATS
 `,
       }
 
@@ -503,6 +847,78 @@ export const USERS: DemoUser[] = Array.from({ length: 8 }, (_, i) => ({
       }
 
       sourceFiles.push(...newBarrels)
+    }
+
+    // ── 3e. Catch-all stub generator for unresolved local imports ─────────────
+    // After barrels, some @/ imports still have no file. We generate typed stubs
+    // so webpack doesn't throw Module not found during `next build`.
+    {
+      const existingPaths = new Set(sourceFiles.map(([p]) => p))
+      const newStubs: [string, string][] = []
+
+      for (const [, rawContent] of sourceFiles) {
+        const content = rawContent as string
+        const importRe = /from\s+['"](@\/[^'"]+)['"]/g
+        let m: RegExpExecArray | null
+        while ((m = importRe.exec(content)) !== null) {
+          const importPath = m[1]  // e.g. @/components/product-card
+          const srcPath   = importPath.replace(/^@\//, 'src/')
+
+          // Check if it resolves already
+          const resolves =
+            ['.tsx', '.ts', '.jsx', '.js'].some(e => existingPaths.has(srcPath + e)) ||
+            existingPaths.has(srcPath) ||
+            ['.tsx', '.ts'].some(e => existingPaths.has(srcPath + '/index' + e))
+          if (resolves) continue
+
+          // Determine stub type from path segments
+          const lower = srcPath.toLowerCase()
+          const isHook      = lower.includes('/hooks/') || lower.includes('/use')
+          const isLib       = lower.includes('/lib/') || lower.includes('/utils') || lower.includes('/helpers')
+          const isApi       = lower.includes('/api/')
+          const isPage      = lower.includes('/app/') && lower.includes('/page')
+          const isTypes     = lower.includes('/types') || lower.includes('/interfaces')
+          const isContext   = lower.includes('/context') || lower.includes('/store')
+
+          let stubContent: string
+          // Extract component name from path
+          const parts    = srcPath.split('/')
+          const fileName = parts[parts.length - 1]
+          const compName = fileName
+            .replace(/\.(tsx?|jsx?)$/, '')
+            .replace(/[-_](.)/g, (_, c: string) => (c as string).toUpperCase())
+            .replace(/^./, (c: string) => (c as string).toUpperCase())
+
+          if (isTypes) {
+            stubContent = `// auto-generated type stub\nexport type ${compName}Item = { id: string; name: string; [key: string]: unknown }\nexport type ${compName}Props = Record<string, unknown>\nexport interface ${compName} { id: string; name: string }\n`
+          } else if (isHook) {
+            stubContent = `'use client'\nimport { useState } from 'react'\n// auto-generated hook stub\nexport function use${compName}() {\n  const [data, setData] = useState<unknown[]>([])\n  const [loading, setLoading] = useState(false)\n  return { data, loading, setData, setLoading, refetch: () => void 0 }\n}\nexport default use${compName}\n`
+          } else if (isContext) {
+            stubContent = `'use client'\nimport { createContext, useContext, useState, type ReactNode } from 'react'\n// auto-generated context stub\nconst Ctx = createContext<Record<string, unknown>>({})\nexport function ${compName}Provider({ children }: { children: ReactNode }) {\n  const [state, setState] = useState<Record<string, unknown>>({})\n  return <Ctx.Provider value={{ state, setState }}>{children}</Ctx.Provider>\n}\nexport function use${compName}() { return useContext(Ctx) }\n`
+          } else if (isLib || isApi) {
+            stubContent = `// auto-generated utility stub\nexport const ${compName} = {}\nexport function get${compName}() { return [] }\nexport function create${compName}(data: unknown) { return data }\nexport function update${compName}(id: string, data: unknown) { return { id, ...Object(data) } }\nexport function delete${compName}(id: string) { return { ok: true, id } }\nexport default {}\n`
+          } else if (isPage) {
+            stubContent = `export default function ${compName}Page() {\n  return <div className="p-8"><h1 className="text-2xl font-bold text-zinc-900">${compName}</h1><p className="text-zinc-500 mt-2">Page under construction.</p></div>\n}\n`
+          } else {
+            // Default: React component stub
+            stubContent = `'use client'\nimport { type ReactNode } from 'react'\n// auto-generated component stub\nexport function ${compName}({ children, className }: { children?: ReactNode; className?: string }) {\n  return <div className={className}>{children}</div>\n}\nexport default ${compName}\n`
+          }
+
+          const stubPath = srcPath.endsWith('.tsx') || srcPath.endsWith('.ts') ? srcPath
+            : (isLib || isHook || isTypes || isApi || isContext) ? srcPath + '.ts'
+            : srcPath + '.tsx'
+
+          if (!existingPaths.has(stubPath)) {
+            newStubs.push([stubPath, stubContent])
+            existingPaths.add(stubPath)
+          }
+        }
+      }
+
+      if (newStubs.length > 0) {
+        console.info(`[vercel-app] Auto-stubbed ${newStubs.length} missing local imports:`, newStubs.map(([p]) => p).join(', '))
+        sourceFiles.push(...newStubs)
+      }
     }
 
     // ── 4. Upload blobs in parallel (10 at a time) — per-blob catch so one failure doesn't kill the batch

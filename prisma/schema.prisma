@@ -31,21 +31,33 @@ model User {
 }
 
 model Workspace {
-  id          String   @id @default(cuid())
-  name        String
-  type        String   @default("client") // client | feature | internal | personal
-  description String?
-  context     String?  @db.Text
-  emoji       String   @default("📁")
-  color       String   @default("acid")
-  ownerId     String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id               String   @id @default(cuid())
+  name             String
+  type             String   @default("client") // client | feature | internal | personal
+  description      String?
+  context          String?  @db.Text
+  emoji            String   @default("📁")
+  color            String   @default("acid")
+  ownerId          String?
+  industryCategory String?  // denormalized shortcut; synced from intelligenceProfile.primaryIndustry
+  // Agency business layer
+  monthlyRetainer  Int?     // retainer amount in INR (e.g. 500000 = ₹5K/mo)
+  portalSlug       String?  @unique  // URL-safe slug for client portal
+  portalToken      String?  // secret token for gated portal access
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 
-  owner      User?       @relation(fields: [ownerId], references: [id], onDelete: SetNull)
-  executions Execution[]
+  owner               User?                        @relation(fields: [ownerId], references: [id], onDelete: SetNull)
+  executions          Execution[]
+  intelligenceProfile WorkspaceIntelligenceProfile?
+  ideas               WorkspaceIdea[]
+  generationJobs      WorkspaceGenerationJob[]
+  clientAgents        ClientAgent[]
+  integrations        WorkspaceIntegration[]
 
   @@index([ownerId])
+  @@index([industryCategory])
+  @@index([portalSlug])
 }
 
 model Subscription {
@@ -133,12 +145,14 @@ model Execution {
   attributionConf  Float?                        // AAS v4: 0–1, gates rule updates in Phase 08
   irreversible     Boolean  @default(false)       // AAS v4: true = 2× confidence gate
   timingAdv        Float    @default(0.5)         // AAS v4 RP_score: 1=pioneer, 0.5=field consensus, 0.1=late mover
+  sourceIdeaId     String?                        // WorkspaceIdea.id if pipeline launched from an idea
   createdAt        DateTime @default(now())
 
-  user         User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
-  workspace    Workspace?    @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
-  agentOutputs AgentOutput[]
-  auditEvents  AuditEvent[]
+  user          User?           @relation(fields: [userId], references: [id], onDelete: SetNull)
+  workspace     Workspace?      @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+  agentOutputs  AgentOutput[]
+  auditEvents   AuditEvent[]
+  workspaceIdeas WorkspaceIdea[]
 
   @@index([sessionId])
   @@index([userId])
@@ -231,6 +245,28 @@ model LearningMethodResult {
   @@index([cadence])
 }
 
+// Deployment FSM state tracking — v3/v4 Autonomous Platform spec
+// One row per deployment attempt. State transitions enforced by lib/deployment/deployment.fsm.ts.
+model DeploymentRecord {
+  id             String   @id @default(cuid())
+  idempotencyKey String   @unique                  // client-generated UUID; dedup window: forever
+  userId         String?
+  executionId    Int?
+  projectName    String
+  provider       String                            // vercel | railway | render | github
+  state          String   @default("queued")       // DeploymentState enum values
+  url            String?                           // final deployment URL (set on active)
+  errorMessage   String?  @db.Text
+  metadata       Json     @default("{}")           // FSM transition history + provider-specific data
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([userId])
+  @@index([state])
+  @@index([provider])
+  @@index([createdAt])
+}
+
 model KitActivation {
   id        String   @id @default(cuid())
   kitId     String
@@ -300,4 +336,216 @@ model CRSnapshot {
   @@index([computedAt])
   @@index([loopVersion])
   @@index([cadence])
+}
+
+// ─── Workspace Intelligence Layer ─────────────────────────────────────────────
+
+// Structured intelligence profile per workspace.
+// Controls workspace-scoped idea generation, FORGE context injection,
+// and per-workspace scheduled refresh cadence.
+model WorkspaceIntelligenceProfile {
+  id                    String    @id @default(cuid())
+  workspaceId           String    @unique
+  primaryIndustry       String    @default("unconfigured") // top-level taxonomy node
+  subcategories         String[]  @default([])              // taxonomy leaf nodes
+  targetMarket          String    @default("smb")           // smb|enterprise|consumer|mixed
+  preferredRevenueModel String    @default("subscription")  // subscription|usage|one-time|hybrid
+  buildComplexityPref   String    @default("mid")           // quick|mid|deep
+  generationAggression  String    @default("balanced")      // conservative|balanced|aggressive
+  refreshCadenceHours   Int       @default(24)              // per-workspace refresh interval
+  enabledNiches         String[]  @default([])              // subset of 8 niches (empty = all)
+  lastGeneratedAt       DateTime?
+  generationCount       Int       @default(0)
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+  @@index([primaryIndustry])
+  @@index([lastGeneratedAt])
+}
+
+// Per-workspace AI-generated opportunity ideas with full lifecycle tracking.
+// Separate from global TrendingItem — scoped to workspace intelligence profile.
+model WorkspaceIdea {
+  id               String    @id @default(cuid())
+  workspaceId      String
+  title            String
+  niche            String    // maps to intelligence profile niche
+  problem          String    @db.Text
+  targetMarket     String
+  revenueModel     String
+  trendReason      String    @db.Text
+  buildComplexity  String    @default("medium")           // low|medium|high
+  tags             String[]  @default([])
+  opportunityScore Int       @default(70)
+  confidence       Float     @default(0.5)
+  causalMechanism  String?
+  regimeClass      String    @default("unknown")
+  exploreOrExploit String    @default("E")               // E=explore, X=exploit
+  saturationIndex  Float     @default(0.0)
+  timingAdv        Float     @default(0.5)
+  // Lifecycle
+  status           String    @default("fresh")            // fresh|stale|archived|converted|bookmarked
+  freshUntil       DateTime                               // TTL based on niche category
+  convertedAt      DateTime?                              // when status set to converted
+  executionId      Int?                                   // FK to Execution if converted to pipeline
+  // Lineage
+  batchId          String
+  parentIdeaId     String?                                // if this is a re-generation of an older idea
+  generationVersion Int      @default(1)
+  // Deduplication
+  contentHash      String                                 // sha256(title+problem) for exact dedup
+
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  workspace  Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  execution  Execution? @relation(fields: [executionId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, status, freshUntil])
+  @@index([workspaceId, niche])
+  @@index([contentHash])
+  @@index([batchId])
+  @@index([createdAt])
+}
+
+// Per-workspace idea generation job queue for scheduler.
+// Provides idempotency (batchId @unique) and concurrency control.
+model WorkspaceGenerationJob {
+  id             String    @id @default(cuid())
+  workspaceId    String
+  status         String    @default("queued")  // queued|running|done|failed
+  batchId        String    @unique             // idempotency key — safe to retry
+  ideasGenerated Int       @default(0)
+  deDupedCount   Int       @default(0)
+  errorMessage   String?   @db.Text
+  startedAt      DateTime?
+  completedAt    DateTime?
+  createdAt      DateTime  @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, status])
+  @@index([createdAt])
+}
+
+// ─── Video Prompt Generator ───────────────────────────────────────────────────
+// AI-generated 8-second UGC ad video prompts for NEXUS OS.
+// Shot-level decomposition compatible with Nano Banana video generation model.
+
+model VideoPrompt {
+  id            String   @id @default(cuid())
+  title         String                           // punchy 6-word max title
+  hookType      String   @default("pain_point")  // pain_point | transformation | social_proof | curiosity | before_after
+  platform      String   @default("tiktok")      // tiktok | reels | shorts | all
+  targetICP     String?                           // freelancer | agency | founder | operator
+  painPoint     String?                           // the specific pain addressed
+  promptJson    String   @db.Text                // full shot-level JSON for Nano Banana
+  voiceoverText String?  @db.Text                // extracted full VO script for quick copy
+  ctaText       String?                           // extracted CTA line
+  tags          String[] @default([])
+  batchId       String?
+  generatedBy   String   @default("manual")      // manual | scheduled
+  isFavourite   Boolean  @default(false)
+  createdAt     DateTime @default(now())
+
+  @@index([hookType])
+  @@index([targetICP])
+  @@index([batchId])
+  @@index([createdAt])
+}
+
+// ─── Image Prompt Generator ───────────────────────────────────────────────────
+// AI-generated JSON image prompts for NEXUS OS brand / marketing visuals.
+// Each prompt is a structured JSON doc describing a full visual composition.
+
+model ImagePrompt {
+  id           String   @id @default(cuid())
+  title        String                          // short descriptive title
+  category     String   @default("brand")     // brand | campaign | product | social | poster
+  promptJson   String   @db.Text              // full structured JSON prompt
+  tags         String[] @default([])
+  batchId      String?                        // groups prompts from same generation run
+  generatedBy  String   @default("manual")   // manual | scheduled
+  isFavourite  Boolean  @default(false)
+  imageData    String?  @db.Text   // base64-encoded generated image
+  imageMime    String?             // e.g. "image/png"
+  imageGenAt   DateTime?           // when image was last generated
+  createdAt    DateTime @default(now())
+
+  @@index([category])
+  @@index([batchId])
+  @@index([createdAt])
+  @@index([isFavourite])
+}
+
+// ─── Workspace Integration Layer ──────────────────────────────────────────────
+// OAuth-connected third-party integrations per workspace.
+// Tokens are stored encrypted (AES-256-GCM via lib/encrypt.ts).
+// provider: gmail | google-calendar | notion | hubspot | slack
+
+model WorkspaceIntegration {
+  id           String    @id @default(cuid())
+  workspaceId  String
+  provider     String    // gmail | google-calendar | notion | hubspot | slack
+  accessToken  String    @db.Text  // encrypted
+  refreshToken String?   @db.Text  // encrypted
+  expiresAt    DateTime?
+  scopes       String[]  @default([])
+  accountEmail String?   // display: which account is connected
+  enabled      Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, provider])
+  @@index([workspaceId, enabled])
+}
+
+// ─── Client Agent Business Layer ──────────────────────────────────────────────
+
+model ClientAgent {
+  id              String    @id @default(cuid())
+  workspaceId     String
+  agentType       String    // email-triage | meeting-prep | followup-seq | loop-closer | context-brief | weekly-digest
+  label           String?   // custom display name
+  enabled         Boolean   @default(true)
+  schedule        String    @default("weekly") // daily | weekly | manual
+  deliveryMethod  String    @default("email")  // email | whatsapp | portal
+  deliveryEmail   String?   // client's email for delivery
+  deliveryPhone   String?   // client's WhatsApp number
+  lastRunAt       DateTime?
+  lastOutput      String?   @db.Text  // cached last agent output (markdown)
+  outcomeMetric   String?   // e.g. "emails_triaged" — which outcome counter to increment
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  workspace Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  jobs      ClientAgentJob[]
+
+  @@index([workspaceId, enabled])
+  @@index([agentType])
+}
+
+model ClientAgentJob {
+  id            String    @id @default(cuid())
+  clientAgentId String
+  workspaceId   String
+  status        String    @default("queued") // queued | running | done | failed | skipped
+  inputPayload  String?   @db.Text  // JSON input context
+  outputText    String?   @db.Text  // agent markdown output
+  delivered     Boolean   @default(false)
+  errorMessage  String?
+  startedAt     DateTime?
+  completedAt   DateTime?
+  createdAt     DateTime  @default(now())
+
+  clientAgent ClientAgent @relation(fields: [clientAgentId], references: [id], onDelete: Cascade)
+
+  @@index([clientAgentId, status])
+  @@index([workspaceId])
+  @@index([createdAt])
 }

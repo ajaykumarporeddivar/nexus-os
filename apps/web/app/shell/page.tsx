@@ -26,6 +26,10 @@ const PipelinePage          = dynamic(() => import('@/components/pages/PipelineP
 const EvolvePage            = dynamic(() => import('@/components/pages/EvolvePage'),            { loading: PageLoader })
 const HiggsAIPage           = dynamic(() => import('@/components/pages/HiggsAIPage'),           { loading: PageLoader })
 const KeysPage              = dynamic(() => import('@/components/pages/KeysPage'),              { loading: PageLoader })
+const AdminPage             = dynamic(() => import('@/components/pages/AdminPage'),             { loading: PageLoader, ssr: false })
+const ClientAgentsPage      = dynamic(() => import('@/components/pages/ClientAgentsPage'),      { loading: PageLoader })
+const ImagePromptsPage      = dynamic(() => import('@/components/pages/ImagePromptsPage'),      { loading: PageLoader })
+const VideoPromptsPage      = dynamic(() => import('@/components/pages/VideoPromptsPage'),      { loading: PageLoader })
 import { WorkspaceProvider } from '@/lib/workspaceContext'
 import { AutoPilotProvider } from '@/lib/autoPilotContext'
 import AutoPilotBar from '@/components/AutoPilotBar'
@@ -35,7 +39,7 @@ const VALID_PAGES = [
   'journey', 'client-delivery', 'overview', 'reasoning', 'runtime',
   'forge', 'dashboard', 'vault', 'agent-editor', 'audit',
   'trending', 'workspaces', 'pricing', 'deploy', 'build', 'pipeline', 'evolve',
-  'higgs-ai', 'keys',
+  'higgs-ai', 'keys', 'admin', 'client-agents', 'image-prompts', 'video-prompts',
 ] as const
 
 function ShellInner() {
@@ -200,6 +204,10 @@ function ShellInner() {
               {currentPage === 'evolve'          && <EvolvePage />}
               {currentPage === 'higgs-ai'        && <HiggsAIPage />}
               {currentPage === 'keys'            && <KeysPage />}
+              {currentPage === 'admin'           && <AdminPage />}
+              {currentPage === 'client-agents'  && <ClientAgentsPage />}
+              {currentPage === 'image-prompts'  && <ImagePromptsPage />}
+              {currentPage === 'video-prompts'  && <VideoPromptsPage />}
             </div>
           </main>
 

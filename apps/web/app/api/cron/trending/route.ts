@@ -34,9 +34,14 @@ export async function GET(req: NextRequest) {
     : (process.env.NEXTAUTH_URL ?? 'http://localhost:3000')
 
   try {
-    const res = await fetch(`${baseUrl}/api/trending?secret=${encodeURIComponent(cronSecret)}`, {
+    // Send CRON_SECRET as a header, not a query string — prevents secret from appearing
+    // in Vercel function logs and request URLs.
+    const res = await fetch(`${baseUrl}/api/trending`, {
       method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type':   'application/json',
+        'x-cron-secret':  cronSecret,
+      },
     })
     const data = await res.json()
     console.log('[cron/trending]', data)

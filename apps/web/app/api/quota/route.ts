@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { checkQuota, decrementQuota, incrementQuota, resetQuota, PLAN_RUN_LIMITS, PLAN_TOKEN_LIMITS } from '@/lib/quota'
+import { checkQuota, checkTokenQuota, decrementQuota, incrementQuota, resetQuota, PLAN_RUN_LIMITS, PLAN_TOKEN_LIMITS } from '@/lib/quota'
 import { requireSession } from '@/lib/session'
 
 export async function GET(req: NextRequest) {
@@ -9,6 +9,14 @@ export async function GET(req: NextRequest) {
   const sessionId = auth.user.id!
   const plan    = auth.user.plan    ?? 'free'
   const isAdmin = auth.user.isAdmin ?? false
+
+  // ?tokens=1 — return token quota status instead of run quota
+  const url = new URL(req.url)
+  if (url.searchParams.get('tokens') === '1') {
+    const tokenStatus = await checkTokenQuota(sessionId, plan, isAdmin)
+    return NextResponse.json({ ok: true, data: tokenStatus })
+  }
+
   const status  = await checkQuota(sessionId, plan, isAdmin)
   return NextResponse.json({
     ok: true,
@@ -16,7 +24,7 @@ export async function GET(req: NextRequest) {
       ...status,
       plan,
       runLimit:   isAdmin ? Infinity : (PLAN_RUN_LIMITS[plan]   ?? 3),
-      tokenLimit: isAdmin ? Infinity : (PLAN_TOKEN_LIMITS[plan]  ?? 150_000),
+      tokenLimit: isAdmin ? Infinity : (PLAN_TOKEN_LIMITS[plan]  ?? 300_000),
     },
   })
 }

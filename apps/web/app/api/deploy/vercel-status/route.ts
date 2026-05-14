@@ -51,12 +51,36 @@ export async function GET(req: NextRequest) {
       ? `https://${d.url as string}`
       : null
 
+    // For ERROR state, fetch build event logs to surface the actual webpack/Next.js error
+    let buildError: string | undefined
+    if (state === 'ERROR') {
+      buildError = d.errorMessage ?? 'Build failed'
+      try {
+        const logsQs = teamId ? `?teamId=${teamId}&limit=100&direction=backward` : '?limit=100&direction=backward'
+        const logsRes = await fetch(`${VERCEL_API}/v2/deployments/${id}/events${logsQs}`, {
+          headers: { Authorization: `Bearer ${token}` },
+          signal:  AbortSignal.timeout(5000),
+        })
+        if (logsRes.ok) {
+          const logsData = await logsRes.json() as { type?: string; payload?: { text?: string } }[]
+          // Find the first error line (usually "Error: ..." or "Module not found:")
+          const errorLines = (Array.isArray(logsData) ? logsData : [])
+            .filter(e => e.type === 'stdout' || e.type === 'stderr')
+            .map(e => e.payload?.text ?? '')
+            .filter(t => /error:|module not found|cannot find|failed to compile/i.test(t))
+            .slice(0, 5)
+            .join('\n')
+          if (errorLines) buildError = errorLines.slice(0, 800)
+        }
+      } catch { /* non-fatal — use errorMessage fallback */ }
+    }
+
     return NextResponse.json({
       ok:       true,
       state,
       deployUrl,
       ready:    state === 'READY',
-      error:    state === 'ERROR' ? (d.errorMessage ?? 'Build failed') : undefined,
+      error:    state === 'ERROR' ? buildError : undefined,
     })
   } catch (err) {
     return NextResponse.json({ ok: false, error: (err as Error).message }, { status: 500 })

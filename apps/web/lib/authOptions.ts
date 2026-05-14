@@ -38,7 +38,19 @@ if (process.env.NODE_ENV === 'development') {
       },
       async authorize(credentials) {
         if (!credentials?.email || credentials.password !== devPassword) return null
-        return { id: credentials.email, email: credentials.email, name: credentials.email.split('@')[0] }
+        // Look up real DB id so token.sub is a cuid, not an email string.
+        // Falls back to email as id if DB is unavailable (dev only).
+        let dbId: string = credentials.email
+        try {
+          const db = await prisma.user.upsert({
+            where:  { email: credentials.email },
+            create: { email: credentials.email, name: credentials.email.split('@')[0] },
+            update: {},
+            select: { id: true },
+          })
+          dbId = db.id
+        } catch { /* DB unavailable — use email as fallback id */ }
+        return { id: dbId, email: credentials.email, name: credentials.email.split('@')[0] }
       },
     })
   )
@@ -61,64 +73,68 @@ export const authOptions: NextAuthOptions = {
   callbacks: {
     async signIn({ user }) {
       if (!user.email) return false
-      // DB sync is best-effort — never block sign-in (handles Neon cold-start timeouts)
-      Promise.resolve().then(async () => {
-        try {
-          const existing = await prisma.user.findUnique({
-            where:  { email: user.email! },
-            select: { id: true },
-          })
-          await prisma.user.upsert({
-            where:  { email: user.email! },
-            create: { email: user.email!, name: user.name ?? null, image: user.image ?? null },
-            update: { name: user.name ?? undefined, image: user.image ?? undefined },
-          })
-          if (!existing && user.email) {
-            sendWelcomeEmail(user.email, user.name ?? '').catch(console.error)
-          }
-        } catch (err) {
-          console.error('[auth signIn upsert]', err)
+      // Await the DB upsert — fire-and-forget risks silent failure on Neon cold-start.
+      // If it fails, we log and still allow sign-in (non-blocking for UX).
+      try {
+        const existing = await prisma.user.findUnique({
+          where:  { email: user.email },
+          select: { id: true },
+        })
+        await prisma.user.upsert({
+          where:  { email: user.email },
+          create: { email: user.email, name: user.name ?? null, image: user.image ?? null },
+          update: { name: user.name ?? undefined, image: user.image ?? undefined },
+        })
+        if (!existing && user.email) {
+          sendWelcomeEmail(user.email, user.name ?? '').catch(console.error)
         }
-      })
+      } catch (err) {
+        console.error('[auth signIn upsert]', err)
+      }
       return true
     },
 
     async jwt({ token, user, trigger, session: newSession }) {
       try {
         if (user?.email) {
-          // Admin bypass — owner email always gets enterprise, no DB required
+          // Always persist email in token so session callback can re-derive isAdmin
+          // even on hourly refreshes when user object is not present.
+          token.email = user.email
+          // Always look up DB id by email (authoritative) so token.sub never goes stale
+          // across DB resets or re-migrations.
+          try {
+            const dbUser = await prisma.user.findUnique({
+              where:  { email: user.email },
+              select: { id: true, plan: true },
+            })
+            if (dbUser) {
+              token.sub  = dbUser.id
+              // Admin emails always keep enterprise regardless of DB plan
+              token.plan = ADMIN_EMAILS.has(user.email) ? 'enterprise' : (dbUser.plan ?? 'free')
+            }
+          } catch { /* non-fatal — DB may be cold-starting */ }
           if (ADMIN_EMAILS.has(user.email)) {
             token.plan    = 'enterprise'
             token.isAdmin = true
-          } else {
-            try {
-              const dbUser = await prisma.user.findUnique({
-                where:  { email: user.email },
-                select: { id: true, plan: true },
-              })
-              if (dbUser) { token.sub = dbUser.id; token.plan = dbUser.plan ?? 'free' }
-            } catch { /* non-fatal — DB may be cold-starting */ }
-            if (!token.plan) token.plan = 'free'
           }
-          // Best-effort: sync DB id (non-blocking for admin)
-          if (!token.sub) {
-            try {
-              const dbUser = await prisma.user.findUnique({
-                where:  { email: user.email },
-                select: { id: true },
-              })
-              if (dbUser) token.sub = dbUser.id
-            } catch { /* non-fatal */ }
-          }
+          if (!token.plan) token.plan = 'free'
         }
 
-        // Hourly token refresh — re-read plan from DB (admin emails stay enterprise)
-        if (!user && token.sub && !trigger) {
+        // Hourly token refresh — re-sync token.sub from DB by email to catch id drift
+        if (!user && !trigger) {
           const email = token.email as string | undefined
           if (email && ADMIN_EMAILS.has(email)) {
             token.plan    = 'enterprise'
             token.isAdmin = true
-          } else {
+            // Re-sync sub by email in case DB was reset
+            try {
+              const dbUser = await prisma.user.findUnique({
+                where:  { email },
+                select: { id: true },
+              })
+              if (dbUser) token.sub = dbUser.id
+            } catch { /* non-fatal */ }
+          } else if (token.sub) {
             try {
               const dbUser = await prisma.user.findUnique({
                 where:  { id: token.sub as string },
@@ -147,9 +163,17 @@ export const authOptions: NextAuthOptions = {
     async session({ session, token }) {
       if (session.user) {
         const u = session.user as { id?: string; plan?: string; isAdmin?: boolean }
-        u.id      = token.sub as string | undefined
-        u.plan    = (token.plan as string) ?? 'free'
-        u.isAdmin = (token.isAdmin as boolean) ?? false
+        u.id = token.sub as string | undefined
+        // Re-derive isAdmin from email on every session read.
+        // This handles stale JWTs that predate the isAdmin field — as long as
+        // session.user.email is present (always true for OAuth), admin bypass works.
+        const email =
+          (token.email as string | undefined) ??
+          (session.user.email ?? '')
+        const derivedAdmin = email ? ADMIN_EMAILS.has(email) : false
+        u.isAdmin = derivedAdmin || ((token.isAdmin as boolean) ?? false)
+        // Admin users always get enterprise plan
+        u.plan = u.isAdmin ? 'enterprise' : ((token.plan as string) ?? 'free')
       }
       return session
     },

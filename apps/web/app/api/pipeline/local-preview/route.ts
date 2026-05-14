@@ -186,7 +186,16 @@ async function startPreviewServer(previewDir: string, appRoot: string, port: num
   const url = `http://127.0.0.1:${port}`
   const nextBin = path.join(appRoot, 'node_modules', 'next', 'dist', 'bin', 'next')
   const logPath = path.join(previewDir, 'nexus-local-preview.log')
+
+  // Ensure the log file exists before spawning so createWriteStream has a valid fd on Windows.
+  // On Windows, passing a WriteStream whose fd is null to stdio throws ERR_INVALID_ARG_VALUE.
+  // We open the stream and wait for the 'open' event before spawning the child process.
   const out = createWriteStream(logPath, { flags: 'a' })
+  await new Promise<void>((resolve, reject) => {
+    out.once('open', () => resolve())
+    out.once('error', reject)
+  })
+
   const child = spawn(process.execPath, [nextBin, 'dev', '-p', String(port), '-H', '127.0.0.1'], {
     cwd: previewDir,
     detached: true,

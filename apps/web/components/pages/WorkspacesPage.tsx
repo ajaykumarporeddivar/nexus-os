@@ -2,6 +2,9 @@
 
 import { useState } from 'react'
 import { useWorkspace, type Workspace } from '@/lib/workspaceContext'
+import dynamic from 'next/dynamic'
+
+const OnboardingWizard = dynamic(() => import('@/components/OnboardingWizard'), { ssr: false })
 
 const TYPES    = ['client', 'feature', 'internal', 'personal'] as const
 const COLORS   = ['acid', 'violet', 'blue', 'amber', 'red', 'default'] as const
@@ -124,11 +127,12 @@ function WorkspaceForm({
 }
 
 export default function WorkspacesPage() {
-  const { workspaces, active, setActive, createWorkspace, updateWorkspace, deleteWorkspace, isLoading } = useWorkspace()
-  const [creating, setCreating]   = useState(false)
-  const [editingId, setEditingId] = useState<string | null>(null)
-  const [saving, setSaving]       = useState(false)
-  const [error, setError]         = useState('')
+  const { workspaces, active, setActive, createWorkspace, updateWorkspace, deleteWorkspace, isLoading, refresh } = useWorkspace()
+  const [creating,    setCreating]    = useState(false)
+  const [wizardOpen,  setWizardOpen]  = useState(false)
+  const [editingId,   setEditingId]   = useState<string | null>(null)
+  const [saving,      setSaving]      = useState(false)
+  const [error,       setError]       = useState('')
 
   const handleCreate = async (form: typeof EMPTY_FORM) => {
     setSaving(true); setError('')
@@ -139,6 +143,12 @@ export default function WorkspacesPage() {
     } catch (e) {
       setError((e as Error).message)
     } finally { setSaving(false) }
+  }
+
+  const handleWizardComplete = async (ws: { id: string; name: string }) => {
+    setWizardOpen(false)
+    // Refresh workspace list so newly created workspace appears immediately
+    await refresh()
   }
 
   const handleUpdate = async (id: string, form: typeof EMPTY_FORM) => {
@@ -158,6 +168,13 @@ export default function WorkspacesPage() {
 
   return (
     <div className="max-w-3xl mx-auto px-6 py-10 space-y-6">
+      {wizardOpen && (
+        <OnboardingWizard
+          onComplete={handleWizardComplete}
+          onCancel={() => setWizardOpen(false)}
+        />
+      )}
+
       <div className="flex items-center justify-between">
         <div>
           <p className="sec-label mb-1">Workspaces</p>
@@ -165,7 +182,7 @@ export default function WorkspacesPage() {
           <p className="text-sm text-ink3 mt-1">Organise clients, features, and projects. Active workspace context flows into every AI tool.</p>
         </div>
         {!creating && (
-          <button onClick={() => setCreating(true)} className="btn btn-primary text-sm">
+          <button onClick={() => setWizardOpen(true)} className="btn btn-primary text-sm">
             + New workspace
           </button>
         )}
@@ -199,9 +216,8 @@ export default function WorkspacesPage() {
             ].map(tpl => (
               <button
                 key={tpl.name}
-                onClick={() => { setCreating(true); setTimeout(() => {}, 0) }}
+                onClick={() => setWizardOpen(true)}
                 className="card text-left hover:border-acid/40 hover:bg-acid/3 transition-all group"
-                data-template={JSON.stringify(tpl)}
               >
                 <p className="text-2xl mb-2">{tpl.emoji}</p>
                 <p className="text-sm font-semibold group-hover:text-acid transition-colors">{tpl.name}</p>
@@ -210,7 +226,7 @@ export default function WorkspacesPage() {
             ))}
           </div>
           <div className="text-center">
-            <button onClick={() => setCreating(true)} className="btn btn-primary text-xs">+ Create from scratch</button>
+            <button onClick={() => setWizardOpen(true)} className="btn btn-primary text-xs">+ Create from scratch</button>
           </div>
         </div>
       ) : (

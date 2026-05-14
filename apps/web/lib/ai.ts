@@ -13,6 +13,7 @@
  */
 
 import Anthropic from '@anthropic-ai/sdk'
+import { recordProviderRequest, recordProviderRateLimit, shouldSkipProvider } from './quotaTracker'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -28,8 +29,8 @@ export const AI_MODELS = {
 const GROQ_URL   = 'https://api.groq.com/openai/v1/chat/completions'
 const GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/models'
 
-const GEMINI_COOLDOWN_MS = 61_000  // free tier resets every 60s
-const GROQ_COOLDOWN_MS   = 31_000  // groq free tier is per-minute
+const GEMINI_COOLDOWN_MS = 62_000  // free tier resets every 60s; extra 2s buffer
+const GROQ_COOLDOWN_MS   = 32_000  // groq free tier is per-minute; extra 1s buffer
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -98,27 +99,173 @@ function orderedReadyKeys(keys: string[], startIndex: number): string[] {
     .filter(k => !isKeyCooledDown(k))
 }
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+// ─── Error Classifier (Hermes-inspired) ──────────────────────────────────────
+//
+// Four error classes drive distinct retry strategies:
+//   QUOTA_EXHAUSTED   — monthly/daily quota gone; skip provider entirely this request
+//   TOKEN_QUOTA_EXCEEDED — per-request token limit hit; skip ALL retries immediately
+//   RETRYABLE         — transient (timeout, 503, network blip); retry same provider
+//   HARD_FAIL         — auth failure, bad request, model gone; throw immediately
+//
+// This replaces the previous flat ANTHROPIC_FALLBACK string list with structured
+// triage so TOKEN_QUOTA_EXCEEDED never wastes time on downstream provider calls.
 
-const ANTHROPIC_FALLBACK = [
-  'credit balance', 'quota', 'billing', 'overload', 'rate_limit', 'too many requests',
-  'connection error', 'connection timeout', 'econnrefused', 'etimedout', 'enotfound',
-  'fetch failed', 'network', 'socket', 'upstream',
+export type ErrorClass = 'QUOTA_EXHAUSTED' | 'TOKEN_QUOTA_EXCEEDED' | 'RETRYABLE' | 'HARD_FAIL'
+
+const TOKEN_QUOTA_PATTERNS = [
+  'token_quota_exceeded',   // NEXUS OS internal tag
+  'context_length_exceeded',
+  'maximum context length',
+  'input too long',
+  'prompt is too long',
+  'exceeds the maximum',
+  'tokens per',             // "N tokens per minute" quota messages
+  'tpm',                    // tokens-per-minute abbreviation
+  'maximum token',
 ]
-function isAnthropicFallback(msg: string): boolean {
+
+const QUOTA_EXHAUSTED_PATTERNS = [
+  'credit balance',
+  'insufficient credits',
+  'billing',
+  'quota exceeded',
+  'daily quota',
+  'monthly quota',
+  'rate_limit_exceeded',
+  'overloaded',
+  'resource exhausted',
+  'too many requests',
+  'rate limit',
+  'quota',
+]
+
+const RETRYABLE_PATTERNS = [
+  'connection error',
+  'connection timeout',
+  'econnrefused',
+  'etimedout',
+  'enotfound',
+  'fetch failed',
+  'network',
+  'socket',
+  'upstream',
+  'overload',
+  'service unavailable',
+  'bad gateway',
+  'gateway timeout',
+]
+
+export function classifyError(msg: string, status?: number): ErrorClass {
   const l = msg.toLowerCase()
-  return ANTHROPIC_FALLBACK.some(t => l.includes(t))
+
+  // TOKEN_QUOTA_EXCEEDED is highest priority — check first to skip all retries
+  if (TOKEN_QUOTA_PATTERNS.some(p => l.includes(p))) return 'TOKEN_QUOTA_EXCEEDED'
+
+  // HTTP 401/403 = auth failures → HARD_FAIL immediately
+  if (status === 401 || status === 403) return 'HARD_FAIL'
+
+  // HTTP 400/404 on model endpoints = model gone or bad request → HARD_FAIL
+  if (status === 400 || status === 404) return 'HARD_FAIL'
+
+  // HTTP 429 = rate limit → QUOTA_EXHAUSTED (try next provider/key)
+  if (status === 429) return 'QUOTA_EXHAUSTED'
+
+  // 5xx except 503 transient = likely quota/overload → QUOTA_EXHAUSTED
+  if (status !== undefined && status >= 500 && status !== 503) return 'QUOTA_EXHAUSTED'
+
+  // 503 = service temporarily unavailable → RETRYABLE
+  if (status === 503) return 'RETRYABLE'
+
+  // Pattern-based classification on message text
+  if (QUOTA_EXHAUSTED_PATTERNS.some(p => l.includes(p))) return 'QUOTA_EXHAUSTED'
+  if (RETRYABLE_PATTERNS.some(p => l.includes(p))) return 'RETRYABLE'
+
+  // Unknown errors — treat as HARD_FAIL to surface them rather than silently swallow
+  return 'HARD_FAIL'
 }
 
+/** True when Anthropic should fall through to the next provider */
+function isAnthropicFallback(msg: string, status?: number): boolean {
+  const cls = classifyError(msg, status)
+  // Never fall through on TOKEN_QUOTA_EXCEEDED — throw immediately so the caller sees it
+  if (cls === 'TOKEN_QUOTA_EXCEEDED') return false
+  return cls === 'QUOTA_EXHAUSTED' || cls === 'RETRYABLE'
+}
+
+/** True when Gemini should fall through to the next provider */
 function isGeminiFallback(msg: string, status?: number): boolean {
-  const l = msg.toLowerCase()
-  return status === 404 || status === 429 || (status ?? 0) >= 500 ||
-    l.includes('not found') ||
-    l.includes('no longer available') ||
-    l.includes('not supported') ||
-    l.includes('quota') ||
-    l.includes('rate limit') ||
-    l.includes('resource exhausted')
+  const cls = classifyError(msg, status)
+  if (cls === 'TOKEN_QUOTA_EXCEEDED') return false
+  return cls === 'QUOTA_EXHAUSTED' || cls === 'RETRYABLE'
+}
+
+// ─── Schema Normalizer (Hermes-inspired) ─────────────────────────────────────
+//
+// Anthropic rejects tool schemas that contain anyOf with null unions, top-level
+// oneOf, or allOf patterns. This utility strips/normalizes those patterns before
+// sending to the Anthropic API. Zero-cost on schemas that are already valid.
+
+type JSONSchemaNode = Record<string, unknown>
+
+function normalizeSchemaNode(node: JSONSchemaNode): JSONSchemaNode {
+  const result: JSONSchemaNode = { ...node }
+
+  // Collapse anyOf: [{"type":"X"}, {"type":"null"}]  →  {"type":"X"}
+  if (Array.isArray(result.anyOf)) {
+    const nonNull = (result.anyOf as JSONSchemaNode[]).filter(
+      s => s.type !== 'null' && s !== null,
+    )
+    if (nonNull.length === 1) {
+      const unwrapped = normalizeSchemaNode(nonNull[0])
+      delete result.anyOf
+      Object.assign(result, unwrapped)
+    } else if (nonNull.length === 0) {
+      delete result.anyOf
+    } else {
+      result.anyOf = nonNull.map(normalizeSchemaNode)
+    }
+  }
+
+  // Strip top-level oneOf / allOf (Anthropic doesn't support them)
+  if (Array.isArray(result.oneOf)) {
+    const first = (result.oneOf as JSONSchemaNode[])[0]
+    if (first) Object.assign(result, normalizeSchemaNode(first))
+    delete result.oneOf
+  }
+  if (Array.isArray(result.allOf)) {
+    // Merge all allOf schemas into result properties
+    for (const schema of result.allOf as JSONSchemaNode[]) {
+      const normalized = normalizeSchemaNode(schema)
+      if (normalized.properties) {
+        result.properties = { ...(result.properties as object ?? {}), ...(normalized.properties as object) }
+      }
+    }
+    delete result.allOf
+  }
+
+  // Recursively normalize nested properties
+  if (result.properties && typeof result.properties === 'object') {
+    const props = result.properties as Record<string, JSONSchemaNode>
+    result.properties = Object.fromEntries(
+      Object.entries(props).map(([k, v]) => [k, normalizeSchemaNode(v)]),
+    )
+  }
+
+  // Recursively normalize array items
+  if (result.items && typeof result.items === 'object' && !Array.isArray(result.items)) {
+    result.items = normalizeSchemaNode(result.items as JSONSchemaNode)
+  }
+
+  return result
+}
+
+/**
+ * Normalize an OpenAI-style tool schema for Anthropic compatibility.
+ * Strips anyOf/null unions, oneOf, and allOf patterns that Anthropic rejects.
+ * Safe to call on already-valid schemas — returns them unchanged.
+ */
+export function normalizeToolSchema(schema: JSONSchemaNode): JSONSchemaNode {
+  return normalizeSchemaNode(schema)
 }
 
 // ─── Gemini helpers ───────────────────────────────────────────────────────────
@@ -267,10 +414,17 @@ async function groqComplete(
     return { text: data.choices?.[0]?.message?.content ?? '', key }
   }
 
-  // All keys exhausted — wait 18s and retry once before failing
+  // All keys exhausted — try the fastest model immediately before sleeping.
+  // llama-3.1-8b-instant uses a separate TPM bucket so it may succeed when 70b is fully rate-limited.
+  if (retryOnExhaust && model !== AI_MODELS.fallbackFast) {
+    console.warn('[ai] All Groq 70b keys rate-limited — retrying immediately with 8b-instant')
+    return groqComplete(AI_MODELS.fallbackFast, Math.min(cap, 4096), system, messages, false)
+  }
+
+  // True last resort: short 8s sleep then one final attempt (was 18s — reduced to 8s)
   if (retryOnExhaust) {
-    console.warn('[ai] All Groq keys rate-limited — waiting 18s then retrying')
-    await sleep(18000)
+    console.warn('[ai] All Groq keys rate-limited — short 8s cooldown then final retry')
+    await sleep(8000)
     return groqComplete(model, cap, system, messages, false)
   }
 
@@ -336,35 +490,45 @@ export async function aiComplete(opts: AICompleteOptions): Promise<AICompleteRes
   let lastProviderError = ''
 
   // 1️⃣ Anthropic
-  if (anthropicKey) {
+  if (anthropicKey && !shouldSkipProvider('anthropic')) {
     try {
       const client = new Anthropic({ apiKey: anthropicKey })
       const res    = await client.messages.create({
         model: anthropicModel, max_tokens: maxTokens, system, messages,
       })
+      const usedTokens = res.usage.input_tokens + res.usage.output_tokens
+      recordProviderRequest('anthropic', usedTokens)
       const text = (res.content[0] as { text: string }).text
-      return { text, provider: 'anthropic', model: anthropicModel,
-               tokens: res.usage.input_tokens + res.usage.output_tokens }
+      return { text, provider: 'anthropic', model: anthropicModel, tokens: usedTokens }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
+      const cls = classifyError(msg)
+      if (cls === 'TOKEN_QUOTA_EXCEEDED') throw Object.assign(err instanceof Error ? err : new Error(msg), { code: 'TOKEN_QUOTA_EXCEEDED' })
+      if (cls === 'QUOTA_EXHAUSTED') recordProviderRateLimit('anthropic')
       if (!isAnthropicFallback(msg)) throw err
       lastProviderError = msg
       console.warn('[ai] Anthropic → Gemini fallback:', msg.slice(0, 100))
     }
+  } else if (anthropicKey && shouldSkipProvider('anthropic')) {
+    console.info('[ai] Anthropic pre-emptively skipped (near quota limit) — routing to Gemini')
   }
 
   // 2️⃣ Gemini (up to 51 keys with cooldown-aware rotation)
-  if (getGeminiKeys().length > 0) {
+  if (getGeminiKeys().length > 0 && !shouldSkipProvider('gemini')) {
     try {
       const { text, model: gModel } = await geminiComplete(system, messages, maxTokens, fastMode)
+      recordProviderRequest('gemini', Math.ceil(text.length / 4))
       return { text, provider: 'gemini', model: gModel }
     } catch (err) {
       const e = err as { status?: number; message?: string }
       const shouldFallback = isGeminiFallback(e.message ?? '', e.status)
+      if (e.status === 429) recordProviderRateLimit('gemini')
       if (!shouldFallback) throw err
       lastProviderError = e.message ?? lastProviderError
       console.warn('[ai] Gemini → Groq fallback:', String(e.message).slice(0, 100))
     }
+  } else if (getGeminiKeys().length > 0 && shouldSkipProvider('gemini')) {
+    console.info('[ai] Gemini pre-emptively skipped (near quota limit) — routing to Groq')
   }
 
   // 3️⃣ Groq (up to 51 keys with cooldown-aware rotation)
@@ -380,9 +544,11 @@ export async function aiComplete(opts: AICompleteOptions): Promise<AICompleteRes
   try {
     const groqModel = fastMode ? AI_MODELS.fallbackFast : AI_MODELS.fallback
     const { text }  = await groqComplete(groqModel, groqCap, system, messages)
+    recordProviderRequest('groq', Math.ceil(text.length / 4))
     return { text, provider: 'groq', model: groqModel }
   } catch {
     const { text } = await groqComplete(AI_MODELS.fallbackFast, Math.min(groqCap, 4096), system, messages)
+    recordProviderRequest('groq', Math.ceil(text.length / 4))
     return { text, provider: 'groq', model: AI_MODELS.fallbackFast }
   }
 }
@@ -415,6 +581,8 @@ export async function* aiStream(opts: AICompleteOptions): AsyncGenerator<string>
         return
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)
+        const cls = classifyError(msg)
+        if (cls === 'TOKEN_QUOTA_EXCEEDED') throw Object.assign(err instanceof Error ? err : new Error(msg), { code: 'TOKEN_QUOTA_EXCEEDED' })
         if (!isAnthropicFallback(msg)) throw err
         lastProviderError = msg
         errored = true
@@ -423,6 +591,8 @@ export async function* aiStream(opts: AICompleteOptions): AsyncGenerator<string>
       if (!errored) return
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
+      const cls = classifyError(msg)
+      if (cls === 'TOKEN_QUOTA_EXCEEDED') throw Object.assign(err instanceof Error ? err : new Error(msg), { code: 'TOKEN_QUOTA_EXCEEDED' })
       if (!isAnthropicFallback(msg)) throw err
       lastProviderError = msg
       console.warn('[ai] Anthropic outer catch → fallback:', msg.slice(0, 100))

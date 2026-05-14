@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { type Prisma } from '@prisma/client'
 import { exploreRatio } from '@/lib/crCompute'
 import { aiComplete } from '@/lib/ai'
+import { computeTimingAdvantage } from '@/lib/timingAdvantage'
 
 const KEEP_TOP = 12
 
@@ -62,6 +64,19 @@ Spread across niches: 2-3 AI-powered tools, 2-3 automation/workflow tools, 2-3 c
     if (!retryMatch) throw new Error('AI returned malformed JSON twice')
     return JSON.parse(retryMatch[0]) as MicroSaaSOpportunity[]
   }
+}
+
+// ─── Workspace-scoped idea fetch helper ──────────────────────────────────────
+
+async function getWorkspaceIdeas(workspaceId: string, category: string | null, limit: number) {
+  const { prisma: db } = await import('@/lib/prisma')
+  const where: Record<string, unknown> = { workspaceId, status: { in: ['fresh', 'bookmarked'] } }
+  if (category) where.niche = category
+  return db.workspaceIdea.findMany({
+    where:   where as Prisma.WorkspaceIdeaWhereInput,
+    orderBy: [{ opportunityScore: 'desc' }, { createdAt: 'desc' }],
+    take:    limit,
+  })
 }
 
 // GET — return latest batch, optionally filtered
@@ -138,9 +153,54 @@ function fallbackOpportunities(): MicroSaaSOpportunity[] {
 
 export async function GET(req: NextRequest) {
   const { searchParams } = req.nextUrl
-  const category = searchParams.get('category')
-  const limit    = Math.min(Number(searchParams.get('limit') ?? 20), 50)
+  const category  = searchParams.get('category')
+  const limit     = Math.min(Number(searchParams.get('limit') ?? 20), 50)
+  const scope     = searchParams.get('scope') ?? 'global'   // 'global' | 'workspace'
+  const wsId      = searchParams.get('ws')                   // workspaceId for scope=workspace
 
+  // ── Workspace-scoped feed (authenticated, owned workspace only) ────────────
+  if (scope === 'workspace' && wsId) {
+    try {
+      const { getServerSession } = await import('next-auth')
+      const { authOptions }      = await import('@/lib/authOptions')
+      const session = await getServerSession(authOptions)
+      const userId  = (session?.user as { id?: string } | null)?.id ?? null
+      if (!userId) {
+        return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 })
+      }
+      // Verify ownership
+      const ws = await prisma.workspace.findFirst({
+        where: { id: wsId, ownerId: userId },
+        select: { id: true, name: true },
+      })
+      if (!ws) {
+        return NextResponse.json({ ok: false, error: 'Workspace not found' }, { status: 404 })
+      }
+      const ideas = await getWorkspaceIdeas(wsId, category, limit)
+      const profile = await prisma.workspaceIntelligenceProfile.findUnique({
+        where:  { workspaceId: wsId },
+        select: { lastGeneratedAt: true, refreshCadenceHours: true, primaryIndustry: true },
+      })
+      return NextResponse.json({
+        ok:   true,
+        data: {
+          scope:       'workspace',
+          workspaceId: wsId,
+          items:       ideas,
+          lastFetched: profile?.lastGeneratedAt ?? null,
+          nextFetch:   profile?.lastGeneratedAt
+            ? new Date(profile.lastGeneratedAt.getTime() + (profile.refreshCadenceHours ?? 24) * 3600000).toISOString()
+            : null,
+          industry:    profile?.primaryIndustry ?? 'unconfigured',
+        },
+      })
+    } catch (err) {
+      console.error('[trending GET workspace]', err)
+      return NextResponse.json({ ok: false, error: 'Failed to fetch workspace ideas' }, { status: 500 })
+    }
+  }
+
+  // ── Global feed (original behavior, unchanged) ─────────────────────────────
   try {
     const latest = await prisma.trendingItem.findFirst({
       orderBy: { fetchedAt: 'desc' },
@@ -239,6 +299,20 @@ export async function POST(req: NextRequest) {
     }
     console.log(`[trending] got ${opportunities.length} opportunities`)
 
+    // Pre-compute per-niche timing advantage in parallel before the synchronous map.
+    const uniqueNiches = [...new Set(opportunities.slice(0, KEEP_TOP).map(op => String(op.niche ?? 'b2b')))]
+    const timingAdvMap: Record<string, number> = {}
+    await Promise.all(
+      uniqueNiches.map(async niche => {
+        try {
+          const t = await computeTimingAdvantage([niche])
+          timingAdvMap[niche] = t.timingAdv
+        } catch {
+          timingAdvMap[niche] = 0.5
+        }
+      })
+    )
+
     const rows = opportunities.slice(0, KEEP_TOP).map((op, idx) => {
       const niche          = String(op.niche ?? 'b2b')
       const nicheCount     = nicheCountMap[niche] ?? 0
@@ -261,8 +335,8 @@ export async function POST(req: NextRequest) {
         ? String(op.trendReason).slice(0, 500)
         : `${niche} segment underserved, ${op.revenueModel ?? 'recurring revenue'} viable`
 
-      // Timing advantage placeholder: 0.5 neutral until field consensus data available.
-      const timingAdv = 0.5
+      // Timing advantage: pre-computed per unique niche before this map (see timingAdvMap above).
+      const timingAdv = timingAdvMap[niche] ?? 0.5
 
       return {
         title:           String(op.title      ?? '').slice(0, 300),

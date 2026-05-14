@@ -1,5 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { aiComplete } from '@/lib/ai'
+import { compressContext, scrubCompressionFences } from '@/lib/contextCompressor'
 import { NextRequest, NextResponse } from 'next/server'
 import { checkTokenQuota, incrementTokenQuota } from '@/lib/quota'
 import { checkRateLimit } from '@/lib/ratelimit'
@@ -50,7 +51,7 @@ export async function POST(req: NextRequest) {
     const tokenQuota = await checkTokenQuota(sid, plan, isAdmin)
     if (!tokenQuota.ok) {
       return NextResponse.json(
-        { ok: false, error: `Monthly token limit reached (${tokenQuota.used.toLocaleString()}/${tokenQuota.limit.toLocaleString()} tokens). Upgrade to Agency for 100K tokens/month.` },
+        { ok: false, error: `Monthly token limit reached (${tokenQuota.used.toLocaleString()}/${tokenQuota.limit.toLocaleString()} tokens). Upgrade to Agency for unlimited tokens.` },
         { status: 429 }
       )
     }
@@ -73,12 +74,22 @@ export async function POST(req: NextRequest) {
       modelUsed = MODEL
     } else {
       // Server key — Anthropic primary + Groq fallback
+      // Apply context compression when the userMessage is large (FORGE pipeline
+      // passes all previous agent outputs; this can exceed 50% of context window).
+      const rawMessages: { role: 'user' | 'assistant'; content: string }[] = [
+        { role: 'user', content: safeMessage },
+      ]
+      const { messages: compressedMessages, compressed, savedTokens } =
+        await compressContext(rawMessages, MODEL, safeSystem)
+      if (compressed) {
+        console.info(`[once] Context compressed — saved ~${savedTokens} tokens`)
+      }
       const result = await aiComplete({
         system:    safeSystem,
-        messages:  [{ role: 'user', content: safeMessage }],
+        messages:  compressedMessages,
         maxTokens: 8096,
       })
-      content   = result.text
+      content   = scrubCompressionFences(result.text)
       tokens    = result.tokens ?? Math.ceil(result.text.length / 4)
       modelUsed = result.model
     }

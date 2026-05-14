@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { getProviderSummary } from '@/lib/quotaTracker'
 
 export const dynamic = 'force-dynamic'
 
@@ -33,6 +34,7 @@ export async function GET() {
         appsDeployed: successRuns,
         agentsPerRun: 19,
         avgBuildTime: '8–14 min',
+        providerQuota: getProviderSummary(),
       },
     })
   } catch {

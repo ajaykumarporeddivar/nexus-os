@@ -11,7 +11,7 @@ const ALL_PAGES = [
   'journey', 'client-delivery', 'overview', 'reasoning', 'forge',
   'runtime', 'dashboard', 'vault', 'agent-editor', 'audit',
   'trending', 'workspaces', 'pricing', 'deploy', 'build', 'pipeline', 'evolve',
-  'higgs-ai', 'keys',
+  'higgs-ai', 'keys', 'admin', 'client-agents', 'image-prompts', 'video-prompts',
 ] as const
 
 export type PageId = typeof ALL_PAGES[number]
@@ -135,6 +135,20 @@ const GROUPS: NavGroup[] = [
         isNew: true,
       },
       {
+        id: 'image-prompts',
+        label: 'Image Prompts',
+        icon: '⬡',
+        description: 'AI-generated brand visual prompts (JSON)',
+        isNew: true,
+      },
+      {
+        id: 'video-prompts',
+        label: 'Video Prompts',
+        icon: '◉',
+        description: '8-sec UGC ad prompts for Nano Banana & free AI video',
+        isNew: true,
+      },
+      {
         id: 'vault',
         label: 'Prompt Vault',
         icon: '◈',
@@ -156,6 +170,13 @@ const GROUPS: NavGroup[] = [
   {
     label: 'Configure',
     items: [
+      {
+        id: 'client-agents',
+        label: 'Client Agents',
+        icon: '🤖',
+        description: '6 AI employees — run & deliver on schedule',
+        isNew: true,
+      },
       {
         id: 'workspaces',
         label: 'Workspaces',
@@ -192,6 +213,13 @@ const GROUPS: NavGroup[] = [
         label: 'API Keys',
         icon: '⚿',
         description: 'Manage your Anthropic API keys',
+      },
+      {
+        id: 'admin',
+        label: 'Admin',
+        icon: '⬡',
+        description: 'Platform stats, users & scheduler',
+        minPlan: 'admin',   // special sentinel — hidden entirely for non-admins
       },
     ],
   },
@@ -473,7 +501,9 @@ export default function Nav({
             )}
 
             {group.items.map(item => {
-              const locked = !!(item.minPlan && rank < planRank(item.minPlan))
+              // Admin-sentinel: hide entirely for non-admin users
+              if (item.minPlan === 'admin' && !isAdmin) return null
+              const locked = !!(item.minPlan && item.minPlan !== 'admin' && rank < planRank(item.minPlan))
               return (
                 <div key={item.id}>
                   <NavItem

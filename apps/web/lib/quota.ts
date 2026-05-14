@@ -66,13 +66,13 @@ export const PLAN_RUN_LIMITS: Record<string, number> = {
   enterprise: Infinity,
 }
 
-// Token limits per month — a 21-agent pipeline run uses ~25–35K tokens.
-// Free (3 runs) → 3 × 35K = ~105K needed; set to 150K to give headroom.
-// Starter (20 runs) → 20 × 35K = ~700K needed.
-// Agency → unlimited.
+// Token limits per month — a 22-agent pipeline run uses ~55–80K tokens.
+// Free (3 runs) → 3 × 80K = ~240K needed; set to 300K with buffer.
+// Starter (20 runs) → 20 × 80K = ~1.6M needed.
+// Agency / Enterprise → unlimited.
 export const PLAN_TOKEN_LIMITS: Record<string, number> = {
-  free:       150_000,
-  starter:    750_000,
+  free:       300_000,
+  starter:    2_000_000,
   agency:     Infinity,
   enterprise: Infinity,
 }

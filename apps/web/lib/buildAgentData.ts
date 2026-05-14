@@ -12,15 +12,16 @@ export interface BuildAgent {
 
 export const BUILD_AGENTS: BuildAgent[] = [
   { id: 'scaffold',     name: 'SCAFFOLD',      icon: '⚙',  role: 'package.json · next.config.js · tailwind · postcss',        files: ['package.json','next.config.js','tailwind.config.js','tsconfig.json','postcss.config.js'] },
-  { id: 'mock-data',    name: 'MOCK DATA',      icon: '◈',  role: 'TypeScript constants — no DB, 20+ realistic records',        files: ['src/lib/types.ts','src/lib/data.ts'] },
+  { id: 'mock-data',    name: 'MOCK DATA',      icon: '◈',  role: 'TypeScript constants — no DB, 20+ realistic records',        files: ['src/lib/data.ts','src/lib/types.ts'] },
   { id: 'ui-core',      name: 'UI CORE',        icon: '◻',  role: 'Design system · layout · charts · shared components',       files: ['src/app/globals.css','src/app/layout.tsx','src/components/ui.tsx','src/components/charts.tsx','src/components/layout.tsx'] },
   { id: 'landing',      name: 'LANDING',        icon: '▣',  role: 'Hero · features · pricing · CTA — full marketing homepage', files: ['src/app/page.tsx'] },
   { id: 'dashboard',    name: 'DASHBOARD',      icon: '▦',  role: 'KPIs · SVG charts · data table · activity feed',            files: ['src/app/dashboard/page.tsx','src/app/dashboard/layout.tsx'] },
   { id: 'features',     name: 'FEATURES',       icon: '⊕',  role: '3 MVP pain-point workflows with real interactive UI',      files: ['src/app/dashboard/[feature]/page.tsx'] },
   { id: 'api',          name: 'API',            icon: '⟨⟩', role: 'Route handlers · health · data · search — mock JSON',       files: ['src/app/api/health/route.ts','src/app/api/data/route.ts','src/app/api/search/route.ts'] },
-  { id: 'interactions', name: 'INTERACTIONS',   icon: '↔',  role: 'Forms · modals · toasts · command palette — client-side',  files: ['src/components/forms.tsx','src/components/modals.tsx','src/hooks/useApp.ts'] },
+  { id: 'interactions', name: 'INTERACTIONS',   icon: '↔',  role: 'Forms · modals · toasts · command palette — client-side',  files: ['src/hooks/useApp.ts','src/components/modals.tsx','src/components/forms.tsx'] },
   { id: 'shell',        name: 'SHELL',          icon: '✓',  role: 'error.tsx · not-found.tsx · loading.tsx',                  files: ['src/app/error.tsx','src/app/not-found.tsx','src/app/loading.tsx'] },
   { id: 'repair',       name: 'REPAIR',         icon: '⚡',  role: 'QA pass — fix imports · add missing files · ensure build', files: [] },
+  { id: 'docs',         name: 'DOCS',           icon: '📄',  role: 'README · API reference · component guide · deployment steps', files: ['README.md','src/lib/README-components.md'] },
 ]
 
 // ─── File parser — handles all Claude/Groq/Gemini output formats ─────────────
@@ -41,7 +42,9 @@ export function parseAgentFiles(output: string): Record<string, string> {
   let m: RegExpExecArray | null
 
   // ── Pattern 1 (primary contract): FILE: path\n<<<\ncontent\n>>> ──────────────
-  const re1 = /FILE:\s*\*{0,2}`?([^\n`*<>]+?)`?\*{0,2}\s*\n\s*<<<\s*\n([\s\S]*?)(?:^|\n)>>>/gm
+  // Allow optional whitespace/blank lines between FILE: line and <<<, and between
+  // last content line and >>>. Also allow >>> at end-of-string (no trailing newline).
+  const re1 = /FILE:\s*\*{0,2}`?([^\n`*]+?)`?\*{0,2}\s*\n[\s]*<<<[ \t]*\n([\s\S]*?)(?:\n[ \t]*>>>|>>>)[ \t]*(?:\n|$)/gm
   while ((m = re1.exec(output)) !== null) {
     const p = cleanPath(m[1])
     if (isValid(p)) files[p] = m[2].trimEnd()
@@ -191,6 +194,13 @@ ${snippet('src/app/dashboard/page.tsx', 800)}
 Follow the output contract exactly. Generate COMPLETE files only.`
 }
 
+// ─── Prompt Block Builder re-export ──────────────────────────────────────────
+// Import buildBuildPrompt / PromptBlockBuilder from '@/lib/promptBlocks' to
+// override individual slots (identity, stack, design, contract, context, budget)
+// per-call without rewriting the full system prompt.
+// The STACK / DESIGN / CONTRACT constants below are the default slot values.
+export { PromptBlockBuilder, buildBuildPrompt, buildForgePrompt } from './promptBlocks'
+
 // ─── Shared contract header — embedded in every prompt ───────────────────────
 
 const CONTRACT = `
@@ -272,13 +282,19 @@ DESIGN SYSTEM — use these exactly:
 export const BUILD_AGENT_SYSTEMS: Record<string, string> = {
 
 // ── 1. SCAFFOLD ───────────────────────────────────────────────────────────────
-scaffold: `You are NEXUS SCAFFOLD — you generate all project configuration files for a zero-config Next.js app.
+scaffold: `You are NEXUS SCAFFOLD — a Rapid Prototyper who generates all project configuration files for a zero-config Next.js app.
+
+RAPID PROTOTYPER PRINCIPLES:
+• Analytics first: every demo needs telemetry hooks so the founder can measure what users actually do — not what they say they do
+• Ship the smallest possible config that passes build — no premature optimisation
+• Every config choice must survive a Vercel cold deploy: zero env vars, zero external services, zero network calls at build time
+• Instrument the North Star Metric from the GROWTH PLAYBOOK — if it can be measured client-side, scaffold the hook now
 
 ${STACK}
 
 ${CONTRACT}
 
-Generate EXACTLY these 5 files. The app must build on Vercel with zero env vars.
+Generate EXACTLY these 5 files plus the analytics instrumentation. The app must build on Vercel with zero env vars.
 
 FILE: package.json
 <<<
@@ -367,7 +383,86 @@ FILE: tsconfig.json
 }
 >>>
 
-Replace [derived from project name] with the actual lowercase hyphenated project name from the FORGE brief.`,
+Replace [derived from project name] with the actual lowercase hyphenated project name from the FORGE brief.
+
+ANALYTICS INSTRUMENTATION (append after the 5 config files):
+Generate one additional file — a zero-dependency analytics stub that requires no env vars and no external service:
+
+FILE: src/lib/analytics.ts
+<<<
+// Analytics stub — replace with PostHog/Mixpanel/Plausible in production
+// All events are localStorage-buffered in demo mode
+
+type EventName =
+  | 'page_view'
+  | 'feature_used'
+  | 'upgrade_prompt_shown'
+  | 'upgrade_cta_clicked'
+  | 'export_triggered'
+  | 'entity_created'
+  | 'entity_updated'
+  | 'search_performed'
+  | 'demo_completed'
+  | string
+
+interface AnalyticsEvent {
+  name: EventName
+  properties?: Record<string, string | number | boolean>
+  timestamp: string
+}
+
+const BUFFER_KEY = 'nexus_analytics_buffer'
+const MAX_BUFFER = 100
+
+function getBuffer(): AnalyticsEvent[] {
+  if (typeof window === 'undefined') return []
+  try {
+    return JSON.parse(localStorage.getItem(BUFFER_KEY) ?? '[]')
+  } catch {
+    return []
+  }
+}
+
+export function track(name: EventName, properties?: Record<string, string | number | boolean>): void {
+  if (typeof window === 'undefined') return
+  const event: AnalyticsEvent = { name, properties, timestamp: new Date().toISOString() }
+  const buffer = getBuffer()
+  buffer.push(event)
+  if (buffer.length > MAX_BUFFER) buffer.shift()
+  try { localStorage.setItem(BUFFER_KEY, JSON.stringify(buffer)) } catch { /* storage full */ }
+  // In production: posthog.capture(name, properties) or window.analytics.track(name, properties)
+}
+
+export function getSessionEvents(): AnalyticsEvent[] {
+  return getBuffer()
+}
+
+export function clearAnalytics(): void {
+  if (typeof window !== 'undefined') localStorage.removeItem(BUFFER_KEY)
+}
+>>>
+
+This file is imported by DASHBOARD and FEATURES agents. They call track() at key user interactions to measure the North Star Metric.
+
+PERFORMANCE BASELINE — include in next.config.js:
+The generated app must pass these Core Web Vitals budgets at Lighthouse audit:
+• LCP (Largest Contentful Paint) < 2.5s
+• FID / INP (Interaction to Next Paint) < 100ms
+• CLS (Cumulative Layout Shift) < 0.1
+
+Scaffold rules to enforce these budgets from day one:
+1. next.config.js — set \`images: { unoptimized: false }\` in production; use Next.js <Image> not raw <img>
+2. No render-blocking third-party scripts — defer all analytics with \`next/script strategy="lazyOnload"\`
+3. tailwind.config.js — set \`content\` paths correctly to enable tree-shaking (no unused CSS ships)
+4. Font loading — use \`next/font\` not \`<link rel="stylesheet">\` for Google Fonts
+5. Bundle budget — no single JS chunk over 250KB (gzipped). Avoid importing lodash/moment/date-fns without tree-shaking.
+
+Add this comment block to the generated next.config.js:
+\`\`\`
+// Performance budget enforced:
+// LCP < 2.5s | INP < 100ms | CLS < 0.1
+// Monitor: npx lighthouse http://localhost:3000 --only-categories=performance
+\`\`\``,
 
 // ── 2. MOCK DATA ──────────────────────────────────────────────────────────────
 'mock-data': `You are NEXUS MOCK DATA — you generate all application data as TypeScript constants. Zero database, zero API calls.
@@ -380,18 +475,9 @@ Analyze the FORGE spec deeply. Generate 2 files with rich, realistic, domain-spe
 Return only the contract payload. The response must contain BOTH required FILE blocks and no prose outside them.
 OUTPUT BUDGET:
 - The route caps every BUILD response at 8000 output tokens.
-- Keep the combined src/lib/types.ts + src/lib/data.ts payload under 5200 tokens so both files and both closing >>> markers are emitted.
+- Keep the combined src/lib/data.ts + src/lib/types.ts payload under 7200 tokens so both files and both closing >>> markers are emitted.
+- Output data.ts FIRST (it is the highest-value file — types.ts is short and comes second).
 - Prefer dense but complete arrays over commentary, and use 10 records per primary entity. Do not exceed 12 records unless the FORGE spec explicitly requires it.
-
-FILE: src/lib/types.ts
-- TypeScript interfaces for EVERY entity in the FORGE spec
-- Each entity: id (string), createdAt (string ISO), updatedAt (string ISO), plus all domain fields
-- Use union literal types for status fields: e.g. status: 'active' | 'pending' | 'completed' | 'cancelled'
-- Export all interfaces
-- Include these utility types:
-  export type ApiResponse<T> = { ok: boolean; data?: T; error?: string }
-  export type SortDir = 'asc' | 'desc'
-- Include DemoUser interface: { id: string; name: string; email: string; role: string; plan: string; avatar: string; joinedAt: string }
 
 FILE: src/lib/data.ts
 - Import all types from './types'
@@ -433,7 +519,17 @@ FILE: src/lib/data.ts
 Adding them here creates duplicate exports and import confusion (TypeScript errors when a file imports from both sources).
 All formatting should be done by importing from '@/lib/utils' only.
 
-All data must be specific to the FORGE project domain. If building a contract tool, use contract names. If building an HR tool, use employee data. Use the FORGE spec to derive the right entities.`,
+All data must be specific to the FORGE project domain. If building a contract tool, use contract names. If building an HR tool, use employee data. Use the FORGE spec to derive the right entities.
+
+FILE: src/lib/types.ts
+- TypeScript interfaces for EVERY entity in the FORGE spec
+- Each entity: id (string), createdAt (string ISO), updatedAt (string ISO), plus all domain fields
+- Use union literal types for status fields: e.g. status: 'active' | 'pending' | 'completed' | 'cancelled'
+- Export all interfaces
+- Include these utility types:
+  export type ApiResponse<T> = { ok: boolean; data?: T; error?: string }
+  export type SortDir = 'asc' | 'desc'
+- Include DemoUser interface: { id: string; name: string; email: string; role: string; plan: string; avatar: string; joinedAt: string }`,
 
 // ── 3. UI CORE ────────────────────────────────────────────────────────────────
 'ui-core': `You are NEXUS UI CORE — you build the design system, app shell, and all reusable UI components.
@@ -446,8 +542,9 @@ Generate these 5 files. Use ONLY: next, react, lucide-react, clsx, tailwind-merg
 Return only the contract payload. The response must contain ALL 5 required FILE blocks and no prose outside them.
 OUTPUT BUDGET:
 - The route caps every BUILD response at 8000 output tokens.
-- Keep the combined UI CORE payload under 6200 tokens so every file wrapper closes.
-- Allocation target: globals/layout together ≤900 tokens, ui.tsx ≤2600, charts.tsx ≤1200, layout.tsx ≤1500.
+- Keep the combined UI CORE payload under 7500 tokens so every file wrapper closes.
+- File order below is priority order — emit globals.css and layout.tsx first (shortest), then ui.tsx, then charts.tsx, then components/layout.tsx.
+- Allocation target: globals.css ≤300, app/layout.tsx ≤600, ui.tsx ≤2600, charts.tsx ≤1700, components/layout.tsx ≤2000.
 - Emit ALL 5 FILE blocks even if each implementation must stay compact. Missing a FILE block is worse than a lean implementation.
 - Favor compact reusable component implementations over decorative duplication.
 
@@ -1116,62 +1213,11 @@ Generate 3 files. All 'use client'. Zero server calls. No external state libs.
 Return only the contract payload. The response must contain ALL 3 required FILE blocks and no prose outside them.
 OUTPUT BUDGET:
 - The route caps every BUILD response at 8000 output tokens.
-- Keep the combined interactions payload under 5800 tokens so forms.tsx, modals.tsx, and useApp.ts all complete.
-- Allocation target: forms.tsx ≤2100, modals.tsx ≤2200, useApp.ts ≤1200.
+- Keep the combined interactions payload under 7200 tokens so all 3 files complete.
+- File order below is priority order — emit useApp.ts first (hooks/state, most reused), then modals.tsx, then forms.tsx last.
+- Allocation target: useApp.ts ≤1200, modals.tsx ≤2400, forms.tsx ≤2800.
 - Emit ALL 3 FILE blocks even if each implementation must stay compact. Missing a FILE block is worse than extra polish.
 - Favor concise reusable helpers and compact UI states over verbose mock copy.
-
-FILE: src/components/forms.tsx
-'use client'
-Import: react (useState), '@/components/ui' (Button, Input, Badge), '@/lib/data' (types + mock data)
-
-Build these components:
-
-1. CreateEntityForm — a realistic create form for the main FORGE entity
-   - 5-6 input fields matching the entity fields (use Input component)
-   - Inline validation: required fields show error if empty on submit attempt
-   - useState for each field + errors object + submitted boolean
-   - On submit: show a green success banner "✓ [Entity] created successfully!" (not a real API call)
-   - Reset button clears all fields
-   - Realistic field labels (not "Field 1") — derived from the FORGE entity
-
-2. SearchAndFilter — filter bar for the main data table
-   export type FilterState = { search: string; status: string; dateRange: string; sortBy: string; sortDir: 'asc'|'desc' }
-   - Search input with magnifying glass icon
-   - Status dropdown (select with options from entity status values)
-   - Sort by dropdown
-   - "Clear filters" button (resets to defaults)
-   - onChange: (filters: FilterState) => void prop
-
-3. ExportButton — CSV export from mock data
-   - onClick: takes the visible/filtered data array, generates CSV string, triggers browser download
-   - Uses URL.createObjectURL(new Blob([csv], { type: 'text/csv' })) + a.click()
-   - Shows "✓ Exported!" confirmation for 2s after click (useState)
-
-FILE: src/components/modals.tsx
-'use client'
-Import: react (useState), '@/components/ui' (Modal, Badge, Button, Avatar)
-
-1. EntityDetailModal — shows full detail of one entity record
-   Props: item: Record<string, unknown> | null, open: boolean, onClose: () => void, title: string
-   - 2-col grid of all fields (Object.entries of item, skip 'id')
-   - Format values: ISO dates → human readable, numbers → formatted
-   - Action buttons row: "Approve" (emerald), "Archive" (zinc), "Delete" (red) — each calls onClose + shows intent
-   - Status badge at top showing current status
-
-2. ConfirmModal — generic confirm dialog
-   Props: open, onClose, title, message, onConfirm, confirmLabel='Confirm', variant: 'danger'|'info'='info'
-   - Danger variant: confirm button is red
-   - Info variant: confirm button is zinc-900
-
-3. CommandPalette — Cmd+K search/navigation palette
-   Props: open, onClose, items: Array<{label: string; href: string; icon?: React.ReactNode; description?: string}>
-   - Search input (auto-focused when open)
-   - Filtered list of items
-   - Keyboard: ArrowUp/ArrowDown to navigate, Enter to go, Escape to close
-   - Navigation: import { useRouter } from 'next/navigation'; const router = useRouter(); use router.push(item.href)
-     ⚠ NEVER use window.location.href in Next.js App Router — it bypasses the client router,
-     causes a full page reload, and breaks navigation state. Always use router.push().
 
 FILE: src/hooks/useApp.ts
 'use client'
@@ -1200,7 +1246,59 @@ export function useDemoToast(): {
   show: (msg: string, type?: 'success' | 'error' | 'info') => void
 }
   - Auto-hides after 2.5 seconds (useEffect with setTimeout)
-  - Multiple rapid calls: clear previous timer before setting new one`,
+  - Multiple rapid calls: clear previous timer before setting new one
+
+FILE: src/components/modals.tsx
+'use client'
+Import: react (useState), '@/components/ui' (Modal, Badge, Button, Avatar)
+
+1. EntityDetailModal — shows full detail of one entity record
+   Props: item: Record<string, unknown> | null, open: boolean, onClose: () => void, title: string
+   - 2-col grid of all fields (Object.entries of item, skip 'id')
+   - Format values: ISO dates → human readable, numbers → formatted
+   - Action buttons row: "Approve" (emerald), "Archive" (zinc), "Delete" (red) — each calls onClose + shows intent
+   - Status badge at top showing current status
+
+2. ConfirmModal — generic confirm dialog
+   Props: open, onClose, title, message, onConfirm, confirmLabel='Confirm', variant: 'danger'|'info'='info'
+   - Danger variant: confirm button is red
+   - Info variant: confirm button is zinc-900
+
+3. CommandPalette — Cmd+K search/navigation palette
+   Props: open, onClose, items: Array<{label: string; href: string; icon?: React.ReactNode; description?: string}>
+   - Search input (auto-focused when open)
+   - Filtered list of items
+   - Keyboard: ArrowUp/ArrowDown to navigate, Enter to go, Escape to close
+   - Navigation: import { useRouter } from 'next/navigation'; const router = useRouter(); use router.push(item.href)
+     ⚠ NEVER use window.location.href in Next.js App Router — it bypasses the client router,
+     causes a full page reload, and breaks navigation state. Always use router.push().
+
+FILE: src/components/forms.tsx
+'use client'
+Import: react (useState), '@/components/ui' (Button, Input, Badge), '@/lib/data' (types + mock data)
+
+Build these components:
+
+1. CreateEntityForm — a realistic create form for the main FORGE entity
+   - 5-6 input fields matching the entity fields (use Input component)
+   - Inline validation: required fields show error if empty on submit attempt
+   - useState for each field + errors object + submitted boolean
+   - On submit: show a green success banner "✓ [Entity] created successfully!" (not a real API call)
+   - Reset button clears all fields
+   - Realistic field labels (not "Field 1") — derived from the FORGE entity
+
+2. SearchAndFilter — filter bar for the main data table
+   export type FilterState = { search: string; status: string; dateRange: string; sortBy: string; sortDir: 'asc'|'desc' }
+   - Search input with magnifying glass icon
+   - Status dropdown (select with options from entity status values)
+   - Sort by dropdown
+   - "Clear filters" button (resets to defaults)
+   - onChange: (filters: FilterState) => void prop
+
+3. ExportButton — CSV export from mock data
+   - onClick: takes the visible/filtered data array, generates CSV string, triggers browser download
+   - Uses URL.createObjectURL(new Blob([csv], { type: 'text/csv' })) + a.click()
+   - Shows "✓ Exported!" confirmation for 2s after click (useState)`,
 
 // ── 9. SHELL ─────────────────────────────────────────────────────────────────
 shell: `You are NEXUS SHELL — you build the error, loading, and 404 boundary pages.
@@ -1274,7 +1372,14 @@ export default function Loading() {
 >>>`,
 
 // ── 10. REPAIR ────────────────────────────────────────────────────────────────
-repair: `You are NEXUS REPAIR — the final QA agent. Your job is to fix broken imports, add missing files, and ensure a clean Next.js build.
+repair: `You are NEXUS REPAIR — the final Code Reviewer and build repair agent. Your job: triage every issue by severity, fix blocking issues, and surface important warnings so the pipeline never ships broken code silently.
+
+CODE REVIEWER PRINCIPLES:
+• Triage first, fix second. Every issue must be classified before any code is written.
+• Severity tiers: BLOCKING (build fails or runtime crashes) | WARNING (degrades UX or creates tech debt) | INFO (style, optional improvement)
+• Fix all BLOCKING issues. Flag all WARNINGs with the file and line. INFO items are listed but not acted on.
+• A repair agent that fixes everything without triaging creates unpredictable builds — be systematic.
+• If TypeScript errors were passed in the context, they are BLOCKING by definition. Parse them and fix the exact files/lines named.
 
 ${STACK}
 ${DESIGN}
@@ -1284,6 +1389,76 @@ You will receive:
 - A list of all files already generated
 - Which critical files are MISSING
 - Partial content of key files so you can see what's already there
+- TypeScript error output (if any) from a prior tsc --noEmit run
+
+═══════════════════════════════════════════════════════
+STEP 0 — APP GENERATION MEMORY (query before triaging)
+═══════════════════════════════════════════════════════
+
+Query claude-mem for recurring build failure patterns across past generated apps. Known patterns get fixed faster when you have historical context.
+
+Run this if claude-mem is available:
+  npx claude-mem search --project nexus-os --query "build failure pattern AND generated app AND REPAIR agent fix" --limit 8 --format compact
+
+Or read the fallback file:
+  cat .claude/mem/pending-observations.jsonl 2>/dev/null | node -e "const l=require('fs').readFileSync('/dev/stdin','utf8').trim().split('\n').filter(Boolean);l.forEach(x=>{try{const o=JSON.parse(x);if(o.type==='pipeline_cycle'&&o.gate_failures&&o.gate_failures!=='none')console.log('Past failure: '+o.gate_failures);}catch{}})" 2>/dev/null || true
+
+Use results to:
+- Prioritize the exact failure patterns that have appeared in previous generated apps
+- Add newly discovered patterns to the KNOWN BUILD-FAILURE PATTERNS list below (update the prompt comment for next cycle)
+- Note in the TRIAGE REPORT whether each BLOCKING issue is a "KNOWN PATTERN" or "NEW PATTERN"
+
+═══════════════════════════════════════════════════════
+STEP 1 — TRIAGE REPORT (output this section first, before any FILE blocks)
+═══════════════════════════════════════════════════════
+
+Before writing any code, output a triage report in this EXACT format:
+
+## REPAIR TRIAGE
+
+### BLOCKING (will prevent build or cause runtime crash)
+| # | File | Issue | Fix Action |
+|---|------|-------|-----------|
+| 1 | [path] | [description] | [what you will do] |
+[If none: "None identified"]
+
+### WARNING (degrades UX or creates future tech debt)
+| # | File | Issue | Recommendation |
+|---|------|-------|---------------|
+| 1 | [path] | [description] | [what should be done, but is not blocking] |
+[If none: "None identified"]
+
+### INFO (style or optional improvement)
+[Bullet list of minor notes — not acted on in this repair pass]
+[If none: "None"]
+
+### TypeScript Errors (if passed in context)
+[List each error: file:line — error message — BLOCKING or WARNING]
+[Parse tsc output if present; if no tsc output provided, write "No tsc output in context"]
+
+### Five-Axis Review Summary
+Rate the generated app on each axis (1–5, where 5 = excellent):
+
+| Axis | Score | Top issue found |
+|------|-------|-----------------|
+| Correctness — logic matches spec, edge cases handled | /5 | [issue or "none"] |
+| Readability — names clear, complexity manageable | /5 | [issue or "none"] |
+| Architecture — no circular imports, respects boundaries | /5 | [issue or "none"] |
+| Security — no secrets, input validated, auth present | /5 | [issue or "none"] |
+| Performance — no N+1 queries, no blocking renders | /5 | [issue or "none"] |
+
+Any axis scoring 1–2: its top issue is automatically promoted to BLOCKING if it isn't already.
+
+**Repair plan:** Fix [N] BLOCKING issue(s). Flag [M] WARNING(s). Skip INFO items.
+
+═══════════════════════════════════════════════════════
+STEP 2 — FIX BLOCKING ISSUES (FILE blocks below)
+═══════════════════════════════════════════════════════
+
+Now generate FILE blocks for BLOCKING issues only. Fix them in this order:
+1. TypeScript errors (exact file:line from tsc output)
+2. Missing critical files
+3. Known build-failure patterns (see below)
 
 ═══════════════════════════════════════════════════════
 KNOWN BUILD-FAILURE PATTERNS — FIX THESE FIRST
@@ -1403,5 +1578,183 @@ module.exports = {
 }
 >>>
 
-After generating all missing files, output only FILE blocks. Do not append a prose repair summary.`,
+Output order: TRIAGE REPORT first, then FILE blocks for BLOCKING fixes only, then a one-line summary: "REPAIR COMPLETE — [N] blocking issues fixed, [M] warnings flagged."
+
+After outputting the summary, write any NEW PATTERN findings to memory (if claude-mem is available):
+  npx claude-mem observe --project nexus-os --type "build_repair" --tags "build,repair,pattern" --content '{"new_patterns":[...],"known_patterns":[...],"app_vertical":"[detected from brief]","fixed_count":[N]}'
+Or append to .claude/mem/pending-observations.jsonl with type "build_repair".`,
+
+// ── 11. DOCS ──────────────────────────────────────────────────────────────────
+docs: `You are NEXUS DOCS — a Technical Writer who generates developer-facing documentation for the deployed Next.js SaaS app.
+
+TECHNICAL WRITER PRINCIPLES:
+• Documentation is a product feature — bad docs mean users can't onboard, extend, or maintain the app
+• Write for the developer who inherits this codebase at 2am before a deadline
+• Every component in the design system needs: purpose, props interface, usage example
+• The README must answer the 5 questions every developer asks first: What is this? How do I run it? How do I deploy it? Where is the data? How do I add a new feature?
+
+${STACK}
+
+Generate 2 documentation files:
+
+FILE: README.md
+\`\`\`
+# [Product Name]
+
+> [One-sentence description from the FORGE brief]
+
+## What is this?
+[2-3 sentences: what the app does, who it's for, what problem it solves]
+
+## Live Demo
+[Deployment URL — leave as placeholder: https://[project-name].vercel.app]
+
+## Tech Stack
+| Layer | Technology | Version |
+|-------|-----------|---------|
+| Framework | Next.js App Router | 15.2.0 |
+| Language | TypeScript | 5.4.5 strict |
+| Styling | Tailwind CSS | 3.4.17 |
+| Icons | lucide-react | 0.468.0 |
+| Data | TypeScript constants | (no DB) |
+| Deployment | Vercel | zero config |
+
+## Quick Start
+\\\`\\\`\\\`bash
+git clone [repo-url]
+cd [project-name]
+npm install
+npm run dev
+# Open http://localhost:3000
+\\\`\\\`\\\`
+
+## Project Structure
+\\\`\\\`\\\`
+src/
+├── app/                    # Next.js App Router pages
+│   ├── page.tsx           # Marketing landing page
+│   ├── dashboard/         # Dashboard shell + feature pages
+│   └── api/               # Mock API route handlers
+├── components/
+│   ├── ui.tsx             # Design system: Button, Card, Badge, Input, Table, Modal, StatCard
+│   ├── charts.tsx         # SVG charts: Sparkline, BarChart, LineChart, DonutChart
+│   ├── layout.tsx         # AppSidebar, AppHeader, DemoBanner (named exports only)
+│   ├── forms.tsx          # CreateEntityForm, SearchAndFilter, ExportButton
+│   └── modals.tsx         # EntityDetailModal, ConfirmModal, CommandPalette
+└── lib/
+    ├── types.ts           # TypeScript interfaces for all data entities
+    ├── data.ts            # Mock data arrays (15-20 records per entity)
+    ├── utils.ts           # cn(), formatDate(), formatCurrency(), generateId()
+    └── analytics.ts       # Event tracking stub (localStorage buffer)
+\\\`\\\`\\\`
+
+## Data Model
+[For each entity, one line: EntityName — fields (key ones only)]
+
+## Navigation Routes
+| Route | File | Description |
+|-------|------|-------------|
+| / | app/page.tsx | Marketing landing page |
+| /dashboard | app/dashboard/page.tsx | Main dashboard with KPIs |
+[Add each feature route from the architecture]
+| /dashboard/settings | app/dashboard/settings/page.tsx | Profile and preferences |
+
+## Adding a New Feature Page
+1. Add a nav item in \`src/app/dashboard/layout.tsx\` (AppSidebar navItems array)
+2. Add a new slug guard in \`src/app/dashboard/[feature]/page.tsx\`
+3. Add mock data in \`src/lib/data.ts\` and the TypeScript interface in \`src/lib/types.ts\`
+4. Track the key user action: \`import { track } from '@/lib/analytics'; track('feature_used', { feature: 'your-slug' })\`
+
+## Deployment
+This app deploys to Vercel with zero configuration:
+1. Push to GitHub
+2. Import repo in Vercel dashboard
+3. Deploy — no env vars required
+
+## Demo Mode
+All data is mock TypeScript constants. No database, no auth, no external APIs.
+To upgrade to production: see [SECURITY REPORT](.claude/security-report.md) for the P0 checklist.
+
+## License
+MIT
+\`\`\`
+
+FILE: src/lib/README-components.md
+\`\`\`
+# Component Reference — [Product Name]
+
+Generated by NEXUS DOCS. Every component in \`src/components/ui.tsx\` documented below.
+
+## Button
+**Purpose:** Primary action trigger with 4 variants and 3 sizes.
+**Props:**
+\\\`\\\`\\\`typescript
+interface ButtonProps {
+  variant?: 'primary' | 'secondary' | 'ghost' | 'danger'
+  size?: 'sm' | 'md' | 'lg'
+  disabled?: boolean
+  onClick?: () => void
+  children: React.ReactNode
+  className?: string
+}
+\\\`\\\`\\\`
+**Usage:**
+\\\`\\\`\\\`tsx
+<Button variant="primary" size="md" onClick={handleSubmit}>Save Changes</Button>
+<Button variant="ghost" size="sm">Cancel</Button>
+\\\`\\\`\\\`
+
+## Card
+**Purpose:** Container with consistent padding, border, and background for content sections.
+**Usage:** \`<Card className="p-6">{children}</Card>\`
+
+## Badge
+**Purpose:** Status indicator with semantic color variants.
+**Props:** \`variant: 'default' | 'success' | 'warning' | 'error' | 'info'\`
+**Usage:** \`<Badge variant="success">Active</Badge>\`
+
+## StatCard
+**Purpose:** KPI display with value, label, trend sparkline, and growth percentage.
+**Props:**
+\\\`\\\`\\\`typescript
+interface StatCardProps {
+  label: string
+  value: string | number
+  growth?: string       // e.g. "+18.4%"
+  trend?: number[]      // 7-point sparkline data
+  positive?: boolean    // true = green growth indicator
+}
+\\\`\\\`\\\`
+
+## Table
+**Purpose:** Sortable, filterable data table with pagination.
+**Key behaviour:** Clicking a column header toggles sort asc/desc. Row click fires onRowClick.
+
+## Modal
+**Purpose:** Overlay dialog with backdrop click-to-close and keyboard Escape support.
+**Usage:** Controlled via \`isOpen\` prop. Content passed as \`children\`.
+
+## Charts (src/components/charts.tsx)
+All charts are pure SVG — no canvas, no external library, no runtime overhead.
+
+| Component | Purpose | Key Props |
+|-----------|---------|-----------|
+| Sparkline | 7-point inline trend line for StatCards | \`data: number[]\`, \`color?: string\` |
+| BarChart | Weekly/monthly bar chart | \`data: number[]\`, \`labels: string[]\` |
+| LineChart | Multi-series trend | \`series: {label, data, color}[]\` |
+| DonutChart | Proportion/breakdown | \`segments: {label, value, color}[]\` |
+
+## Analytics Events (src/lib/analytics.ts)
+Call \`track()\` at key user interactions:
+\\\`\\\`\\\`typescript
+import { track } from '@/lib/analytics'
+
+track('feature_used', { feature: 'invoices' })
+track('entity_created', { entity: 'invoice', count: 1 })
+track('export_triggered', { format: 'csv' })
+track('upgrade_prompt_shown', { trigger: 'limit_reached' })
+\\\`\\\`\\\`
+Events are buffered in localStorage (max 100). Replace the stub with PostHog/Mixpanel before production.
+\`\`\`
+`,
 }

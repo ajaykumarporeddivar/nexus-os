@@ -38,6 +38,33 @@ coverage
 # Vercel
 .vercel
 
+# Pipeline runtime artifacts (ephemeral — not committed)
+.pipeline/TRENDS.md
+.pipeline/FEEDBACK_SYNTHESIS.md
+.pipeline/SPRINT_BACKLOG.md
+.pipeline/UPGRADE_SPEC.md
+.pipeline/BUILD_LOG.md
+.pipeline/TEST_REPORT.md
+.pipeline/*_ERROR.md
+
+# Keep these (committed — audit trail and state):
+# .pipeline/archive/     DO NOT gitignore
+# .claude/PIPELINE_STATE.json  DO NOT gitignore
+# DAILY_REPORT.md        DO NOT gitignore
+# CHANGELOG_PIPELINE.md  DO NOT gitignore
+
+# Local preview artifacts
+.nexus-previews/
+
+# claude-mem local database (machine-local, never commit)
+.claude/mem/claude-mem.db
+.claude/mem/claude-mem.db-shm
+.claude/mem/claude-mem.db-wal
+.claude/mem/chroma/
+.claude/mem/*.log
+# pending-observations.jsonl is committed — it's the fallback queue for when claude-mem isn't installed
+# DO NOT gitignore .claude/mem/pending-observations.jsonl
+
 # Python
 __pycache__
 *.pyc

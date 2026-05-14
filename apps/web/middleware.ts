@@ -12,6 +12,7 @@ const PUBLIC_API = new Set([
   '/api/checkout/verify',
   '/api/whatsapp/send',
   '/api/groq/stream',
+  '/api/categories',        // industry taxonomy — public static data
 ])
 
 // Public page routes
@@ -49,22 +50,18 @@ export default withAuth(
       if (page && PUBLIC_SHELL_PAGES.has(page)) return NextResponse.next()
     }
 
-    // Cron/eval routes: require CRON_SECRET header, not a user session
+    // Strict cron-only routes: pass if CRON_SECRET present, otherwise fall through to auth check
     if (
       pathname === '/api/monitor' ||
-      pathname === '/api/learning/cycle' ||
-      pathname === '/api/learning/weekly' ||
       pathname === '/api/learning/quarantine' ||
       pathname === '/api/learning/update-deltas' ||
       pathname === '/api/eval' ||
-      pathname === '/api/trending' ||
       pathname === '/api/cron/trending' ||
-      pathname === '/api/regime' ||
-      pathname === '/api/agent/run'
+      pathname === '/api/cron/workspace-scheduler'
     ) {
       const secret = req.headers.get('x-cron-secret') ?? req.nextUrl.searchParams.get('secret')
       if (secret === process.env.CRON_SECRET) return NextResponse.next()
-      // Fall through to auth check — block if no cron secret and no session
+      // Fall through — no secret, withAuth callback will block
     }
 
     return NextResponse.next()
@@ -89,6 +86,7 @@ export default withAuth(
           pathname === '/api/demo-booking' ||
           pathname === '/api/whatsapp/send' ||
           pathname === '/api/groq/stream' ||
+          pathname === '/api/categories' ||
           pathname === '/auth/signin' ||
           pathname === '/'
         ) return true
@@ -99,19 +97,52 @@ export default withAuth(
           if (page && PUBLIC_SHELL_PAGES.has(page)) return true
         }
 
-        // Cron routes: allow if they have a valid cron secret (checked inside middleware fn)
+        // Cron/mixed-access routes: allow if (a) valid CRON_SECRET is present,
+        // OR (b) the caller has a valid authenticated session.
+        // Pure cron-only routes (cycle, weekly, quarantine, eval) still require
+        // CRON_SECRET — they must never be triggered by a regular browser session.
         if (
           pathname === '/api/monitor' ||
-          pathname === '/api/learning/cycle' ||
-          pathname === '/api/learning/weekly' ||
           pathname === '/api/learning/quarantine' ||
           pathname === '/api/learning/update-deltas' ||
           pathname === '/api/eval' ||
-          pathname === '/api/trending' ||
           pathname === '/api/cron/trending' ||
+          pathname === '/api/cron/workspace-scheduler'
+        ) {
+          // Strict: CRON_SECRET only (no session bypass)
+          const cronSecret = process.env.CRON_SECRET
+          if (!cronSecret) return false
+          const headerSecret = req.headers.get('x-cron-secret')
+          const querySecret  = req.nextUrl.searchParams.get('secret')
+          const bearerToken  = (req.headers.get('authorization') ?? '').replace('Bearer ', '')
+          return (
+            headerSecret === cronSecret ||
+            querySecret  === cronSecret ||
+            bearerToken  === cronSecret
+          )
+        }
+
+        // Mixed: CRON_SECRET OR authenticated session (browser users + cron jobs)
+        // These endpoints have their own internal auth guards on the POST method.
+        if (
+          pathname === '/api/trending' ||
+          pathname === '/api/learning/cycle' ||
+          pathname === '/api/learning/weekly' ||
           pathname === '/api/regime' ||
           pathname === '/api/agent/run'
-        ) return true
+        ) {
+          if (!!token) return true   // authenticated user — pass through, route handles auth internally
+          const cronSecret = process.env.CRON_SECRET
+          if (!cronSecret) return false
+          const headerSecret = req.headers.get('x-cron-secret')
+          const querySecret  = req.nextUrl.searchParams.get('secret')
+          const bearerToken  = (req.headers.get('authorization') ?? '').replace('Bearer ', '')
+          return (
+            headerSecret === cronSecret ||
+            querySecret  === cronSecret ||
+            bearerToken  === cronSecret
+          )
+        }
 
         // Everything else — require a session
         return !!token
