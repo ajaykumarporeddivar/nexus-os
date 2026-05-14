@@ -132,6 +132,7 @@ export type AuditAction =
   | 'forge_run_started'
   | 'forge_run_completed'
   | 'forge_download'
+  | 'forge_whitelabel_download'
   | 'runtime_iteration'
   | 'vault_view'
   | 'vault_launch_forge'
