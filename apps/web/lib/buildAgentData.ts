@@ -2,26 +2,151 @@
 // Phase 2 of the NEXUS pipeline: takes FORGE spec → generates a real, deployed Next.js app.
 // 10 specialized code-generation agents. Each outputs complete TypeScript/React files.
 
+import type { SkillMeta } from './skillRegistry'
+
 export interface BuildAgent {
   id:    string
   name:  string
   role:  string
   icon:  string
   files: string[]
+  /** ACORA skill manifest — Phase 1-9 metadata */
+  skill: SkillMeta
 }
 
 export const BUILD_AGENTS: BuildAgent[] = [
-  { id: 'scaffold',     name: 'SCAFFOLD',      icon: '⚙',  role: 'package.json · next.config.js · tailwind · postcss',        files: ['package.json','next.config.js','tailwind.config.js','tsconfig.json','postcss.config.js'] },
-  { id: 'mock-data',    name: 'MOCK DATA',      icon: '◈',  role: 'TypeScript constants — no DB, 20+ realistic records',        files: ['src/lib/data.ts','src/lib/types.ts'] },
-  { id: 'ui-core',      name: 'UI CORE',        icon: '◻',  role: 'Design system · layout · charts · shared components',       files: ['src/app/globals.css','src/app/layout.tsx','src/components/ui.tsx','src/components/charts.tsx','src/components/layout.tsx'] },
-  { id: 'landing',      name: 'LANDING',        icon: '▣',  role: 'Hero · features · pricing · CTA — full marketing homepage', files: ['src/app/page.tsx'] },
-  { id: 'dashboard',    name: 'DASHBOARD',      icon: '▦',  role: 'KPIs · SVG charts · data table · activity feed',            files: ['src/app/dashboard/page.tsx','src/app/dashboard/layout.tsx'] },
-  { id: 'features',     name: 'FEATURES',       icon: '⊕',  role: '3 MVP pain-point workflows with real interactive UI',      files: ['src/app/dashboard/[feature]/page.tsx'] },
-  { id: 'api',          name: 'API',            icon: '⟨⟩', role: 'Route handlers · health · data · search — mock JSON',       files: ['src/app/api/health/route.ts','src/app/api/data/route.ts','src/app/api/search/route.ts'] },
-  { id: 'interactions', name: 'INTERACTIONS',   icon: '↔',  role: 'Forms · modals · toasts · command palette — client-side',  files: ['src/hooks/useApp.ts','src/components/modals.tsx','src/components/forms.tsx'] },
-  { id: 'shell',        name: 'SHELL',          icon: '✓',  role: 'error.tsx · not-found.tsx · loading.tsx',                  files: ['src/app/error.tsx','src/app/not-found.tsx','src/app/loading.tsx'] },
-  { id: 'repair',       name: 'REPAIR',         icon: '⚡',  role: 'QA pass — fix imports · add missing files · ensure build', files: [] },
-  { id: 'docs',         name: 'DOCS',           icon: '📄',  role: 'README · API reference · component guide · deployment steps', files: ['README.md','src/lib/README-components.md'] },
+  {
+    id: 'scaffold', name: 'SCAFFOLD', icon: '⚙',
+    role: 'package.json · next.config.js · tailwind · postcss',
+    files: ['package.json','next.config.js','tailwind.config.js','tsconfig.json','postcss.config.js'],
+    skill: {
+      skillType: 'executor', executionMode: 'sequential', parallelGroup: null,
+      executionOrder: 1, tokenBudget: 1500, timeoutMs: 90_000,
+      trustLevel: 'trusted', failureBehavior: 'abort', costCeilingUsd: 0.04,
+      dependencies: [],
+      retryPolicy: { maxAttempts: 3, backoffMs: 4000 },
+    },
+  },
+  {
+    id: 'mock-data', name: 'MOCK DATA', icon: '◈',
+    role: 'TypeScript constants — no DB, 20+ realistic records',
+    files: ['src/lib/data.ts','src/lib/types.ts'],
+    skill: {
+      skillType: 'executor', executionMode: 'sequential', parallelGroup: null,
+      executionOrder: 2, tokenBudget: 2000, timeoutMs: 90_000,
+      trustLevel: 'trusted', failureBehavior: 'fallback', costCeilingUsd: 0.04,
+      dependencies: ['scaffold'],
+      retryPolicy: { maxAttempts: 3, backoffMs: 4000 },
+    },
+  },
+  {
+    id: 'shell', name: 'SHELL', icon: '✓',
+    role: 'error.tsx · not-found.tsx · loading.tsx',
+    files: ['src/app/error.tsx','src/app/not-found.tsx','src/app/loading.tsx'],
+    skill: {
+      skillType: 'executor', executionMode: 'sequential', parallelGroup: null,
+      executionOrder: 3, tokenBudget: 800, timeoutMs: 60_000,
+      trustLevel: 'trusted', failureBehavior: 'degrade', costCeilingUsd: 0.02,
+      dependencies: ['scaffold'],
+      retryPolicy: { maxAttempts: 3, backoffMs: 4000 },
+    },
+  },
+  {
+    id: 'ui-core', name: 'UI CORE', icon: '◻',
+    role: 'Design system · layout · charts · shared components',
+    files: ['src/app/globals.css','src/app/layout.tsx','src/components/ui.tsx','src/components/charts.tsx','src/components/layout.tsx'],
+    skill: {
+      skillType: 'executor', executionMode: 'sequential', parallelGroup: null,
+      executionOrder: 4, tokenBudget: 2000, timeoutMs: 150_000,
+      trustLevel: 'trusted', failureBehavior: 'fallback', costCeilingUsd: 0.06,
+      dependencies: ['mock-data'],
+      retryPolicy: { maxAttempts: 3, backoffMs: 4000 },
+    },
+  },
+  {
+    id: 'api', name: 'API', icon: '⟨⟩',
+    role: 'Route handlers · health · data · search — mock JSON',
+    files: ['src/app/api/health/route.ts','src/app/api/data/route.ts','src/app/api/search/route.ts'],
+    skill: {
+      skillType: 'executor', executionMode: 'sequential', parallelGroup: null,
+      executionOrder: 5, tokenBudget: 1200, timeoutMs: 90_000,
+      trustLevel: 'trusted', failureBehavior: 'degrade', costCeilingUsd: 0.03,
+      dependencies: ['mock-data'],
+      retryPolicy: { maxAttempts: 3, backoffMs: 4000 },
+    },
+  },
+  {
+    id: 'landing', name: 'LANDING', icon: '▣',
+    role: 'Hero · features · pricing · CTA — full marketing homepage',
+    files: ['src/app/page.tsx'],
+    skill: {
+      skillType: 'executor', executionMode: 'sequential', parallelGroup: null,
+      executionOrder: 6, tokenBudget: 1500, timeoutMs: 120_000,
+      trustLevel: 'trusted', failureBehavior: 'degrade', costCeilingUsd: 0.04,
+      dependencies: ['ui-core'],
+      retryPolicy: { maxAttempts: 3, backoffMs: 4000 },
+    },
+  },
+  {
+    id: 'interactions', name: 'INTERACTIONS', icon: '↔',
+    role: 'Forms · modals · toasts · command palette — client-side',
+    files: ['src/hooks/useApp.ts','src/components/modals.tsx','src/components/forms.tsx'],
+    skill: {
+      skillType: 'executor', executionMode: 'sequential', parallelGroup: null,
+      executionOrder: 7, tokenBudget: 1500, timeoutMs: 120_000,
+      trustLevel: 'trusted', failureBehavior: 'fallback', costCeilingUsd: 0.04,
+      dependencies: ['ui-core'],
+      retryPolicy: { maxAttempts: 3, backoffMs: 4000 },
+    },
+  },
+  {
+    id: 'dashboard', name: 'DASHBOARD', icon: '▦',
+    role: 'KPIs · SVG charts · data table · activity feed',
+    files: ['src/app/dashboard/page.tsx','src/app/dashboard/layout.tsx'],
+    skill: {
+      skillType: 'executor', executionMode: 'sequential', parallelGroup: null,
+      executionOrder: 8, tokenBudget: 2000, timeoutMs: 150_000,
+      trustLevel: 'trusted', failureBehavior: 'fallback', costCeilingUsd: 0.06,
+      dependencies: ['ui-core'],
+      retryPolicy: { maxAttempts: 3, backoffMs: 4000 },
+    },
+  },
+  {
+    id: 'features', name: 'FEATURES', icon: '⊕',
+    role: '3 MVP pain-point workflows with real interactive UI',
+    files: ['src/app/dashboard/[feature]/page.tsx'],
+    skill: {
+      skillType: 'executor', executionMode: 'sequential', parallelGroup: null,
+      executionOrder: 9, tokenBudget: 2000, timeoutMs: 180_000,
+      trustLevel: 'trusted', failureBehavior: 'fallback', costCeilingUsd: 0.07,
+      dependencies: ['dashboard'],
+      retryPolicy: { maxAttempts: 3, backoffMs: 4000 },
+    },
+  },
+  {
+    id: 'repair', name: 'REPAIR', icon: '⚡',
+    role: 'QA pass — fix imports · add missing files · ensure build',
+    files: [],
+    skill: {
+      skillType: 'validator', executionMode: 'sequential', parallelGroup: null,
+      executionOrder: 10, tokenBudget: 2500, timeoutMs: 180_000,
+      trustLevel: 'privileged', failureBehavior: 'abort', costCeilingUsd: 0.07,
+      dependencies: ['features'],
+      retryPolicy: { maxAttempts: 3, backoffMs: 4000 },
+    },
+  },
+  {
+    id: 'docs', name: 'DOCS', icon: '📄',
+    role: 'README · API reference · component guide · deployment steps',
+    files: ['README.md','src/lib/README-components.md'],
+    skill: {
+      skillType: 'transformer', executionMode: 'sequential', parallelGroup: null,
+      executionOrder: 11, tokenBudget: 1000, timeoutMs: 90_000,
+      trustLevel: 'trusted', failureBehavior: 'skip', costCeilingUsd: 0.02,
+      dependencies: ['repair'],
+      retryPolicy: { maxAttempts: 3, backoffMs: 4000 },
+    },
+  },
 ]
 
 // ─── File parser — handles all Claude/Groq/Gemini output formats ─────────────

@@ -4,7 +4,11 @@ import { useState, useCallback, useRef, useEffect, useLayoutEffect } from 'react
 import { useSession } from 'next-auth/react'
 import { AGENTS, agentFileMap } from '@/lib/agentData'
 import { BUILD_AGENTS, BUILD_AGENT_SYSTEMS, buildRepairMessage, parseAgentFiles } from '@/lib/buildAgentData'
-import { FORGE_AGENTS, FORGE_AGENT_SYSTEMS, extractQAScore, detectVertical, VERTICAL_CONTEXTS, buildWorkspaceContext } from '@/lib/forgeAgentData'
+import { FORGE_AGENTS, FORGE_AGENT_SYSTEMS, FORGE_QA_CTX_CAPS, extractQAScore, detectVertical, VERTICAL_CONTEXTS, buildWorkspaceContext } from '@/lib/forgeAgentData'
+import {
+  CIRCUIT_BREAKER_THRESHOLD, CIRCUIT_BREAKER_RESET_MS, COST_PER_TOKEN_USD,
+  type CircuitBreaker, type AgentCostEntry,
+} from '@/lib/skillRegistry'
 import { useWorkspace } from '@/lib/workspaceContext'
 import { INDUSTRY_TO_VERTICAL } from '@/lib/industryTaxonomy'
 import { VoiceTextarea } from '@/components/VoiceButton'
@@ -2200,6 +2204,11 @@ export default function PipelinePage() {
   const totalTokensRef = useRef(0)
   const totalCallsRef  = useRef(0)
 
+  // ── ACORA: circuit breaker + cost ledger ──────────────────────────────────
+  // Reset at start of each pipeline run (see resetRun block).
+  const circuitBreakers  = useRef<Map<string, CircuitBreaker>>(new Map())
+  const agentCostLedger  = useRef<Map<string, AgentCostEntry>>(new Map())
+
   // Check tokens on mount
   useEffect(() => {
     Promise.all([
@@ -2860,6 +2869,65 @@ export default function PipelinePage() {
     }
   }, [pipelineVoice.isListening])
 
+  // ── ACORA Phase 5: withTimeout — hard per-agent deadline ─────────────────────
+
+  function withTimeout<T>(promise: Promise<T>, timeoutMs: number, agentId: string): Promise<T> {
+    if (timeoutMs <= 0) return promise
+    return new Promise<T>((resolve, reject) => {
+      const t = setTimeout(
+        () => reject(new Error(`TIMEOUT: ${agentId} exceeded ${timeoutMs}ms`)),
+        timeoutMs,
+      )
+      promise.then(v => { clearTimeout(t); resolve(v) }, e => { clearTimeout(t); reject(e) })
+    })
+  }
+
+  // ── ACORA Phase 5: Circuit breaker helpers ────────────────────────────────────
+
+  function isBreakerOpen(id: string): boolean {
+    const b = circuitBreakers.current.get(id)
+    if (!b || b.state === 'closed') return false
+    if (b.state === 'open' && b.openedAt !== null && Date.now() - b.openedAt > CIRCUIT_BREAKER_RESET_MS) {
+      b.state = 'half-open'
+      return false // allow one probe attempt
+    }
+    return b.state === 'open'
+  }
+
+  function recordBreakerFailure(id: string) {
+    const existing = circuitBreakers.current.get(id)
+    const b: CircuitBreaker = existing ?? { agentId: id, failureCount: 0, openedAt: null, state: 'closed' }
+    b.failureCount++
+    if (b.failureCount >= CIRCUIT_BREAKER_THRESHOLD && b.state !== 'open') {
+      b.state = 'open'
+      b.openedAt = Date.now()
+      log(`⚡ CIRCUIT OPENED: ${id} — failed ${CIRCUIT_BREAKER_THRESHOLD}× in this session. Will skip on next attempt.`, 'warn')
+    }
+    circuitBreakers.current.set(id, b)
+  }
+
+  function recordBreakerSuccess(id: string) {
+    circuitBreakers.current.set(id, { agentId: id, failureCount: 0, openedAt: null, state: 'closed' })
+  }
+
+  // ── ACORA Phase 6: Cost attribution ──────────────────────────────────────────
+
+  function recordAgentCost(id: string, tokens: number, durationMs: number, attempts: number) {
+    const prev = agentCostLedger.current.get(id)
+    const entry: AgentCostEntry = {
+      agentId:      id,
+      tokens:       (prev?.tokens ?? 0) + tokens,
+      estimatedUsd: (prev?.estimatedUsd ?? 0) + tokens * COST_PER_TOKEN_USD,
+      durationMs:   (prev?.durationMs ?? 0) + durationMs,
+      attempts:     (prev?.attempts ?? 0) + attempts,
+    }
+    agentCostLedger.current.set(id, entry)
+    const agent = [...FORGE_AGENTS, ...BUILD_AGENTS].find(a => a.id === id)
+    if (agent && entry.estimatedUsd > agent.skill.costCeilingUsd) {
+      log(`⚠ Cost ceiling: ${id} $${entry.estimatedUsd.toFixed(4)} > $${agent.skill.costCeilingUsd} ceiling`, 'warn')
+    }
+  }
+
   // ── FORGE phase ─────────────────────────────────────────────────────────────
 
   const runForge = useCallback(async (rawBrief: string, rawClient: string): Promise<ForgeBuild> => {
@@ -2924,12 +2992,34 @@ export default function PipelinePage() {
     })
 
     const callForge = async (agentId: string, system: string, userMsg: string) => {
-      for (let attempt = 0; attempt < 4; attempt++) {
+      // ── ACORA Phase 5: Circuit breaker check ────────────────────────────────
+      if (isBreakerOpen(agentId)) {
+        const agentMeta = FORGE_AGENTS.find(a => a.id === agentId)
+        const behavior  = agentMeta?.skill.failureBehavior ?? 'fallback'
+        log(`⚡ CIRCUIT OPEN: ${agentId} skipped (${behavior})`, 'warn')
+        announce(`${agentId} has a circuit breaker open from repeated failures. The pipeline is inserting a fallback note and continuing.`, { priority: 'high' })
+        if (behavior === 'abort') throw new Error(`Circuit breaker open: ${agentId}`)
+        const fallback = createForgeFallbackOutput(agentId, briefText, prevOutputs(), 'circuit breaker open')
+        return { content: fallback, tokens: Math.ceil(fallback.length / 4) }
+      }
+
+      // ── ACORA Phase 3: Read retry policy from skill metadata ─────────────────
+      const agentMeta   = FORGE_AGENTS.find(a => a.id === agentId)
+      const maxAttempts = agentMeta?.skill.retryPolicy.maxAttempts ?? 4
+      const backoffBase = agentMeta?.skill.retryPolicy.backoffMs   ?? 4000
+      const timeoutMs   = agentMeta?.skill.timeoutMs               ?? 120_000
+
+      for (let attempt = 0; attempt < maxAttempts; attempt++) {
+        const startedAt = Date.now()
         try {
-          const result = await callAgentStreaming(system, userMsg)
+          // ── ACORA Phase 5: Per-agent timeout ──────────────────────────────────
+          const result = await withTimeout(callAgentStreaming(system, userMsg), timeoutMs, agentId)
           if (result.tokens <= 0 || result.content.trim().length < 20) {
             throw new Error('Empty or unparseable FORGE output')
           }
+          // ── ACORA Phase 6: Cost attribution ───────────────────────────────────
+          recordAgentCost(agentId, result.tokens, Date.now() - startedAt, attempt + 1)
+          recordBreakerSuccess(agentId)
           return result
         } catch (err) {
           const msg = (err as Error).message ?? ''
@@ -2937,14 +3027,20 @@ export default function PipelinePage() {
           // TOKEN_QUOTA_EXCEEDED is non-retryable — escalate immediately
           if (msg.startsWith('TOKEN_QUOTA_EXCEEDED')) throw err
           const isRateLimit = /rate.?limit|429|try again/i.test(msg)
-          if (attempt < 3) {
-            // Exponential backoff: 8→16→32s for rate limits, 4→8→16s for other errors
-            const waitMs = (isRateLimit ? 8000 : 4000) * Math.pow(2, attempt)
-            log(`FORGE ${agentId} ${isRateLimit ? 'rate-limited' : 'failed'} - ${msg.slice(0, 180)} - retrying in ${Math.round(waitMs / 1000)}s (attempt ${attempt + 1}/4)...`, 'warn')
+          if (attempt < maxAttempts - 1) {
+            // Exponential backoff: 8s+ for rate limits, backoffBase for other errors
+            const waitMs = Math.max(isRateLimit ? 8000 : backoffBase, backoffBase) * Math.pow(2, attempt)
+            log(`FORGE ${agentId} ${isRateLimit ? 'rate-limited' : 'failed'} - ${msg.slice(0, 180)} - retrying in ${Math.round(waitMs / 1000)}s (attempt ${attempt + 1}/${maxAttempts})...`, 'warn')
             announce(`FORGE ${agentId} did not return usable output. The pipeline is waiting ${Math.round(waitMs / 1000)} seconds and will try again.${isRateLimit ? ' This appears to be a provider rate limit.' : ''}`, { tag: `forge-retry-${agentId}`, minGapMs: 0 })
             await abortSleep(waitMs)
           } else {
+            // ── ACORA Phase 5: Permanent failure — update circuit breaker ─────
+            recordBreakerFailure(agentId)
             log(`FORGE ${agentId} failed permanently: ${msg.slice(0, 240)}`, 'err')
+            const behavior = agentMeta?.skill.failureBehavior ?? 'fallback'
+            if (behavior === 'abort') {
+              throw new Error(`FORGE ${agentId}: permanent failure — ${msg.slice(0, 120)}`)
+            }
             const fallback = createForgeFallbackOutput(agentId, briefText, prevOutputs(), msg)
             log(`FORGE ${agentId} recovered with degraded fallback context so downstream agents can continue`, 'warn')
             announce(`FORGE ${agentId} still failed after retries. The pipeline is inserting a reduced fallback note so later agents can continue instead of stopping immediately.`, { priority: 'high' })
@@ -3000,22 +3096,15 @@ export default function PipelinePage() {
       return result
     }
 
-    // Tiered context caps: foundational agents get full output; specialists get rich context; revenue agents get standard
-    const AGENT_CTX_CAPS: Record<string, number> = {
-      orchestrator: 3000, analyst: 4000, architect: 4000,
-      planner: 2500, 'test-writer': 3500, builder: 1200, security: 2000, 'db-opt': 3000,
-      qa: 2500, 'workflow-mapper': 2000, growth: 1500, monetisation: 1500, closer: 1800,
-    }
-    const QA_CAPS: Record<string, number> = {
-      orchestrator: 1800, analyst: 4200, architect: 4200,
-      planner: 3600, 'test-writer': 5200, builder: 900, security: 1800, 'db-opt': 3600,
-    }
+    // ACORA Phase 6: Token budgets now live on each agent's skill.tokenBudget field.
+    // prevOutputs uses tokenBudget (general context assembly).
+    // qaOutputs uses FORGE_QA_CTX_CAPS (QA-gate-specific, wider context for structural agents).
     const prevOutputs = () => Object.entries(content)
-      .map(([k, v]) => `[${k}]: ${v.slice(0, AGENT_CTX_CAPS[k] ?? 800)}`)
+      .map(([k, v]) => `[${k}]: ${v.slice(0, FORGE_AGENTS.find(a => a.id === k)?.skill.tokenBudget ?? 800)}`)
       .join('\n\n')
     const qaOutputs = () => Object.entries(content)
       .filter(([k]) => k !== 'qa')
-      .map(([k, v]) => `[${k}]: ${v.slice(0, QA_CAPS[k] ?? 2000)}`)
+      .map(([k, v]) => `[${k}]: ${v.slice(0, FORGE_QA_CTX_CAPS[k] ?? 2000)}`)
       .join('\n\n')
     const extractCriticalQaGaps = (qaReport: string) => {
       const match = qaReport.match(/### Critical Gaps\s*([\s\S]*?)(?=\n### |\s*$)/i)
@@ -3051,28 +3140,33 @@ export default function PipelinePage() {
     await abortSleep(200)
 
     // ── Phase D: parallel specialist agents ───────────────────────────────────
-    // Batch 1 (fully independent of each other, all need analyst+architect):
-    //   planner · builder · security · db-opt → run concurrently
-    // Batch 2 (needs planner output):
-    //   test-writer → runs after Batch 1 completes
-    // This cuts ~4 sequential API calls down to 2 parallel rounds.
-    const BATCH_1 = ['planner', 'builder', 'security', 'db-opt']
-    log(`FORGE · specialist phase starting — batch 1 parallel: ${BATCH_1.join(' + ')}`)
+    // ACORA Phase 8 PAR: Parallel group 1 — all agents with parallelGroup === 1 run concurrently.
+    // Derived from skill metadata (no hardcoded IDs). Currently: planner · builder · security · db-opt
+    // Adding a new parallel agent only requires setting parallelGroup: 1 in forgeAgentData.ts.
+    const parallelGroup1 = FORGE_AGENTS
+      .filter(a => a.skill.parallelGroup === 1)
+      .sort((a, b) => a.skill.executionOrder - b.skill.executionOrder)
+      .map(a => a.id)
+    log(`FORGE · specialist phase starting — parallel group 1: ${parallelGroup1.join(' + ')}`)
     announce('Four specialists are running in parallel — the planner, builder, security expert, and database optimizer are all working simultaneously to accelerate the specification.', { tag: 'forge-parallel-batch1', minGapMs: 0 })
 
-    // Capture context snapshot before batch — all agents in batch 1 get the same baseline
+    // Capture context snapshot before batch — all agents in group 1 get the same baseline
     const batch1Ctx = `${briefCtx}\n\nPrevious outputs:\n${prevOutputs()}`
     await Promise.all(
-      BATCH_1.map(id =>
-        runForgeAgent(
+      parallelGroup1.map(id =>
+        withTimeout(
+          runForgeAgent(
+            id,
+            resolveSystem(id, FORGE_AGENT_SYSTEMS[id] ?? `You are the NEXUS ${id.toUpperCase()} agent. Complete your task.`),
+            batch1Ctx,
+            true, // silent — batch announce replaces per-agent voice
+          ),
+          FORGE_AGENTS.find(a => a.id === id)!.skill.timeoutMs,
           id,
-          resolveSystem(id, FORGE_AGENT_SYSTEMS[id] ?? `You are the NEXUS ${id.toUpperCase()} agent. Complete your task.`),
-          batch1Ctx,
-          true, // silent — batch announce replaces per-agent voice
         )
       )
     )
-    log('✓ FORGE batch 1 complete (planner · builder · security · db-opt)', 'ok')
+    log(`✓ FORGE parallel group 1 complete (${parallelGroup1.join(' · ')})`, 'ok')
     announce(
       'All four parallel specialists have finished. The feature plan, utilities, security review, and data contract are now in the shared FORGE package.',
       { tag: 'forge-batch1-done', priority: 'normal', minGapMs: 0 },
@@ -3221,25 +3315,35 @@ export default function PipelinePage() {
     announce('The workflow map is complete. User journeys, edge cases, and cross-feature dependencies are locked into the spec.', { tag: 'forge-workflow-mapper-finish', minGapMs: 0 })
     await new Promise(r => setTimeout(r, 200))
 
-    // ── Revenue agents 10, 11, 12 — growth + monetisation run in parallel ────────
-    // growth and monetisation are independent of each other — both only read the QA-passed spec.
-    // closer depends on both outputs so it runs after this batch completes.
+    // ACORA Phase 8 PAR: Parallel group 2 — growth + monetisation (parallelGroup === 2).
+    // Both are independent; closer depends on both so runs after this group completes.
+    const parallelGroup2 = FORGE_AGENTS
+      .filter(a => a.skill.parallelGroup === 2)
+      .map(a => a.id)
     const prevForRevenue = prevOutputs()
-    setForgeActiveAgents(new Set(['growth', 'monetisation']))
-    log('FORGE · GROWTH HACKER + MONETISATION STRATEGIST — running in parallel')
+    setForgeActiveAgents(new Set(parallelGroup2))
+    log(`FORGE · parallel group 2: ${parallelGroup2.join(' + ')}`)
     announce('The growth hacker and monetisation strategist are running in parallel — building the go-to-market playbook and revenue model simultaneously.', { tag: 'forge-revenue-parallel', minGapMs: 0 })
 
     const revenueStartedAt = Date.now()
     const [growthResult, monetisationResult] = await Promise.all([
-      callForge(
+      withTimeout(
+        callForge(
+          'growth',
+          resolveSystem('growth', FORGE_AGENT_SYSTEMS['growth'] ?? 'You are NEXUS GROWTH HACKER. Build a concrete GTM playbook.'),
+          `Brief: ${briefText}\nVertical: ${vertical}\n\nFORGE spec outputs:\n${prevForRevenue}`,
+        ),
+        FORGE_AGENTS.find(a => a.id === 'growth')!.skill.timeoutMs,
         'growth',
-        resolveSystem('growth', FORGE_AGENT_SYSTEMS['growth'] ?? 'You are NEXUS GROWTH HACKER. Build a concrete GTM playbook.'),
-        `Brief: ${briefText}\nVertical: ${vertical}\n\nFORGE spec outputs:\n${prevForRevenue}`,
       ),
-      callForge(
+      withTimeout(
+        callForge(
+          'monetisation',
+          resolveSystem('monetisation', FORGE_AGENT_SYSTEMS['monetisation'] ?? 'You are NEXUS MONETISATION STRATEGIST. Design the revenue model.'),
+          `Brief: ${briefText}\nVertical: ${vertical}\n\nFORGE spec outputs:\n${prevForRevenue}`,
+        ),
+        FORGE_AGENTS.find(a => a.id === 'monetisation')!.skill.timeoutMs,
         'monetisation',
-        resolveSystem('monetisation', FORGE_AGENT_SYSTEMS['monetisation'] ?? 'You are NEXUS MONETISATION STRATEGIST. Design the revenue model.'),
-        `Brief: ${briefText}\nVertical: ${vertical}\n\nFORGE spec outputs:\n${prevForRevenue}`,
       ),
     ])
 
@@ -3438,10 +3542,17 @@ Generate the ${agentId.toUpperCase()} files now. Follow the output contract exac
       )
       let agentResult: { content: string; tokens: number } | null = null
       let parsed: Record<string, string> = {}
-      for (let attempt = 0; attempt < 3; attempt++) {
+      // ACORA Phase 3: Read retry policy + timeout from skill metadata
+      const buildMaxAttempts = agent.skill.retryPolicy.maxAttempts
+      const buildBackoffBase = agent.skill.retryPolicy.backoffMs
+      const buildTimeoutMs   = agent.skill.timeoutMs
+      for (let attempt = 0; attempt < buildMaxAttempts; attempt++) {
+        const buildAttemptStart = Date.now()
         try {
-          agentResult = await callAgentStreaming(
-            resolveBuildSystem(agentId),
+          // ACORA Phase 5: Per-agent timeout applied to every BUILD call
+          agentResult = await withTimeout(
+            callAgentStreaming(
+              resolveBuildSystem(agentId),
             agentId === 'repair'
               ? `${buildRepairMessage(forge, contextSnapshot)}
 
@@ -3453,7 +3564,12 @@ REPAIR SCOPE:
 - Do not rewrite successful files unless a listed failure requires an import or contract adjustment.
 - Preserve all successful generated files not named in ERROR MANIFEST.`
               : buildUserMessage(agentId, forge, contextSnapshot),
+            ),
+            buildTimeoutMs,
+            agentId,
           )
+          // ACORA Phase 6: Cost attribution on success
+          recordAgentCost(agentId, agentResult.tokens, Date.now() - buildAttemptStart, attempt + 1)
           parsed = parseAgentFiles(agentResult.content)
           if (Object.keys(parsed).length === 0 && agent.files.length === 1) {
             const raw = agentResult.content.trim()
@@ -3500,9 +3616,9 @@ REPAIR SCOPE:
           // TOKEN_QUOTA_EXCEEDED is non-retryable — skip straight to permanent failure path
           const isTokenQuota = msg.startsWith('TOKEN_QUOTA_EXCEEDED')
           const isRateLimit = !isTokenQuota && /rate.?limit|429|try again/i.test(msg)
-          if (!isTokenQuota && attempt < 2) {
-            const waitMs = (isRateLimit ? 8000 : 4000) * Math.pow(2, attempt)
-            log(`⚠ BUILD ${agent.name} ${isRateLimit ? 'rate-limited' : 'failed'} - ${msg.slice(0, 180)} - retrying in ${Math.round(waitMs / 1000)}s (attempt ${attempt + 1}/3)...`, 'warn')
+          if (!isTokenQuota && attempt < buildMaxAttempts - 1) {
+            const waitMs = Math.max(isRateLimit ? 8000 : buildBackoffBase, buildBackoffBase) * Math.pow(2, attempt)
+            log(`⚠ BUILD ${agent.name} ${isRateLimit ? 'rate-limited' : 'failed'} - ${msg.slice(0, 180)} - retrying in ${Math.round(waitMs / 1000)}s (attempt ${attempt + 1}/${buildMaxAttempts})...`, 'warn')
             announce(`${agent.name} did not return a complete build output. The pipeline is waiting ${Math.round(waitMs / 1000)} seconds and will retry.${isRateLimit ? ' This looks like a provider rate limit.' : ''}`, { tag: `build-retry-${agentId}`, minGapMs: 0 })
             await abortSleep(waitMs)
           } else {
@@ -3553,19 +3669,13 @@ REPAIR SCOPE:
       return parsed
     }
 
-    // Strictly sequential — 1 agent at a time, 1500ms gap — eliminates all API burst.
-    // Order preserves dependency chain: types → structure → UI → pages → features → repair.
-    const BUILD_ORDER = [
-      'scaffold',      // stage 1 — generates types, package.json
-      'mock-data',     // stage 1 — data fixtures (independent)
-      'shell',         // stage 1 — navigation shell (independent)
-      'ui-core',       // stage 2 — shared components (needs types)
-      'api',           // stage 2 — API routes (needs types)
-      'landing',       // stage 3 — marketing page (needs ui-core)
-      'interactions',  // stage 3 — modals/drawers (needs ui-core)
-      'dashboard',     // stage 3 — main dashboard (needs ui-core)
-      'features',      // stage 4 — feature pages (needs dashboard)
-    ]
+    // ACORA Phase 8 SEQ: Execution order is derived from each agent's skill.executionOrder field.
+    // Repair and docs run conditionally outside this loop — excluded here.
+    // To change ordering: update executionOrder in buildAgentData.ts — no code changes needed.
+    const BUILD_ORDER = BUILD_AGENTS
+      .filter(a => a.id !== 'repair' && a.id !== 'docs')
+      .sort((a, b) => a.skill.executionOrder - b.skill.executionOrder)
+      .map(a => a.id)
 
     for (let i = 0; i < BUILD_ORDER.length; i++) {
       const agentId = BUILD_ORDER[i]
@@ -4039,6 +4149,9 @@ REPAIR SCOPE:
     forgeContentRef.current = {}
     buildFilesRef.current   = {}
     forgeSpecRef.current    = null
+    // ACORA: reset circuit breakers + cost ledger for fresh run
+    circuitBreakers.current.clear()
+    agentCostLedger.current.clear()
     try { sessionStorage.removeItem('nexus-pipeline-forge-spec') } catch { /* ignore */ }
     try { sessionStorage.removeItem('nexus-pipeline-build-files') } catch { /* ignore */ }
 

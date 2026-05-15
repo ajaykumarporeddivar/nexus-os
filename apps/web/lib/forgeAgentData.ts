@@ -7,6 +7,7 @@
 export { PromptBlockBuilder, buildForgePrompt } from './promptBlocks'
 
 import type { WorkspaceIntelligenceProfile, Workspace } from '@/lib/workspaceContext'
+import type { SkillMeta } from './skillRegistry'
 
 // ─── Workspace context injection — appended to FORGE ANALYST system prompt ────
 // When a workspace has a configured intelligence profile, this block gives the
@@ -75,22 +76,171 @@ export interface ForgeAgent {
   name: string
   role: string
   icon: string
+  /** ACORA skill manifest — Phase 1-9 metadata */
+  skill: SkillMeta
+}
+
+// ─── FORGE_QA_CTX_CAPS ────────────────────────────────────────────────────────
+// Context window caps used specifically when assembling the QA gate's input.
+// These differ from each agent's tokenBudget because the QA gate gets MORE
+// context from structural agents (analyst, architect) and less from tactical ones.
+// Previously declared inline in PipelinePage.tsx; moved here so it's co-located
+// with the agent definitions and testable in isolation.
+export const FORGE_QA_CTX_CAPS: Record<string, number> = {
+  orchestrator: 1800,
+  analyst:      4200,
+  architect:    4200,
+  planner:      3600,
+  'test-writer': 5200,
+  builder:       900,
+  security:     1800,
+  'db-opt':     3600,
 }
 
 export const FORGE_AGENTS: ForgeAgent[] = [
-  { id: 'orchestrator', name: 'ORCHESTRATOR',         icon: '◉', role: 'Session init · mission context · pipeline confirmation' },
-  { id: 'analyst',      name: 'ANALYST',              icon: '◈', role: 'PROJECT_MANIFEST · market analysis · user personas' },
-  { id: 'architect',    name: 'ARCHITECT',            icon: '◻', role: 'System design · data flow · API contracts · tech stack' },
-  { id: 'planner',      name: 'PLANNER',              icon: '▣', role: 'Sprint-ready feature cards · user stories · acceptance criteria' },
-  { id: 'test-writer',  name: 'SPEC VALIDATOR',       icon: '✓', role: 'SPEC CONTRACT · entity shapes · route slugs · import paths reference' },
-  { id: 'builder',      name: 'UTILS BUILDER',        icon: '⚙', role: 'src/lib/utils.ts · cn · formatDate · formatCurrency · generateId' },
-  { id: 'security',     name: 'SECURITY',             icon: '🔒', role: 'OWASP audit · threat model · remediation steps' },
-  { id: 'db-opt',       name: 'DB OPTIMIZER',         icon: '🗄', role: 'SQL schema · indexes · constraints · migration files' },
-  { id: 'qa',           name: 'QA GATE',              icon: '⚡', role: 'Quality score /10 · delivery recommendation · gap analysis' },
-  { id: 'growth',       name: 'GROWTH HACKER',        icon: '◎', role: 'GTM strategy · acquisition channels · viral loops · pricing model' },
-  { id: 'monetisation', name: 'MONETISATION STRATEGIST', icon: '◆', role: 'Revenue model · upsell triggers · churn prevention · LTV maximisation' },
-  { id: 'closer',       name: 'SALES CLOSER',         icon: '◈', role: 'Buyer psychology · objection handling · demo booking · close sequence' },
-  { id: 'workflow-mapper', name: 'WORKFLOW MAPPER',    icon: '⇄', role: 'End-to-end user journeys · cross-feature flows · edge case inventory' },
+  {
+    id: 'orchestrator', name: 'ORCHESTRATOR', icon: '◉',
+    role: 'Session init · mission context · pipeline confirmation',
+    skill: {
+      skillType: 'orchestrator', executionMode: 'sequential', parallelGroup: null,
+      executionOrder: 1, tokenBudget: 3000, timeoutMs: 120_000,
+      trustLevel: 'privileged', failureBehavior: 'fallback', costCeilingUsd: 0.05,
+      dependencies: [],
+      retryPolicy: { maxAttempts: 4, backoffMs: 4000 },
+    },
+  },
+  {
+    id: 'analyst', name: 'ANALYST', icon: '◈',
+    role: 'PROJECT_MANIFEST · market analysis · user personas',
+    skill: {
+      skillType: 'transformer', executionMode: 'sequential', parallelGroup: null,
+      executionOrder: 2, tokenBudget: 4000, timeoutMs: 150_000,
+      trustLevel: 'privileged', failureBehavior: 'fallback', costCeilingUsd: 0.08,
+      dependencies: ['orchestrator'],
+      retryPolicy: { maxAttempts: 4, backoffMs: 4000 },
+    },
+  },
+  {
+    id: 'architect', name: 'ARCHITECT', icon: '◻',
+    role: 'System design · data flow · API contracts · tech stack',
+    skill: {
+      skillType: 'planner', executionMode: 'sequential', parallelGroup: null,
+      executionOrder: 3, tokenBudget: 4000, timeoutMs: 150_000,
+      trustLevel: 'privileged', failureBehavior: 'fallback', costCeilingUsd: 0.08,
+      dependencies: ['analyst'],
+      retryPolicy: { maxAttempts: 4, backoffMs: 4000 },
+    },
+  },
+  {
+    id: 'planner', name: 'PLANNER', icon: '▣',
+    role: 'Sprint-ready feature cards · user stories · acceptance criteria',
+    skill: {
+      skillType: 'planner', executionMode: 'parallel', parallelGroup: 1,
+      executionOrder: 4, tokenBudget: 2500, timeoutMs: 120_000,
+      trustLevel: 'trusted', failureBehavior: 'fallback', costCeilingUsd: 0.05,
+      dependencies: ['architect'],
+      retryPolicy: { maxAttempts: 4, backoffMs: 4000 },
+    },
+  },
+  {
+    id: 'builder', name: 'UTILS BUILDER', icon: '⚙',
+    role: 'src/lib/utils.ts · cn · formatDate · formatCurrency · generateId',
+    skill: {
+      skillType: 'executor', executionMode: 'parallel', parallelGroup: 1,
+      executionOrder: 4, tokenBudget: 1200, timeoutMs: 90_000,
+      trustLevel: 'trusted', failureBehavior: 'fallback', costCeilingUsd: 0.03,
+      dependencies: ['architect'],
+      retryPolicy: { maxAttempts: 4, backoffMs: 4000 },
+    },
+  },
+  {
+    id: 'security', name: 'SECURITY', icon: '🔒',
+    role: 'OWASP audit · threat model · remediation steps',
+    skill: {
+      skillType: 'validator', executionMode: 'parallel', parallelGroup: 1,
+      executionOrder: 4, tokenBudget: 2000, timeoutMs: 120_000,
+      trustLevel: 'trusted', failureBehavior: 'degrade', costCeilingUsd: 0.04,
+      dependencies: ['architect'],
+      retryPolicy: { maxAttempts: 4, backoffMs: 4000 },
+    },
+  },
+  {
+    id: 'db-opt', name: 'DB OPTIMIZER', icon: '🗄',
+    role: 'SQL schema · indexes · constraints · migration files',
+    skill: {
+      skillType: 'transformer', executionMode: 'parallel', parallelGroup: 1,
+      executionOrder: 4, tokenBudget: 3000, timeoutMs: 120_000,
+      trustLevel: 'trusted', failureBehavior: 'degrade', costCeilingUsd: 0.05,
+      dependencies: ['architect'],
+      retryPolicy: { maxAttempts: 4, backoffMs: 4000 },
+    },
+  },
+  {
+    id: 'test-writer', name: 'SPEC VALIDATOR', icon: '✓',
+    role: 'SPEC CONTRACT · entity shapes · route slugs · import paths reference',
+    skill: {
+      skillType: 'validator', executionMode: 'sequential', parallelGroup: null,
+      executionOrder: 5, tokenBudget: 3500, timeoutMs: 120_000,
+      trustLevel: 'privileged', failureBehavior: 'abort', costCeilingUsd: 0.06,
+      dependencies: ['planner'],
+      retryPolicy: { maxAttempts: 4, backoffMs: 4000 },
+    },
+  },
+  {
+    id: 'qa', name: 'QA GATE', icon: '⚡',
+    role: 'Quality score /10 · delivery recommendation · gap analysis',
+    skill: {
+      skillType: 'validator', executionMode: 'sequential', parallelGroup: null,
+      executionOrder: 6, tokenBudget: 2500, timeoutMs: 150_000,
+      trustLevel: 'privileged', failureBehavior: 'abort', costCeilingUsd: 0.05,
+      dependencies: ['test-writer'],
+      retryPolicy: { maxAttempts: 4, backoffMs: 4000 },
+    },
+  },
+  {
+    id: 'workflow-mapper', name: 'WORKFLOW MAPPER', icon: '⇄',
+    role: 'End-to-end user journeys · cross-feature flows · edge case inventory',
+    skill: {
+      skillType: 'observer', executionMode: 'sequential', parallelGroup: null,
+      executionOrder: 7, tokenBudget: 2000, timeoutMs: 120_000,
+      trustLevel: 'trusted', failureBehavior: 'degrade', costCeilingUsd: 0.04,
+      dependencies: ['qa'],
+      retryPolicy: { maxAttempts: 4, backoffMs: 4000 },
+    },
+  },
+  {
+    id: 'growth', name: 'GROWTH HACKER', icon: '◎',
+    role: 'GTM strategy · acquisition channels · viral loops · pricing model',
+    skill: {
+      skillType: 'planner', executionMode: 'parallel', parallelGroup: 2,
+      executionOrder: 8, tokenBudget: 1500, timeoutMs: 120_000,
+      trustLevel: 'trusted', failureBehavior: 'degrade', costCeilingUsd: 0.04,
+      dependencies: ['workflow-mapper'],
+      retryPolicy: { maxAttempts: 4, backoffMs: 4000 },
+    },
+  },
+  {
+    id: 'monetisation', name: 'MONETISATION STRATEGIST', icon: '◆',
+    role: 'Revenue model · upsell triggers · churn prevention · LTV maximisation',
+    skill: {
+      skillType: 'planner', executionMode: 'parallel', parallelGroup: 2,
+      executionOrder: 8, tokenBudget: 1500, timeoutMs: 120_000,
+      trustLevel: 'trusted', failureBehavior: 'degrade', costCeilingUsd: 0.04,
+      dependencies: ['workflow-mapper'],
+      retryPolicy: { maxAttempts: 4, backoffMs: 4000 },
+    },
+  },
+  {
+    id: 'closer', name: 'SALES CLOSER', icon: '◈',
+    role: 'Buyer psychology · objection handling · demo booking · close sequence',
+    skill: {
+      skillType: 'transformer', executionMode: 'sequential', parallelGroup: null,
+      executionOrder: 9, tokenBudget: 1800, timeoutMs: 120_000,
+      trustLevel: 'trusted', failureBehavior: 'degrade', costCeilingUsd: 0.04,
+      dependencies: ['growth', 'monetisation'],
+      retryPolicy: { maxAttempts: 4, backoffMs: 4000 },
+    },
+  },
 ]
 
 // ─── Vertical detection — adds specificity to ANALYST prompt ─────────────────
