@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useSession } from 'next-auth/react'
+import { usePageVoice, speak } from '@/lib/voice'
+import PageVoiceBar from '@/components/PageVoiceBar'
 
 interface ApiKeyRow {
   id:        string
@@ -137,9 +139,50 @@ export default function KeysPage() {
   }
 
   const activeKey = keys.find(k => k.isValid)
+  const validCount  = keys.filter(k => k.isValid).length
+  const totalCount  = keys.length
+
+  // ── Voice assistant ────────────────────────────────────────────────────────
+  const keysReadout = loading
+    ? 'API Keys page. Keys are loading.'
+    : totalCount === 0
+    ? 'API Keys page. No keys saved. You are using the shared quota.'
+    : `API Keys page. You have ${totalCount} key${totalCount !== 1 ? 's' : ''} saved. ${validCount} active.`
+
+  const { voiceBarProps } = usePageVoice({
+    pageTitle: 'API Keys',
+    readout: keysReadout,
+    commands: [
+      {
+        phrases: ['read my keys', 'list keys', 'how many keys', 'key count'],
+        description: 'Hear how many API keys are saved',
+        action: () => speak(
+          totalCount === 0
+            ? 'No keys saved. Using shared quota.'
+            : `You have ${totalCount} key${totalCount !== 1 ? 's' : ''}. ${validCount} active.`,
+          { priority: 'high' },
+        ),
+      },
+      {
+        phrases: ['key status', 'is key active', 'active key'],
+        description: 'Hear the status of your current API key',
+        action: () => speak(
+          activeKey
+            ? `Active key ending in ${activeKey.keyHint}. Added ${new Date(activeKey.createdAt).toLocaleDateString()}.`
+            : 'No active key found. Using shared quota.',
+          { priority: 'high' },
+        ),
+      },
+      {
+        phrases: ['reload keys', 'refresh keys'],
+        description: 'Reload the list of API keys',
+        action: () => { fetchKeys(); speak('Refreshing keys.') },
+      },
+    ],
+  })
 
   return (
-    <div className="p-6 max-w-2xl mx-auto space-y-8">
+    <div className="p-6 max-w-2xl mx-auto space-y-8" role="main" aria-label="API Key Management">
 
       {/* Header */}
       <div>
@@ -259,6 +302,11 @@ export default function KeysPage() {
           {' '}· {activeKey ? 'Using your own API key — no quota applied' : 'Shared quota active'}
         </p>
       )}
+
+      {/* Voice assistant bar */}
+      <div role="region" aria-label="API Keys voice assistant">
+        <PageVoiceBar {...voiceBarProps} />
+      </div>
     </div>
   )
 }

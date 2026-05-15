@@ -3,6 +3,8 @@
 import { useState } from 'react'
 import { useWorkspace, type Workspace } from '@/lib/workspaceContext'
 import dynamic from 'next/dynamic'
+import { usePageVoice, speak } from '@/lib/voice'
+import PageVoiceBar from '@/components/PageVoiceBar'
 
 const OnboardingWizard = dynamic(() => import('@/components/OnboardingWizard'), { ssr: false })
 
@@ -166,8 +168,47 @@ export default function WorkspacesPage() {
     try { await deleteWorkspace(w.id) } catch (e) { setError((e as Error).message) }
   }
 
+  // ── Voice assistant ──────────────────────────────────────────────────────
+  const wsReadout = isLoading
+    ? 'Workspaces page. Loading workspaces.'
+    : workspaces.length === 0
+    ? 'Workspaces page. No workspaces yet. Create one to get started.'
+    : `Workspaces page. ${workspaces.length} workspace${workspaces.length !== 1 ? 's' : ''}. Active: ${active?.name ?? 'none'}.`
+
+  const { voiceBarProps } = usePageVoice({
+    pageTitle: 'Workspaces',
+    readout: wsReadout,
+    commands: [
+      {
+        phrases: ['read my workspace', 'current workspace', 'current settings', 'active workspace'],
+        description: 'Hear the name and type of your active workspace',
+        action: () => speak(
+          active
+            ? `Active workspace: ${active.name}. Type: ${active.type}.${active.description ? ' ' + active.description : ''}`
+            : 'No active workspace selected.',
+          { priority: 'high' },
+        ),
+      },
+      {
+        phrases: ['how many workspaces', 'workspace count', 'list workspaces'],
+        description: 'Hear how many workspaces you have',
+        action: () => speak(
+          workspaces.length === 0
+            ? 'No workspaces yet.'
+            : `You have ${workspaces.length} workspace${workspaces.length !== 1 ? 's' : ''}: ${workspaces.map(w => w.name).join(', ')}.`,
+          { priority: 'high' },
+        ),
+      },
+      {
+        phrases: ['refresh workspaces', 'reload workspaces'],
+        description: 'Reload the workspace list',
+        action: () => { refresh(); speak('Refreshing workspaces.') },
+      },
+    ],
+  })
+
   return (
-    <div className="max-w-3xl mx-auto px-6 py-10 space-y-6">
+    <div className="max-w-3xl mx-auto px-6 py-10 space-y-6" role="main" aria-label="Workspaces">
       {wizardOpen && (
         <OnboardingWizard
           onComplete={handleWizardComplete}
@@ -269,6 +310,11 @@ export default function WorkspacesPage() {
           ))}
         </div>
       )}
+
+      {/* Voice assistant bar */}
+      <div role="region" aria-label="Workspaces voice assistant">
+        <PageVoiceBar {...voiceBarProps} />
+      </div>
     </div>
   )
 }

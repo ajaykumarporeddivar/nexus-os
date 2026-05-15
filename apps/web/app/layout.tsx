@@ -44,6 +44,14 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" suppressHydrationWarning>
       <body>
+        {/* Global screen-reader live region — updated by shell on page navigation */}
+        <div
+          id="global-sr-announce"
+          role="status"
+          aria-live="polite"
+          aria-atomic="true"
+          className="sr-only"
+        />
         <Providers>{children}</Providers>
       </body>
     </html>

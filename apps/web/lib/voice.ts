@@ -468,3 +468,112 @@ export function useVoiceNavigation(): { isListening: boolean; toggle: () => void
 
   return { isListening: voice.isListening, toggle: voice.toggle, isSupported: voice.isSupported }
 }
+
+// ─── Page-level voice hook ────────────────────────────────────────────────────
+// Generic hook that any page imports to get voice control + TTS narration.
+// Feed the returned voiceBarProps directly to <PageVoiceBar>.
+
+export interface VoiceCommand {
+  phrases: string[]      // e.g. ['read summary', 'what is my status']
+  description: string    // shown in "help" TTS narration
+  action: () => void
+}
+
+export interface PageVoiceBarProps {
+  pageTitle: string
+  commands: VoiceCommand[]
+  readout: string
+  hint?: string
+  isListening: boolean
+  interim: string
+  lastText: string
+  error: string | null
+  onToggle: () => void
+  onClearError: () => void
+  isSupported: boolean
+}
+
+export function usePageVoice(opts: {
+  pageTitle: string
+  commands: VoiceCommand[]
+  readout: string
+  hint?: string
+  announceOnMount?: boolean
+}): { voiceBarProps: PageVoiceBarProps } {
+  const { pageTitle, commands, readout, hint, announceOnMount = true } = opts
+  const [lastText, setLastText] = useState('')
+
+  const handleTranscript = useCallback((transcript: string) => {
+    const t = transcript.toLowerCase().trim()
+    setLastText(transcript)
+
+    // Universal: help / guide me
+    if (t.includes('help') || t.includes('guide me') || t.includes('what can i say')) {
+      const desc = commands.map((c, i) => `${i + 1}. ${c.description}`).join('. ')
+      speak(`Here are the available commands for ${pageTitle}. ${desc}. You can also say read page to hear a summary, or go to followed by any page name to navigate.`, { priority: 'high' })
+      return
+    }
+
+    // Universal: read page / read summary
+    if (t.includes('read page') || t.includes('read summary') || t.includes('summarise') || t.includes('summarize')) {
+      speak(readout, { priority: 'high' })
+      return
+    }
+
+    // Universal: navigation (go to X)
+    const navCmd = matchVoiceCommand(transcript)
+    if (navCmd?.type === 'navigate') {
+      const label = transcript.replace(/^go to |^open /, '')
+      speak(`Navigating to ${label}`)
+      setTimeout(() => { window.location.href = navCmd.url }, 600)
+      return
+    }
+
+    // Page-specific commands — check each phrase
+    for (const cmd of commands) {
+      if (cmd.phrases.some(p => t.includes(p))) {
+        cmd.action()
+        return
+      }
+    }
+  }, [commands, pageTitle, readout])
+
+  const voice = useVoice({
+    continuous:   true,
+    language:     'en-US',
+    onTranscript: handleTranscript,
+  })
+
+  // Announce page on mount
+  useEffect(() => {
+    if (announceOnMount) {
+      speak(`Now on ${pageTitle}. Say help to hear available voice commands.`)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Announce voice toggle
+  useEffect(() => {
+    if (voice.isListening) {
+      speak('Voice on.', { rate: 1.4 })
+    } else {
+      stopSpeaking()
+    }
+  }, [voice.isListening])
+
+  const voiceBarProps: PageVoiceBarProps = {
+    pageTitle,
+    commands,
+    readout,
+    hint,
+    isListening:  voice.isListening,
+    interim:      voice.interimTranscript,
+    lastText,
+    error:        voice.error,
+    onToggle:     voice.toggle,
+    onClearError: voice.clear,
+    isSupported:  voice.isSupported,
+  }
+
+  return { voiceBarProps }
+}

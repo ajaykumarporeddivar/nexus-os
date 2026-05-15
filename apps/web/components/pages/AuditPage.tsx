@@ -3,6 +3,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useSession } from 'next-auth/react'
 import { auditEvent } from '@/lib/auditEvent'
+import { usePageVoice, speak } from '@/lib/voice'
+import PageVoiceBar from '@/components/PageVoiceBar'
 
 interface AuditRow {
   id: string
@@ -196,8 +198,48 @@ export default function AuditPage() {
     .sort((a, b) => b[1] - a[1])
     .slice(0, 5)
 
+  // ── Voice assistant ──────────────────────────────────────────────────────
+  const recentThree = rows.slice(0, 3)
+  const auditReadout = loading
+    ? 'Audit Log page. Events are loading.'
+    : rows.length === 0
+    ? 'Audit Log page. No events recorded yet.'
+    : `Audit Log page. ${rows.length} events recorded. Most recent: ${recentThree.map(r => r.action.replace(/_/g, ' ')).join(', ')}.`
+
+  const { voiceBarProps } = usePageVoice({
+    pageTitle: 'Audit Log',
+    readout: auditReadout,
+    commands: [
+      {
+        phrases: ['read recent activity', 'what happened', 'recent events', 'last events'],
+        description: 'Hear the 3 most recent audit events',
+        action: () => speak(
+          recentThree.length === 0
+            ? 'No events recorded yet.'
+            : `Last ${recentThree.length} events: ${recentThree.map(r => r.action.replace(/_/g, ' ')).join(', ')}.`,
+          { priority: 'high' },
+        ),
+      },
+      {
+        phrases: ['how many events', 'event count', 'total events'],
+        description: 'Hear the total event count',
+        action: () => speak(
+          rows.length === 0
+            ? 'No events recorded.'
+            : `${rows.length} total event${rows.length !== 1 ? 's' : ''} recorded. ${filtered.length} matching current filter.`,
+          { priority: 'high' },
+        ),
+      },
+      {
+        phrases: ['refresh logs', 'reload logs', 'refresh audit'],
+        description: 'Reload the audit log',
+        action: () => { fetchLogs(); speak('Refreshing audit log.') },
+      },
+    ],
+  })
+
   return (
-    <div className="max-w-7xl mx-auto px-6 py-10 space-y-8">
+    <div className="max-w-7xl mx-auto px-6 py-10 space-y-8" role="main" aria-label="Audit Log">
       {/* Header */}
       <div className="flex items-end justify-between gap-4 flex-wrap">
         <div>
@@ -439,6 +481,11 @@ export default function AuditPage() {
       <div className="flex items-center justify-between text-xs text-ink3">
         <span>Showing {filtered.length} of {rows.length} events</span>
         {autoRefresh && <span className="chip acid">Live — refreshing every 15s</span>}
+      </div>
+
+      {/* Voice assistant bar */}
+      <div role="region" aria-label="Audit Log voice assistant">
+        <PageVoiceBar {...voiceBarProps} />
       </div>
     </div>
   )

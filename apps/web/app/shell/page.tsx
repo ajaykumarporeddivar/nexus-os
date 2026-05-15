@@ -33,7 +33,7 @@ const VideoPromptsPage      = dynamic(() => import('@/components/pages/VideoProm
 import { WorkspaceProvider } from '@/lib/workspaceContext'
 import { AutoPilotProvider } from '@/lib/autoPilotContext'
 import AutoPilotBar from '@/components/AutoPilotBar'
-import { useVoiceNavigation } from '@/lib/voice'
+import { useVoiceNavigation, speak } from '@/lib/voice'
 
 const VALID_PAGES = [
   'journey', 'client-delivery', 'overview', 'reasoning', 'runtime',
@@ -57,6 +57,19 @@ function ShellInner() {
   const lastKeyRef = useRef<string | null>(null)
   const lastKeyTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const voiceNav = useVoiceNavigation()
+  const prevPageRef = useRef<string | null>(null)
+
+  // Human-readable labels for TTS page announcements
+  const PAGE_LABELS: Record<string, string> = {
+    overview: 'Overview', journey: 'Demo Journey', 'client-delivery': 'Client Delivery',
+    reasoning: 'Reasoning Engine', runtime: 'Live Runtime', forge: 'FORGE Engine',
+    dashboard: 'Dashboard', vault: 'Prompt Vault', 'agent-editor': 'Agent Editor',
+    audit: 'Audit Log', trending: 'Trending', workspaces: 'Workspaces',
+    pricing: 'Pricing', deploy: 'Deploy', build: 'Build Engine',
+    pipeline: 'One-Click Pipeline', evolve: 'Evolve', 'higgs-ai': 'Higgs AI',
+    keys: 'API Keys', admin: 'Admin', 'client-agents': 'Client Agents',
+    'image-prompts': 'Image Prompts', 'video-prompts': 'Video Prompts',
+  }
 
   // Restore sidebar + theme from localStorage/cookie on mount
   useEffect(() => {
@@ -122,6 +135,19 @@ function ShellInner() {
     return () => document.removeEventListener('keydown', onKey)
   }, [router])
 
+  // Announce page changes via TTS for screen reader / voice users
+  useEffect(() => {
+    if (prevPageRef.current !== null && prevPageRef.current !== currentPage) {
+      const label = PAGE_LABELS[currentPage] ?? currentPage
+      speak(`Now on ${label}.`, { priority: 'high' })
+      // Also update the global sr-only live region for screen readers without TTS
+      const el = document.getElementById('global-sr-announce')
+      if (el) el.textContent = `Navigated to ${label}`
+    }
+    prevPageRef.current = currentPage
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentPage])
+
   const toggleCollapse = useCallback(() => {
     setCollapsed(c => {
       localStorage.setItem('nexus-sidebar-collapsed', String(!c))
@@ -145,6 +171,14 @@ function ShellInner() {
   return (
     <WorkspaceProvider>
       <AutoPilotProvider>
+        {/* Skip-to-content for keyboard / screen reader users */}
+        <a
+          href="#main-content"
+          className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-[100] focus:bg-white focus:text-zinc-900 focus:px-4 focus:py-2 focus:rounded-lg focus:shadow-lg focus:border focus:border-zinc-300 focus:text-sm focus:font-medium"
+        >
+          Skip to main content
+        </a>
+
         {/* Outer: full-height flex row */}
         <div className="flex h-screen bg-paper overflow-hidden">
 
@@ -160,7 +194,7 @@ function ShellInner() {
           />
 
           {/* Main content scrollable area */}
-          <main className="flex-1 overflow-y-auto min-w-0 flex flex-col">
+          <main id="main-content" className="flex-1 overflow-y-auto min-w-0 flex flex-col">
             {/* Onboarding banner */}
             {!onboarded && (
               <div className="border-b border-acid/30 bg-acid/5 px-6 py-3 flex items-center gap-4 flex-wrap">

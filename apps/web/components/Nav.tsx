@@ -282,6 +282,8 @@ function NavItem({
       <button
         onClick={handleClick}
         title={locked ? `${item.label} — Agency+ plan required` : `${item.label}${item.description ? ` — ${item.description}` : ''}`}
+        aria-label={locked ? `${item.label} — Agency+ plan required` : item.label}
+        aria-current={isActive && !locked ? 'page' : undefined}
         className={`relative w-full flex items-center justify-center py-2 rounded-lg transition-all group ${isActive && !locked ? activeCls : idleCls}`}
       >
         <span className={`text-sm leading-none ${locked ? 'opacity-30' : ''}`}>
@@ -297,6 +299,8 @@ function NavItem({
   return (
     <button
       onClick={handleClick}
+      aria-current={isActive && !locked ? 'page' : undefined}
+      aria-label={locked ? `${item.label} — Agency+ plan required` : item.label}
       className={`relative w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-all group ${isActive && !locked ? activeCls : idleCls}`}
     >
       {isActive && !locked && (
@@ -423,6 +427,8 @@ export default function Nav({
           onClick={onToggleCollapse}
           className="w-7 h-7 flex items-center justify-center rounded-lg text-ink3 hover:text-ink hover:bg-paper2 transition-colors text-[11px] flex-shrink-0"
           title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          aria-expanded={!collapsed}
+          aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
         >
           {collapsed ? '›' : '‹'}
         </button>
@@ -489,7 +495,7 @@ export default function Nav({
       </div>
 
       {/* ── Navigation groups ────────────────────────────────────────────────── */}
-      <nav className="flex-1 overflow-y-auto py-2 px-2 space-y-4 min-h-0">
+      <nav className="flex-1 overflow-y-auto py-2 px-2 space-y-4 min-h-0" aria-label="Main navigation">
 
         {/* ── Free plan workflow hint (collapsed = icon, expanded = banner) ── */}
         {plan === 'free' && !isAdmin && !collapsed && (

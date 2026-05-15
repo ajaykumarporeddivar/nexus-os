@@ -4,6 +4,8 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { nexusStore } from '@/lib/nexusStore'
 import type { Build } from '@nexus-os/shared-types'
 import type { PageId as NavPageId } from '@/components/Nav'
+import { usePageVoice, speak } from '@/lib/voice'
+import PageVoiceBar from '@/components/PageVoiceBar'
 
 const KITS = [
   { id: 'screening', icon: '🎯', title: 'Candidate Screening Kit', desc: 'AI-powered screening, scoring, and shortlisting for any role. CV parsing + fit scoring + PII compliance.', score: '9.2/10', tags: ['Phase 1', 'Active'] },
@@ -191,8 +193,73 @@ export default function DashboardPage({ onNavigate }: Props) {
     { id: 'funnel',     label: 'Analytics'     },
   ]
 
+  // ── Voice assistant ────────────────────────────────────────────────────────
+  const dashboardReadout = [
+    `Dashboard summary.`,
+    `You have ${totalRuns} total pipeline run${totalRuns !== 1 ? 's' : ''}.`,
+    totalTokens > 0 ? `${(usedTokens / 1000).toFixed(1)} thousand tokens consumed.` : '',
+    rawAvg !== null ? `Average quality score is ${rawAvg.toFixed(1)} out of 10.` : '',
+    allHealthOk ? 'All systems are operational.' : `${healthOkCount} of ${healthTotal} services are operational.`,
+    `You are currently viewing the ${SIDEBAR.find(s => s.id === section)?.label ?? section} section.`,
+  ].filter(Boolean).join(' ')
+
+  const { voiceBarProps } = usePageVoice({
+    pageTitle: 'Dashboard',
+    readout: dashboardReadout,
+    commands: [
+      {
+        phrases: ['read summary', 'what is my status', 'status'],
+        description: 'Read a summary of your dashboard stats',
+        action: () => speak(dashboardReadout, { priority: 'high' }),
+      },
+      {
+        phrases: ['go to overview', 'show overview', 'overview'],
+        description: 'Switch to Overview section',
+        action: () => { setSection('overview'); speak('Switched to Overview.') },
+      },
+      {
+        phrases: ['go to executions', 'show executions', 'execution log'],
+        description: 'Switch to Execution Log',
+        action: () => { setSection('executions'); speak('Switched to Execution Log.') },
+      },
+      {
+        phrases: ['go to kits', 'show kits', 'kit registry'],
+        description: 'Switch to Kit Registry',
+        action: () => { setSection('kits'); speak('Switched to Kit Registry.') },
+      },
+      {
+        phrases: ['go to feed', 'show feed', 'agent feed'],
+        description: 'Switch to Agent Feed',
+        action: () => { setSection('feed'); speak('Switched to Agent Feed.') },
+      },
+      {
+        phrases: ['go to analytics', 'show analytics', 'funnel'],
+        description: 'Switch to Analytics',
+        action: () => { setSection('funnel'); speak('Switched to Analytics.') },
+      },
+      {
+        phrases: ['how many builds', 'how many runs', 'run count'],
+        description: 'Hear the number of pipeline runs',
+        action: () => speak(`You have ${totalRuns} pipeline run${totalRuns !== 1 ? 's' : ''}.`, { priority: 'high' }),
+      },
+      {
+        phrases: ['health status', 'system status', 'are systems ok'],
+        description: 'Hear system health status',
+        action: () => speak(
+          allHealthOk ? 'All systems are operational.' : `${healthOkCount} of ${healthTotal} services are operational.`,
+          { priority: 'high' },
+        ),
+      },
+      {
+        phrases: ['go to pipeline', 'open pipeline', 'start pipeline'],
+        description: 'Navigate to Pipeline page',
+        action: () => { speak('Opening Pipeline.'); onNavigate('pipeline') },
+      },
+    ],
+  })
+
   return (
-    <div className="max-w-7xl mx-auto px-6 py-10">
+    <div className="max-w-7xl mx-auto px-6 py-10" role="main" aria-label="Dashboard">
 
       {/* ── Health strip — always visible at top ── */}
       {!healthLoading && Object.keys(healthStatus).length > 0 && (
@@ -653,6 +720,11 @@ export default function DashboardPage({ onNavigate }: Props) {
           {toast}
         </div>
       )}
+
+      {/* Voice assistant bar */}
+      <div className="mt-8" role="region" aria-label="Dashboard voice assistant">
+        <PageVoiceBar {...voiceBarProps} />
+      </div>
     </div>
   )
 }

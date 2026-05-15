@@ -5,6 +5,8 @@ import { LENSES } from '@/lib/lensData'
 import { brand } from '@/lib/brand'
 import { useSession } from 'next-auth/react'
 import type { PageId } from '@/components/Nav'
+import { usePageVoice, speak } from '@/lib/voice'
+import PageVoiceBar from '@/components/PageVoiceBar'
 
 interface Props { onNavigate: (page: PageId) => void }
 
@@ -69,6 +71,38 @@ export default function OverviewPage({ onNavigate }: Props) {
       .catch(() => {})
   }, [])
 
+  // ── Voice assistant ──────────────────────────────────────────────────────
+  const overviewReadout = stats
+    ? `Overview page. ${stats.appsDeployed} apps deployed. ${stats.successRate}% pipeline success rate. ${stats.agentsPerRun} agents per run.`
+    : 'Overview page. NEXUS OS — AI delivery infrastructure for digital agencies. Say start pipeline to begin.'
+
+  const { voiceBarProps } = usePageVoice({
+    pageTitle: 'Overview',
+    readout: overviewReadout,
+    commands: [
+      {
+        phrases: ['read my progress', "what's next", 'what is next', 'show progress'],
+        description: 'Hear a summary of the overview and platform stats',
+        action: () => speak(overviewReadout, { priority: 'high' }),
+      },
+      {
+        phrases: ['start pipeline', 'go to pipeline', 'open pipeline', 'run pipeline'],
+        description: 'Navigate to the Pipeline page',
+        action: () => { onNavigate('pipeline'); speak('Opening Pipeline.') },
+      },
+      {
+        phrases: ['go to dashboard', 'open dashboard'],
+        description: 'Navigate to the Dashboard',
+        action: () => { onNavigate('dashboard'); speak('Opening Dashboard.') },
+      },
+      {
+        phrases: ['go to forge', 'open forge', 'start forge'],
+        description: 'Navigate to FORGE',
+        action: () => { onNavigate('forge'); speak('Opening FORGE.') },
+      },
+    ],
+  })
+
   // Admin health check — only runs for authenticated users
   useEffect(() => {
     if (!session?.user) return
@@ -85,7 +119,7 @@ export default function OverviewPage({ onNavigate }: Props) {
   }, [session])
 
   return (
-    <div className="max-w-6xl mx-auto px-6 py-12 space-y-20">
+    <div className="max-w-6xl mx-auto px-6 py-12 space-y-20" role="main" aria-label="Overview">
 
       {/* ─── Admin: missing env / health warnings ─── */}
       {healthWarnings.length > 0 && (
@@ -304,6 +338,11 @@ export default function OverviewPage({ onNavigate }: Props) {
           View Pricing & Book a Demo →
         </button>
       </section>
+
+      {/* Voice assistant bar */}
+      <div role="region" aria-label="Overview voice assistant">
+        <PageVoiceBar {...voiceBarProps} />
+      </div>
     </div>
   )
 }
