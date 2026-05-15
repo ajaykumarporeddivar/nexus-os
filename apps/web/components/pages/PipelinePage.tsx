@@ -911,9 +911,36 @@ const BRIEF_TEMPLATES = [
   },
 ]
 
-function BriefTemplatesModal({ onSelect, onClose }: {
-  onSelect: (brief: string, client: string) => void
-  onClose:  () => void
+const SAVED_TEMPLATES_KEY = 'nexus-saved-brief-templates'
+
+interface SavedTemplate { label: string; brief: string; client: string; savedAt: string }
+
+function useSavedTemplates(): [SavedTemplate[], (t: SavedTemplate) => void, (label: string) => void] {
+  const [saved, setSaved] = useState<SavedTemplate[]>(() => {
+    try { return JSON.parse(localStorage.getItem(SAVED_TEMPLATES_KEY) ?? '[]') } catch { return [] }
+  })
+  const save = (t: SavedTemplate) => {
+    setSaved(prev => {
+      const next = [t, ...prev.filter(x => x.label !== t.label)].slice(0, 20)
+      try { localStorage.setItem(SAVED_TEMPLATES_KEY, JSON.stringify(next)) } catch { /* ignore */ }
+      return next
+    })
+  }
+  const remove = (label: string) => {
+    setSaved(prev => {
+      const next = prev.filter(x => x.label !== label)
+      try { localStorage.setItem(SAVED_TEMPLATES_KEY, JSON.stringify(next)) } catch { /* ignore */ }
+      return next
+    })
+  }
+  return [saved, save, remove]
+}
+
+function BriefTemplatesModal({ onSelect, onClose, savedTemplates, onDeleteSaved }: {
+  onSelect:      (brief: string, client: string) => void
+  onClose:       () => void
+  savedTemplates: SavedTemplate[]
+  onDeleteSaved:  (label: string) => void
 }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
@@ -925,21 +952,50 @@ function BriefTemplatesModal({ onSelect, onClose }: {
           </div>
           <button onClick={onClose} className="text-ink3 hover:text-ink text-xl leading-none transition-colors">✕</button>
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          {BRIEF_TEMPLATES.map(t => (
-            <button
-              key={t.label}
-              onClick={() => { onSelect(t.brief, t.client); onClose() }}
-              className="text-left p-4 rounded-xl border border-border bg-paper2 hover:border-[#c8f23c]/60 hover:bg-[#c8f23c]/5 transition-all group"
-            >
-              <div className="flex items-center gap-2 mb-2">
-                <span className="text-base">{t.icon}</span>
-                <span className="text-xs font-black text-ink group-hover:text-[#5a6e00] transition-colors">{t.label}</span>
-              </div>
-              <p className="text-[11px] text-ink3 leading-relaxed line-clamp-3">{t.brief.slice(0, 140)}…</p>
-              <p className="text-[10px] font-mono text-ink3/60 mt-2">Client: {t.client}</p>
-            </button>
-          ))}
+
+        {savedTemplates.length > 0 && (
+          <div className="space-y-2">
+            <p className="text-[9px] font-black font-mono tracking-widest text-zinc-500 uppercase">Saved briefs</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {savedTemplates.map(t => (
+                <div key={t.label} className="relative group text-left p-3 rounded-xl border border-white/10 bg-white/[0.03] hover:border-[#c8f23c]/40 transition-all">
+                  <button
+                    onClick={() => { onSelect(t.brief, t.client); onClose() }}
+                    className="w-full text-left"
+                  >
+                    <span className="text-xs font-bold text-zinc-200">{t.label}</span>
+                    <p className="text-[11px] text-zinc-500 leading-relaxed line-clamp-2 mt-1">{t.brief.slice(0, 120)}…</p>
+                    <p className="text-[9px] font-mono text-zinc-600 mt-1.5">Saved {new Date(t.savedAt).toLocaleDateString()}</p>
+                  </button>
+                  <button
+                    onClick={() => onDeleteSaved(t.label)}
+                    className="absolute top-2 right-2 text-zinc-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all text-xs leading-none"
+                    title="Delete saved brief"
+                  >✕</button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div className="space-y-2">
+          <p className="text-[9px] font-black font-mono tracking-widest text-zinc-500 uppercase">Built-in templates</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {BRIEF_TEMPLATES.map(t => (
+              <button
+                key={t.label}
+                onClick={() => { onSelect(t.brief, t.client); onClose() }}
+                className="text-left p-4 rounded-xl border border-border bg-paper2 hover:border-[#c8f23c]/60 hover:bg-[#c8f23c]/5 transition-all group"
+              >
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-base">{t.icon}</span>
+                  <span className="text-xs font-black text-ink group-hover:text-[#5a6e00] transition-colors">{t.label}</span>
+                </div>
+                <p className="text-[11px] text-ink3 leading-relaxed line-clamp-3">{t.brief.slice(0, 140)}…</p>
+                <p className="text-[10px] font-mono text-ink3/60 mt-2">Client: {t.client}</p>
+              </button>
+            ))}
+          </div>
         </div>
         <p className="text-[10px] text-ink3 text-center">Templates are starting points — edit the brief to match your client's specific needs</p>
       </div>
@@ -1278,11 +1334,22 @@ function DeploySubGrid({ currentStep, result, localPreview }: { currentStep: num
   )
 }
 
-// ─── Log viewer ───────────────────────────────────────────────────────────────
+// ─── Log viewer — virtualized ─────────────────────────────────────────────────
+// Only the last LOG_WINDOW lines are mounted in the DOM. Earlier lines remain
+// accessible via the "Show all" toggle and are never lost from the lines array.
+
+const LOG_WINDOW = 80 // max lines rendered at once — prevents DOM bloat on long runs
 
 function LogBox({ lines }: { lines: string[] }) {
   const ref  = useRef<HTMLDivElement>(null)
-  const [collapsed, setCollapsed] = useState(false)
+  const [collapsed,  setCollapsed]  = useState(false)
+  const [showAll,    setShowAll]    = useState(false)
+
+  const visible = (!showAll && lines.length > LOG_WINDOW)
+    ? lines.slice(-LOG_WINDOW)
+    : lines
+  const hiddenCount = lines.length - visible.length
+
   useEffect(() => {
     if (ref.current && !collapsed) ref.current.scrollTop = ref.current.scrollHeight
   }, [lines, collapsed])
@@ -1301,9 +1368,21 @@ function LogBox({ lines }: { lines: string[] }) {
         <span className="text-[10px] text-ink3 font-mono">{collapsed ? '▼ show' : '▲ hide'}</span>
       </button>
       {!collapsed && (
-        <div ref={ref} className="max-h-[360px] space-y-0.5 overflow-y-auto p-3 scrollbar-thin">
-          {lines.map((l, i) => (
-            <div key={i} className={`font-mono text-[10px] leading-relaxed ${
+        <div ref={ref} className="max-h-[360px] overflow-y-auto p-3 scrollbar-thin space-y-0.5">
+          {hiddenCount > 0 && (
+            <div className="flex items-center justify-between pb-1 border-b border-white/5 mb-1">
+              <span className="text-[9px] font-mono text-zinc-500">{hiddenCount} earlier events hidden</span>
+              <button
+                type="button"
+                onClick={() => setShowAll(true)}
+                className="text-[9px] font-bold font-mono text-zinc-400 hover:text-zinc-200 underline transition-colors"
+              >
+                Show all
+              </button>
+            </div>
+          )}
+          {visible.map((l, i) => (
+            <div key={showAll ? i : lines.length - LOG_WINDOW + i} className={`font-mono text-[10px] leading-relaxed ${
               l.includes('[✓]') ? 'text-green-600' :
               l.includes('[✗]') ? 'text-red-600'   :
               l.includes('[⚠]') ? 'text-amber-600' :
@@ -2204,6 +2283,15 @@ export default function PipelinePage() {
   const totalTokensRef = useRef(0)
   const totalCallsRef  = useRef(0)
 
+  // ACORA Phase 6: cost panel state — updated after every agent call
+  const [totalCostUsd, setTotalCostUsd] = useState(0)
+
+  // Fix 4: custom template save/load
+  const [savedTemplates, saveTemplate, deleteSavedTemplate] = useSavedTemplates()
+
+  // Fix 5: quota inflation reset notification
+  const [quotaResetNotice, setQuotaResetNotice] = useState(false)
+
   // ── ACORA: circuit breaker + cost ledger ──────────────────────────────────
   // Reset at start of each pipeline run (see resetRun block).
   const circuitBreakers  = useRef<Map<string, CircuitBreaker>>(new Map())
@@ -2243,6 +2331,7 @@ export default function PipelinePage() {
           // Inflation detected — reset run counter only (preserve token usage history)
           await fetch('/api/quota?target=runs', { method: 'DELETE' }).catch(() => {})
           setRunsUsed(0)
+          setQuotaResetNotice(true)
         } else {
           setRunsUsed(count)
         }
@@ -2922,6 +3011,9 @@ export default function PipelinePage() {
       attempts:     (prev?.attempts ?? 0) + attempts,
     }
     agentCostLedger.current.set(id, entry)
+    // Update visible cost panel total
+    const runTotal = Array.from(agentCostLedger.current.values()).reduce((s, e) => s + e.estimatedUsd, 0)
+    setTotalCostUsd(runTotal)
     const agent = [...FORGE_AGENTS, ...BUILD_AGENTS].find(a => a.id === id)
     if (agent && entry.estimatedUsd > agent.skill.costCeilingUsd) {
       log(`⚠ Cost ceiling: ${id} $${entry.estimatedUsd.toFixed(4)} > $${agent.skill.costCeilingUsd} ceiling`, 'warn')
@@ -3695,6 +3787,20 @@ REPAIR SCOPE:
       if (i < BUILD_ORDER.length - 1) await abortSleep(1500)
     }
 
+    // Fix 3: features-agent placeholder re-check before REPAIR
+    // The features agent generates dynamic-route pages — highest variance in BUILD.
+    // If ≥ 3 bracket tokens remain, queue it for REPAIR even if the agent reported success.
+    const featurePage = allFiles['src/app/dashboard/[feature]/page.tsx'] ?? ''
+    const featureBrackets = featurePage.match(/\[(Feature|slug|Entity|MAIN_ENTITY|field|Product Name)[^\]]*\]/gi)
+    if (featureBrackets !== null && featureBrackets.length >= 3) {
+      errorManifest.push({
+        agentId: 'features',
+        key: 'src/app/dashboard/[feature]/page.tsx',
+        errorMessage: `Features page contains ${featureBrackets.length} unresolved template slots — REPAIR required`,
+      })
+      log(`⚠ Features page has ${featureBrackets.length} unresolved bracket tokens — queued for REPAIR`, 'warn')
+    }
+
     patchStep('build', { status: 'running', error: undefined })
     setBuildStage(4)
     log(errorManifest.length > 0
@@ -4152,6 +4258,7 @@ REPAIR SCOPE:
     // ACORA: reset circuit breakers + cost ledger for fresh run
     circuitBreakers.current.clear()
     agentCostLedger.current.clear()
+    setTotalCostUsd(0)
     try { sessionStorage.removeItem('nexus-pipeline-forge-spec') } catch { /* ignore */ }
     try { sessionStorage.removeItem('nexus-pipeline-build-files') } catch { /* ignore */ }
 
@@ -4339,6 +4446,8 @@ REPAIR SCOPE:
         <BriefTemplatesModal
           onClose={() => setShowTemplates(false)}
           onSelect={(t, c) => { setBrief(t); setClientName(c) }}
+          savedTemplates={savedTemplates}
+          onDeleteSaved={deleteSavedTemplate}
         />
       )}
 
@@ -4374,6 +4483,20 @@ REPAIR SCOPE:
 
       <div className="w-full max-w-[1480px] space-y-5">
 
+        {/* Fix 5: Quota inflation reset notice */}
+        {quotaResetNotice && (
+          <div className="flex items-start gap-3 px-4 py-3 rounded-xl border border-amber-500/40 bg-amber-500/10 text-amber-300">
+            <span className="flex-shrink-0 text-sm mt-px">⚠</span>
+            <p className="text-[11px] leading-relaxed flex-1">
+              Your run count was reset — a previous session had inflated it due to a known counting issue. You can continue running normally.
+            </p>
+            <button
+              onClick={() => setQuotaResetNotice(false)}
+              className="flex-shrink-0 text-amber-500 hover:text-amber-200 text-xs leading-none transition-colors"
+            >✕</button>
+          </div>
+        )}
+
         {/* ── Header ── */}
         <div className="overflow-hidden rounded-2xl border border-white/10 bg-[#090b0d] shadow-[0_24px_80px_rgba(0,0,0,0.45)]">
           <div className="flex flex-col gap-4 border-b border-white/10 px-5 py-4 lg:flex-row lg:items-center lg:justify-between">
@@ -4384,12 +4507,13 @@ REPAIR SCOPE:
                 <p className="text-[10px] font-mono uppercase tracking-[0.18em] text-[#c8f23c]">One-Click Pipeline</p>
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:w-[620px]">
+            <div className="grid grid-cols-3 gap-2 sm:grid-cols-5 lg:w-[760px]">
               {[
-                { label: 'uptime', value: phase === 'running' ? elapsedDisplay : 'ready' },
-                { label: 'agents', value: `${doneAgents}/${TOTAL_AGENTS}` },
+                { label: 'uptime',    value: phase === 'running' ? elapsedDisplay : 'ready' },
+                { label: 'agents',    value: `${doneAgents}/${TOTAL_AGENTS}` },
                 { label: 'avg score', value: averageAgentScore !== null ? `${averageAgentScore.toFixed(1)}/10` : '--' },
-                { label: 'tokens', value: trackedAgentTokens.toLocaleString() },
+                { label: 'tokens',    value: trackedAgentTokens.toLocaleString() },
+                { label: 'est. cost', value: totalCostUsd > 0 ? `$${totalCostUsd.toFixed(3)}` : '--' },
               ].map(item => (
                 <div key={item.label} className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2">
                   <p className="text-[8px] font-mono uppercase tracking-widest text-zinc-500">{item.label}</p>
@@ -4489,6 +4613,18 @@ REPAIR SCOPE:
                 >
                   ⚡ Templates
                 </button>
+                {briefOk && (
+                  <button
+                    onClick={() => {
+                      const label = (clientName.trim() || 'Brief') + ' — ' + new Date().toLocaleDateString()
+                      saveTemplate({ label, brief: brief.trim(), client: clientName.trim(), savedAt: new Date().toISOString() })
+                    }}
+                    className="text-[10px] font-bold font-mono px-2.5 py-1.5 rounded-lg border border-white/10 bg-white/[0.04] text-zinc-400 hover:border-zinc-500 hover:text-zinc-200 transition-all"
+                    title="Save this brief for later use"
+                  >
+                    ↓ Save brief
+                  </button>
+                )}
                 <RunsBadge plan={sessionPlan} runsUsed={runsUsed} />
                 {prefilled && (
                   <span className="text-[9px] font-bold font-mono text-[#c8f23c] border border-[#c8f23c]/40 bg-[#c8f23c]/8 rounded-lg px-2 py-1">
