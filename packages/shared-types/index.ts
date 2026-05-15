@@ -146,11 +146,29 @@ export type AuditAction =
   | 'geo_refresh'
   | 'learning_cycle'
   | 'agent_prompt_saved'
+  | 'agent_run'
   | 'payment_verified'
   | 'subscription_cancelled'
+  | 'subscription_expired'
+  | 'subscription_expiry_cron'
   | 'trending_fetch'
-  | 'regime_classify'   // AAS v4: Phase 01 regime classification event
-  | 'fatigue_gate'      // AAS v4: Phase 05 zone gate triggered
+  | 'regime_classify'             // AAS v4: Phase 01 regime classification event
+  | 'fatigue_gate'                // AAS v4: Phase 05 zone gate triggered
+  | 'monitor_run'
+  | 'workspace_scheduler_run'
+  | 'workspace_generation'
+  | 'client_agent_run'
+  | 'client_agent_batch_run'
+  | 'client_agent_delivery'
+  | 'integration_connected'
+  | 'integration_disconnected'
+  | 'image_prompt_generated'
+  | 'image_prompt_batch_run'
+  | 'image_rendered'
+  | 'video_prompt_generated'
+  | 'video_prompt_batch_run'
+  | 'video_prompt_free_render'
+  | 'whatsapp_sent'
 
 export interface AuditEvent {
   id: string

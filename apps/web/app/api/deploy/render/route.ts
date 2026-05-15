@@ -30,7 +30,7 @@ export async function GET(req: NextRequest) {
   if (auth.error) return auth.error
 
   const token = process.env.RENDER_API_KEY?.trim()
-  if (!token) return NextResponse.json({ ok: false, error: 'RENDER_API_KEY not configured' })
+  if (!token) return NextResponse.json({ ok: false, error: 'RENDER_API_KEY not configured' }, { status: 503 })
 
   try {
     const owners = await renderFetch(token, '/owners?limit=1') as { owner: { id: string; name: string; email: string } }[]
@@ -38,7 +38,7 @@ export async function GET(req: NextRequest) {
     if (!owner) throw new Error('No owner found on Render account')
     return NextResponse.json({ ok: true, data: { id: owner.id, name: owner.name, email: owner.email } })
   } catch (err) {
-    return NextResponse.json({ ok: false, error: (err as Error).message })
+    return NextResponse.json({ ok: false, error: (err as Error).message }, { status: 502 })
   }
 }
 

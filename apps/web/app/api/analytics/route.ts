@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { requireSession, requiresPlan } from '@/lib/session'
+import { requireSession, getPlan, requiresPlan } from '@/lib/session'
 import {
   computeSQI,
   computePAcc,
@@ -23,15 +23,15 @@ export async function GET(req: NextRequest) {
   if (auth.error) return auth.error
 
   const isAdmin = auth.user.isAdmin ?? false
-  const plan    = (auth.user.plan ?? 'free') as string
+  const plan    = await getPlan(req)
   // Free users: blocked. Starter: basic KPIs only. Agency+: full dataset.
-  if (!isAdmin && !requiresPlan(plan as Parameters<typeof requiresPlan>[0], 'starter')) {
+  if (!isAdmin && !requiresPlan(plan, 'starter')) {
     return NextResponse.json(
       { ok: false, error: 'Analytics requires Starter plan or higher.', upgrade: 'starter' },
       { status: 403 }
     )
   }
-  const isBasic = !isAdmin && !requiresPlan(plan as Parameters<typeof requiresPlan>[0], 'agency')
+  const isBasic = !isAdmin && !requiresPlan(plan, 'agency')
 
   // Non-admin users scope analytics to their own session (their userId)
   const scopeId = isAdmin ? undefined : auth.user.id

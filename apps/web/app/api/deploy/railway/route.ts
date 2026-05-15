@@ -23,13 +23,13 @@ export async function GET(req: NextRequest) {
   if (auth.error) return auth.error
 
   const token = process.env.RAILWAY_TOKEN?.trim()
-  if (!token) return NextResponse.json({ ok: false, error: 'RAILWAY_TOKEN not configured' })
+  if (!token) return NextResponse.json({ ok: false, error: 'RAILWAY_TOKEN not configured' }, { status: 503 })
 
   try {
     const data = await gql(token, `{ me { id name email } }`)
     return NextResponse.json({ ok: true, data: { id: data.me.id, name: data.me.name, email: data.me.email } })
   } catch (err) {
-    return NextResponse.json({ ok: false, error: (err as Error).message })
+    return NextResponse.json({ ok: false, error: (err as Error).message }, { status: 502 })
   }
 }
 

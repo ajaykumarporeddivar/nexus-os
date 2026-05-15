@@ -27,7 +27,7 @@
         { "key": "Permissions-Policy",         "value": "camera=(), microphone=(), geolocation=()" },
         {
           "key": "Content-Security-Policy",
-          "value": "default-src 'self'; script-src 'self' 'unsafe-eval' 'unsafe-inline'; style-src 'self' 'unsafe-inline' fonts.googleapis.com; font-src 'self' fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://api.anthropic.com https://image.pollinations.ai https://api-inference.huggingface.co https://api.replicate.com;"
+          "value": "default-src 'self'; script-src 'self' 'unsafe-eval' 'unsafe-inline' https://checkout.razorpay.com; frame-src https://api.razorpay.com https://checkout.razorpay.com; style-src 'self' 'unsafe-inline' fonts.googleapis.com https://checkout.razorpay.com; font-src 'self' fonts.gstatic.com; img-src 'self' data: blob: https://*.razorpay.com; connect-src 'self' https://api.anthropic.com https://image.pollinations.ai https://api-inference.huggingface.co https://api.replicate.com https://api.razorpay.com https://lumberjack.razorpay.com;"
         }
       ]
     }

@@ -30,37 +30,25 @@ export async function GET(req: NextRequest) {
     ...(favOnly  ? { isFavourite: true } : {}),
   }
 
-  const [total, items] = await Promise.all([
-    prisma.imagePrompt.count({ where }),
-    prisma.imagePrompt.findMany({
-      where,
-      orderBy: { createdAt: 'desc' },
-      skip:    (page - 1) * limit,
-      take:    limit,
-      select: {
-        id:          true,
-        title:       true,
-        category:    true,
-        promptJson:  true,
-        tags:        true,
-        batchId:     true,
-        generatedBy: true,
-        isFavourite: true,
-        imageData:   true,
-        imageMime:   true,
-        imageGenAt:  true,
-        createdAt:   true,
-      },
-    }),
-  ])
+  try {
+    const [total, items] = await Promise.all([
+      prisma.imagePrompt.count({ where }),
+      prisma.imagePrompt.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip:    (page - 1) * limit,
+        take:    limit,
+        select: {
+          id: true, title: true, category: true, promptJson: true,
+          tags: true, batchId: true, generatedBy: true, isFavourite: true,
+          imageData: true, imageMime: true, imageGenAt: true, createdAt: true,
+        },
+      }),
+    ])
 
-  return NextResponse.json({
-    ok: true,
-    data: {
-      items,
-      total,
-      page,
-      pages: Math.ceil(total / limit),
-    },
-  })
+    return NextResponse.json({ ok: true, data: { items, total, page, pages: Math.ceil(total / limit) } })
+  } catch (err) {
+    console.error('[image-prompts/list GET]', err)
+    return NextResponse.json({ ok: false, error: 'Failed to fetch image prompts' }, { status: 500 })
+  }
 }

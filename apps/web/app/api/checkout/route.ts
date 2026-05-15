@@ -4,12 +4,12 @@ import { checkPublicRateLimit, rateLimitHeaders } from '@/lib/ratelimit'
 
 const B = process.env.NEXT_PUBLIC_BRAND_NAME ?? 'NEXUS OS'
 
-// Amounts in INR paise for Razorpay (works on all Indian accounts).
-// Display prices are in USD ($49/$199) but payment is collected in INR equivalent.
-// Switch to USD cents (4900/19900) only after enabling international payments on Razorpay dashboard.
+// Amounts in INR paise. International payments not yet enabled on Razorpay.
+// To switch to USD: enable international payments in Razorpay Dashboard → Settings → International Payments,
+// then change currency to 'USD' and amounts to 4900 (Starter) / 19900 (Agency).
 const PLANS = {
-  starter:    { amount: 4100_00,  name: `${B} Starter`,    currency: 'INR' },  // ~$49
-  agency:     { amount: 16600_00, name: `${B} Agency`,     currency: 'INR' },  // ~$199
+  starter:    { amount: 4100_00,  name: `${B} Starter`,    currency: 'INR' },  // ₹4,100 (~$49)
+  agency:     { amount: 16600_00, name: `${B} Agency`,     currency: 'INR' },  // ₹16,600 (~$199)
   enterprise: { amount: 0,        name: `${B} Enterprise`, currency: 'INR' },
 } as const
 

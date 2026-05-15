@@ -22,21 +22,26 @@ export async function GET(req: NextRequest) {
     ...(favOnly   ? { isFavourite: true } : {}),
   }
 
-  const [total, items] = await Promise.all([
-    prisma.videoPrompt.count({ where }),
-    prisma.videoPrompt.findMany({
-      where,
-      orderBy: { createdAt: 'desc' },
-      skip:    (page - 1) * limit,
-      take:    limit,
-      select: {
-        id: true, title: true, hookType: true, targetICP: true,
-        painPoint: true, promptJson: true, voiceoverText: true,
-        ctaText: true, tags: true, generatedBy: true,
-        isFavourite: true, createdAt: true,
-      },
-    }),
-  ])
+  try {
+    const [total, items] = await Promise.all([
+      prisma.videoPrompt.count({ where }),
+      prisma.videoPrompt.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip:    (page - 1) * limit,
+        take:    limit,
+        select: {
+          id: true, title: true, hookType: true, targetICP: true,
+          painPoint: true, promptJson: true, voiceoverText: true,
+          ctaText: true, tags: true, generatedBy: true,
+          isFavourite: true, createdAt: true,
+        },
+      }),
+    ])
 
-  return NextResponse.json({ ok: true, data: { items, total, page, pages: Math.ceil(total / limit) } })
+    return NextResponse.json({ ok: true, data: { items, total, page, pages: Math.ceil(total / limit) } })
+  } catch (err) {
+    console.error('[video-prompts/list GET]', err)
+    return NextResponse.json({ ok: false, error: 'Failed to fetch video prompts' }, { status: 500 })
+  }
 }

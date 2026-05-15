@@ -20,6 +20,7 @@ export async function GET() {
   const day7ago = new Date(now.getTime() - 7  * 24 * 60 * 60 * 1000)
   const day1ago = new Date(now.getTime() - 1  * 24 * 60 * 60 * 1000)
 
+  try {
   const [
     totalUsers,
     planCounts,
@@ -156,4 +157,8 @@ export async function GET() {
       recentAudit,
     },
   })
+  } catch (err) {
+    console.error('[admin/stats GET]', err)
+    return NextResponse.json({ ok: false, error: 'Failed to fetch stats' }, { status: 500 })
+  }
 }

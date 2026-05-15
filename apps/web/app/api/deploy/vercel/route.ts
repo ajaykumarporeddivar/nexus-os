@@ -436,12 +436,12 @@ export async function GET(req: NextRequest) {
   if (auth.error) return auth.error
 
   const token = process.env.VERCEL_TOKEN?.trim()
-  if (!token) return NextResponse.json({ ok: false, error: 'VERCEL_TOKEN not configured' })
+  if (!token) return NextResponse.json({ ok: false, error: 'VERCEL_TOKEN not configured' }, { status: 503 })
 
   try {
     const me = await vrclGet('/v2/user', token)
     return NextResponse.json({ ok: true, data: { username: me.user?.username, hasToken: true } })
   } catch (err) {
-    return NextResponse.json({ ok: false, error: (err as Error).message })
+    return NextResponse.json({ ok: false, error: (err as Error).message }, { status: 502 })
   }
 }

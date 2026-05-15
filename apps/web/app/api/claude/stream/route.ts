@@ -3,7 +3,7 @@ import { aiStream } from '@/lib/ai'
 import { NextRequest, NextResponse } from 'next/server'
 import { checkTokenQuota, incrementTokenQuota } from '@/lib/quota'
 import { checkRateLimit } from '@/lib/ratelimit'
-import { requireSession } from '@/lib/session'
+import { requireSession, getPlan } from '@/lib/session'
 import { prisma } from '@/lib/prisma'
 import { computeFatigueZone } from '@/lib/fatigueZone'
 import { killThreshold, pipelineCap } from '@/lib/crCompute'
@@ -67,10 +67,8 @@ export async function POST(req: NextRequest) {
     if (auth.error) return auth.error
 
     const sid     = auth.user.id!
-    const plan    = auth.user.plan    ?? 'free'
     const isAdmin = auth.user.isAdmin ?? false
-
-    const body = await req.json()
+    const [plan, body] = await Promise.all([getPlan(req), req.json()])
     const { systemPrompt, userMessage, apiKey } = body
 
     if (!systemPrompt || !userMessage) {

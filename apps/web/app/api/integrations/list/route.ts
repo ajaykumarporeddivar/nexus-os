@@ -19,25 +19,30 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ ok: false, error: 'workspaceId required' }, { status: 400 })
   }
 
-  const ws = await prisma.workspace.findFirst({
-    where: { id: workspaceId, ownerId: auth.user.id! },
-    select: { id: true },
-  })
-  if (!ws) return NextResponse.json({ ok: false, error: 'Not found' }, { status: 404 })
+  try {
+    const ws = await prisma.workspace.findFirst({
+      where: { id: workspaceId, ownerId: auth.user.id! },
+      select: { id: true },
+    })
+    if (!ws) return NextResponse.json({ ok: false, error: 'Not found' }, { status: 404 })
 
-  const integrations = await prisma.workspaceIntegration.findMany({
-    where:  { workspaceId },
-    select: {
-      provider:     true,
-      accountEmail: true,
-      enabled:      true,
-      expiresAt:    true,
-      scopes:       true,
-      createdAt:    true,
-      updatedAt:    true,
-    },
-    orderBy: { createdAt: 'asc' },
-  })
+    const integrations = await prisma.workspaceIntegration.findMany({
+      where:  { workspaceId },
+      select: {
+        provider:     true,
+        accountEmail: true,
+        enabled:      true,
+        expiresAt:    true,
+        scopes:       true,
+        createdAt:    true,
+        updatedAt:    true,
+      },
+      orderBy: { createdAt: 'asc' },
+    })
 
-  return NextResponse.json({ ok: true, data: integrations })
+    return NextResponse.json({ ok: true, data: integrations })
+  } catch (err) {
+    console.error('[integrations/list GET]', err)
+    return NextResponse.json({ ok: false, error: 'Failed to fetch integrations' }, { status: 500 })
+  }
 }

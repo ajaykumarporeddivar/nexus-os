@@ -91,12 +91,25 @@ type TierId = typeof TIERS[number]['id']
 interface Props { onNavigate: (page: PageId) => void }
 
 function loadRazorpay(): Promise<void> {
-  return new Promise(resolve => {
-    if (window.Razorpay) { resolve(); return }
+  return new Promise((resolve, reject) => {
+    if (typeof window !== 'undefined' && window.Razorpay) { resolve(); return }
+    // Check if already loading (avoid duplicate script tags)
+    if (document.querySelector('script[src*="checkout.razorpay.com"]')) {
+      // Wait for it to finish
+      const poll = setInterval(() => {
+        if (window.Razorpay) { clearInterval(poll); resolve() }
+      }, 100)
+      setTimeout(() => { clearInterval(poll); reject(new Error('Razorpay SDK timeout')) }, 10000)
+      return
+    }
     const script = document.createElement('script')
     script.src = 'https://checkout.razorpay.com/v1/checkout.js'
+    script.async = true
     script.onload = () => resolve()
+    script.onerror = () => reject(new Error('Failed to load payment SDK. Check your connection and try again.'))
     document.body.appendChild(script)
+    // 10s timeout fallback
+    setTimeout(() => reject(new Error('Payment SDK load timeout. Try refreshing the page.')), 10000)
   })
 }
 

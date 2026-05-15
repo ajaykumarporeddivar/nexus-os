@@ -132,7 +132,7 @@ export default function OverviewPage({ onNavigate }: Props) {
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           {[
             { step: '01', icon: '⚡', label: 'Client Delivery', desc: 'Brief → proposal, spec & market analysis in 3 min', page: 'client-delivery' as PageId },
-            { step: '02', icon: '⚙', label: 'FORGE Engine',     desc: '21 agents turn a trend or brief into a deploy-ready app', page: 'forge' as PageId },
+            { step: '02', icon: '⚙', label: 'FORGE Engine',     desc: '23 agents turn a trend or brief into a deploy-ready app', page: 'forge' as PageId },
             { step: '03', icon: '◎', label: 'Reasoning Engine', desc: 'Validate assumptions with 11 adversarial AI lenses', page: 'reasoning' as PageId },
             { step: '04', icon: '↗', label: 'Export & Deploy',  desc: 'Download, integrate via API, or open in Claude', page: 'deploy' as PageId },
           ].map(item => (
@@ -221,7 +221,7 @@ export default function OverviewPage({ onNavigate }: Props) {
             { val: stats.appsDeployed > 0 ? `${stats.appsDeployed}+` : '—', label: 'apps deployed' },
             { val: `${stats.agentsPerRun}`, label: 'AI agents per run' },
             { val: stats.successRate > 0 ? `${stats.successRate}%` : '—', label: 'success rate' },
-            { val: '8–14 min', label: 'brief → live URL' },
+            { val: '4–15 min', label: 'brief → live URL' },
           ].map(({ val, label }) => (
             <div key={label} className="card text-center py-4">
               <p className="text-2xl font-black text-ink">{val}</p>

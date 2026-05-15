@@ -82,7 +82,7 @@ const GROUPS: NavGroup[] = [
         id: 'forge',
         label: 'FORGE Engine',
         icon: '⚙',
-        description: '21 agents → deploy-ready application',
+        description: '23 agents → deploy-ready application',
         flowNext: 'build',
       },
       {

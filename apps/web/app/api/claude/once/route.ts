@@ -4,7 +4,7 @@ import { compressContext, scrubCompressionFences } from '@/lib/contextCompressor
 import { NextRequest, NextResponse } from 'next/server'
 import { checkTokenQuota, incrementTokenQuota } from '@/lib/quota'
 import { checkRateLimit } from '@/lib/ratelimit'
-import { requireSession } from '@/lib/session'
+import { requireSession, getPlan } from '@/lib/session'
 
 export const runtime    = 'nodejs'
 export const maxDuration = 120
@@ -17,7 +17,7 @@ export async function POST(req: NextRequest) {
     if (auth.error) return auth.error
 
     const sid     = auth.user.id!
-    const plan    = auth.user.plan ?? 'free'
+    const plan    = await getPlan(req)
     const isAdmin = auth.user.isAdmin ?? false
 
     const body = await req.json()

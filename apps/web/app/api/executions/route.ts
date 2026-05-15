@@ -3,7 +3,7 @@ import { prisma } from '@/lib/prisma'
 import type { Build, ExecutionStatus } from '@nexus-os/shared-types'
 import { computeFatigueZone, enforceZoneGate } from '@/lib/fatigueZone'
 import { computeTimingAdvantage } from '@/lib/timingAdvantage'
-import { requireSession } from '@/lib/session'
+import { requireSession, getPlan } from '@/lib/session'
 
 function mapToBuild(e: {
   id: number; createdAt: Date; inputSnippet: string; clientName: string
@@ -66,8 +66,8 @@ export async function POST(req: NextRequest) {
 
     // Always use the authenticated user's ID as the session — never trust the header
     const sessionId = auth.user.id ?? 'anonymous'
-    // Plan comes from the verified JWT, not the request body
-    const verifiedPlan = auth.user.plan ?? 'free'
+    // Plan from subscription-validated session (not request body) — auto-downgrades expired subs
+    const verifiedPlan = await getPlan(req)
 
     // AAS v4 Phase 02 — causal mechanism hard gate.
     const isAnonymous = sessionId === 'anonymous' || sessionId.startsWith('eval:')

@@ -114,7 +114,8 @@ export default withAuth(
           pathname === '/api/learning/update-deltas' ||
           pathname === '/api/eval' ||
           pathname === '/api/cron/trending' ||
-          pathname === '/api/cron/workspace-scheduler'
+          pathname === '/api/cron/workspace-scheduler' ||
+          pathname === '/api/cron/subscription-expiry'
         ) {
           // Strict: CRON_SECRET only (no session bypass)
           const cronSecret = process.env.CRON_SECRET

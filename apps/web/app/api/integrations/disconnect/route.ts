@@ -20,24 +20,27 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ ok: false, error: 'workspaceId and provider required' }, { status: 400 })
   }
 
-  const ws = await prisma.workspace.findFirst({
-    where: { id: workspaceId, ownerId: auth.user.id! },
-    select: { id: true },
-  })
-  if (!ws) return NextResponse.json({ ok: false, error: 'Not found' }, { status: 404 })
+  try {
+    const ws = await prisma.workspace.findFirst({
+      where: { id: workspaceId, ownerId: auth.user.id! },
+      select: { id: true },
+    })
+    if (!ws) return NextResponse.json({ ok: false, error: 'Not found' }, { status: 404 })
 
-  await prisma.workspaceIntegration.deleteMany({
-    where: { workspaceId, provider },
-  })
+    await prisma.workspaceIntegration.deleteMany({ where: { workspaceId, provider } })
 
-  await prisma.auditEvent.create({
-    data: {
-      action:    'integration_disconnected',
-      userId:    auth.user.id!,
-      sessionId: `integration-${provider}-${workspaceId}`,
-      meta:      { provider, workspaceId },
-    },
-  }).catch(console.error)
+    prisma.auditEvent.create({
+      data: {
+        action:    'integration_disconnected',
+        userId:    auth.user.id!,
+        sessionId: `integration-${provider}-${workspaceId}`,
+        meta:      { provider, workspaceId },
+      },
+    }).catch(console.error)
 
-  return NextResponse.json({ ok: true })
+    return NextResponse.json({ ok: true })
+  } catch (err) {
+    console.error('[integrations/disconnect DELETE]', err)
+    return NextResponse.json({ ok: false, error: 'Disconnect failed' }, { status: 500 })
+  }
 }

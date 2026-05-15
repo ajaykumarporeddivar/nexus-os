@@ -75,10 +75,10 @@ const PLAN_RUN_LIMITS: Record<string, number> = {
 
 // G6: estimated pipeline duration by key type
 const PLAN_ETA: Record<string, string> = {
-  free:       '8–14 min',
-  starter:    '8–14 min',
-  agency:     '4–8 min',
-  enterprise: '4–8 min',
+  free:       '8–15 min',
+  starter:    '8–15 min',
+  agency:     '4–15 min',
+  enterprise: '4–15 min',
 }
 
 // G4: brief validation
@@ -1578,7 +1578,7 @@ function ResultShareCard({
 function ShareStrip({ liveUrl, elapsed }: { liveUrl?: string; elapsed: string | null }) {
   const [copied, setCopied] = useState(false)
   const appUrl = liveUrl ?? ''
-  const shareBase = 'Just shipped a full-stack app using NEXUS OS — 22 AI agents, brief → live URL in one click.'
+  const shareBase = 'Just shipped a full-stack app using NEXUS OS — 23 AI agents, brief → live URL in one click.'
   const text = elapsed
     ? `Just shipped a full-stack app in ${elapsed} using NEXUS OS — brief → GitHub → Vercel, fully autonomous.${appUrl ? ' ' + appUrl : ''}`
     : `${shareBase}${appUrl ? ' ' + appUrl : ''}`
@@ -2880,7 +2880,7 @@ export default function PipelinePage() {
 
     const vertical        = wsVertical ?? detectVertical(briefText)
     const verticalContext = VERTICAL_CONTEXTS[vertical]
-    log(`FORGE ENGINE starting — 12 agents · vertical: ${vertical.toUpperCase()}${wsVertical ? ' (workspace-overridden)' : ''}`)
+    log(`FORGE ENGINE starting — 13 agents · vertical: ${vertical.toUpperCase()}${wsVertical ? ' (workspace-overridden)' : ''}`)
     // Section 1: FORGE narration — fires once at start, completes naturally while agents run (~40-90s)
     announce('FORGE has started. The system is turning your brief into a build contract: product definition first, architecture next, then implementation rules, validation, and go-to-market notes.', { rate: 1.02, tag: 'phase-forge', minGapMs: 0 })
 
@@ -4019,7 +4019,7 @@ REPAIR SCOPE:
 
     // Section 0: launch — single sentence, spoken before FORGE starts
     isRunningRef.current = true
-    announce('Pipeline launched. Twenty-one AI specialists are about to build your product from scratch — spec, code, and live deployment, fully autonomous. Voice guidance is available throughout. Say guide me, status, how long, repeat, or stop.')
+    announce('Pipeline launched. Twenty-three AI specialists are about to build your product from scratch — spec, code, and live deployment, fully autonomous. Voice guidance is available throughout. Say guide me, status, how long, repeat, or stop.')
     setPhase('running')
     setLogLines([])
     /* streamingOutput panel removed */void 0
@@ -4297,13 +4297,13 @@ REPAIR SCOPE:
             <span style={{ color: '#c8f23c' }}>Live URL</span>
           </h1>
           <p className="text-sm text-zinc-400 leading-relaxed max-w-2xl mx-auto">
-            22 AI agents run fully autonomously — product spec, code generation, commercial closure strategy, and Vercel deploy in one shot. No manual steps.
+            23 AI agents run fully autonomously — product spec, code generation, commercial closure strategy, and Vercel deploy in one shot. No manual steps.
           </p>
 
           {/* Phase breakdown */}
           <div className="flex items-stretch justify-center gap-0 mt-2">
             {[
-              { label: 'FORGE',  count: '12 agents', detail: 'Spec · GTM · Revenue · Close', color: 'text-violet-300', bg: 'bg-violet-400/10 border-violet-300/25' },
+              { label: 'FORGE',  count: '13 agents', detail: 'Spec · GTM · Revenue · Close', color: 'text-violet-300', bg: 'bg-violet-400/10 border-violet-300/25' },
               { label: 'BUILD',  count: '10 agents', detail: 'Next.js · Code · Test', color: 'text-cyan-300', bg: 'bg-cyan-400/10 border-cyan-300/25' },
               { label: 'DEPLOY', count: '5 steps',   detail: 'GitHub · Vercel · Live', color: 'text-[#c8f23c]', bg: 'bg-[#c8f23c]/10 border-[#c8f23c]/35' },
             ].map((p, i) => (
@@ -4323,8 +4323,8 @@ REPAIR SCOPE:
           {/* Trust bar */}
           <div className="flex items-center justify-center gap-6 pt-1">
             {[
-              { val: '4–8 min', label: 'Brief to live URL' },
-              { val: '21', label: 'AI specialists' },
+              { val: '4–15 min', label: 'Brief to live URL' },
+              { val: '23', label: 'AI specialists' },
               { val: '100%', label: 'Autonomous' },
             ].map(({ val, label }) => (
               <div key={label} className="text-center">

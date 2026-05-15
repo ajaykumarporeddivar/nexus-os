@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { checkQuota, checkTokenQuota, decrementQuota, incrementQuota, resetQuota, PLAN_RUN_LIMITS, PLAN_TOKEN_LIMITS } from '@/lib/quota'
-import { requireSession } from '@/lib/session'
+import { requireSession, getPlan } from '@/lib/session'
 
 export async function GET(req: NextRequest) {
   const auth = await requireSession()
   if (auth.error) return auth.error
 
   const sessionId = auth.user.id!
-  const plan    = auth.user.plan    ?? 'free'
+  const plan    = await getPlan(req)
   const isAdmin = auth.user.isAdmin ?? false
 
   // ?tokens=1 — return token quota status instead of run quota
@@ -34,7 +34,7 @@ export async function POST(req: NextRequest) {
   if (auth.error) return auth.error
 
   const sessionId = auth.user.id!
-  const plan    = auth.user.plan    ?? 'free'
+  const plan    = await getPlan(req)
   const isAdmin = auth.user.isAdmin ?? false
 
   // Admin users have unlimited runs — skip quota check
@@ -58,7 +58,7 @@ export async function PATCH(req: NextRequest) {
   if (auth.error) return auth.error
 
   const sessionId = auth.user.id!
-  const plan    = auth.user.plan    ?? 'free'
+  const plan    = await getPlan(req)
   const isAdmin = auth.user.isAdmin ?? false
 
   const status = await decrementQuota(sessionId, plan, isAdmin)

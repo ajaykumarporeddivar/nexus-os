@@ -95,7 +95,7 @@ export default function AutoPilotBar() {
             <p className="text-2xl font-bold text-white mb-2">Demo Complete</p>
             <p className="text-sm text-ink3 leading-relaxed">
               Maya walked through all 10 features of NEXUS OS — from raw idea to validated,
-              specced, and deployed product — in about 8 minutes.
+              specced, and deployed product — in 4 to 15 minutes.
             </p>
           </div>
 

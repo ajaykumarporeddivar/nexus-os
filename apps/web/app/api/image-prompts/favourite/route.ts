@@ -20,12 +20,13 @@ export async function PATCH(req: NextRequest) {
 
   if (!id) return NextResponse.json({ ok: false, error: 'id required' }, { status: 400 })
 
-  await prisma.imagePrompt.update({
-    where: { id },
-    data:  { isFavourite: !!isFavourite },
-  })
-
-  return NextResponse.json({ ok: true })
+  try {
+    await prisma.imagePrompt.update({ where: { id }, data: { isFavourite: !!isFavourite } })
+    return NextResponse.json({ ok: true })
+  } catch (err) {
+    console.error('[image-prompts/favourite PATCH]', err)
+    return NextResponse.json({ ok: false, error: 'Update failed' }, { status: 500 })
+  }
 }
 
 /**
@@ -39,6 +40,11 @@ export async function DELETE(req: NextRequest) {
   const { id } = await req.json().catch(() => ({})) as { id?: string }
   if (!id) return NextResponse.json({ ok: false, error: 'id required' }, { status: 400 })
 
-  await prisma.imagePrompt.delete({ where: { id } })
-  return NextResponse.json({ ok: true })
+  try {
+    await prisma.imagePrompt.delete({ where: { id } })
+    return NextResponse.json({ ok: true })
+  } catch (err) {
+    console.error('[image-prompts/favourite DELETE]', err)
+    return NextResponse.json({ ok: false, error: 'Delete failed' }, { status: 500 })
+  }
 }
