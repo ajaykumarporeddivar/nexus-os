@@ -3,8 +3,29 @@ import EmailProvider from 'next-auth/providers/email'
 import CredentialsProvider from 'next-auth/providers/credentials'
 import type { Provider } from 'next-auth/providers/index'
 import type { NextAuthOptions } from 'next-auth'
+import type { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { sendWelcomeEmail } from '@/lib/email'
+
+// Parse UTM cookie — returns partial UTM fields or empty object
+function parseUtmCookie(req?: NextRequest | { cookies?: { get?: (name: string) => { value?: string } | undefined } }): {
+  utmSource?: string; utmMedium?: string; utmCampaign?: string; utmContent?: string
+} {
+  try {
+    const raw = (req as { cookies?: { get?: (name: string) => { value?: string } | undefined } })
+      ?.cookies?.get?.('nexus_utm')?.value
+    if (!raw) return {}
+    const parsed = JSON.parse(raw) as Record<string, string>
+    return {
+      utmSource:   parsed.source   || undefined,
+      utmMedium:   parsed.medium   || undefined,
+      utmCampaign: parsed.campaign || undefined,
+      utmContent:  parsed.content  || undefined,
+    }
+  } catch {
+    return {}
+  }
+}
 
 const providers: Provider[] = []
 
@@ -71,19 +92,36 @@ export const authOptions: NextAuthOptions = {
     error:  '/auth/signin',
   },
   callbacks: {
-    async signIn({ user }) {
+    async signIn({ user, profile: _profile, account: _account, email: _email, credentials: _creds, ...rest }) {
       if (!user.email) return false
       // Await the DB upsert — fire-and-forget risks silent failure on Neon cold-start.
       // If it fails, we log and still allow sign-in (non-blocking for UX).
       try {
         const existing = await prisma.user.findUnique({
           where:  { email: user.email },
-          select: { id: true },
+          select: { id: true, utmSource: true },
         })
+        // Parse UTM cookie — only set on first sign-in to preserve original attribution
+        const utm = existing ? {} : parseUtmCookie(
+          (rest as unknown as { req?: NextRequest })?.req
+        )
         await prisma.user.upsert({
           where:  { email: user.email },
-          create: { email: user.email, name: user.name ?? null, image: user.image ?? null },
-          update: { name: user.name ?? undefined, image: user.image ?? undefined },
+          create: {
+            email:    user.email,
+            name:     user.name  ?? null,
+            image:    user.image ?? null,
+            lastActiveAt: new Date(),
+            leadScore: 15, // +15 for Google OAuth signup
+            ...utm,
+          },
+          update: {
+            name:        user.name  ?? undefined,
+            image:       user.image ?? undefined,
+            lastActiveAt: new Date(),
+            // Only set UTM on existing row if it was never captured before
+            ...(existing && !existing.utmSource ? utm : {}),
+          },
         })
         if (!existing && user.email) {
           sendWelcomeEmail(user.email, user.name ?? '').catch(console.error)

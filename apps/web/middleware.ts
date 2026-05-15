@@ -13,6 +13,8 @@ const PUBLIC_API = new Set([
   '/api/whatsapp/send',
   '/api/groq/stream',
   '/api/categories',        // industry taxonomy — public static data
+  '/api/lead-capture',      // pre-auth email capture — no login required
+  '/api/lead-event',        // behavioral event sink — client-side, no login required
 ])
 
 // Public page routes
@@ -31,6 +33,33 @@ const PUBLIC_SHELL_PAGES = new Set(['pricing', 'pipeline', 'overview', 'trending
 export default withAuth(
   function middleware(req: NextRequest) {
     const { pathname } = req.nextUrl
+
+    // ── UTM cookie capture ─────────────────────────────────────────────────────
+    // Store UTM params in a 30-day cookie so they survive the OAuth redirect.
+    // The signIn callback reads `nexus_utm` and persists it to the User row.
+    const utmSource = req.nextUrl.searchParams.get('utm_source')
+    if (utmSource) {
+      const utmPayload = JSON.stringify({
+        source:   utmSource,
+        medium:   req.nextUrl.searchParams.get('utm_medium')   ?? '',
+        campaign: req.nextUrl.searchParams.get('utm_campaign') ?? '',
+        content:  req.nextUrl.searchParams.get('utm_content')  ?? '',
+        term:     req.nextUrl.searchParams.get('utm_term')     ?? '',
+      })
+      const res = NextResponse.next()
+      res.cookies.set('nexus_utm', utmPayload, {
+        maxAge:   60 * 60 * 24 * 30, // 30 days
+        sameSite: 'lax',
+        path:     '/',
+        httpOnly: false, // readable by client JS for pre-auth capture form
+      })
+      // If it's a public route, return early with the cookie set
+      if (
+        PUBLIC_PAGES.has(pathname) ||
+        PUBLIC_API.has(pathname) ||
+        pathname.startsWith('/api/auth')
+      ) return res
+    }
 
     // Allow all /api/auth routes (NextAuth internals)
     if (pathname.startsWith('/api/auth')) {
@@ -61,7 +90,10 @@ export default withAuth(
       pathname === '/api/eval' ||
       pathname === '/api/cron/trending' ||
       pathname === '/api/cron/workspace-scheduler' ||
-      pathname === '/api/cron/subscription-expiry'
+      pathname === '/api/cron/subscription-expiry' ||
+      pathname === '/api/cron/activate' ||
+      pathname === '/api/cron/digest' ||
+      pathname === '/api/cron/winback'
     ) {
       const secret = req.headers.get('x-cron-secret') ?? req.nextUrl.searchParams.get('secret')
       if (secret === process.env.CRON_SECRET) return NextResponse.next()
@@ -91,6 +123,8 @@ export default withAuth(
           pathname === '/api/whatsapp/send' ||
           pathname === '/api/groq/stream' ||
           pathname === '/api/categories' ||
+          pathname === '/api/lead-capture' ||
+          pathname === '/api/lead-event' ||
           pathname === '/auth/signin' ||
           pathname === '/' ||
           pathname === '/terms' ||
@@ -115,7 +149,10 @@ export default withAuth(
           pathname === '/api/eval' ||
           pathname === '/api/cron/trending' ||
           pathname === '/api/cron/workspace-scheduler' ||
-          pathname === '/api/cron/subscription-expiry'
+          pathname === '/api/cron/subscription-expiry' ||
+          pathname === '/api/cron/activate' ||
+          pathname === '/api/cron/digest' ||
+          pathname === '/api/cron/winback'
         ) {
           // Strict: CRON_SECRET only (no session bypass)
           const cronSecret = process.env.CRON_SECRET

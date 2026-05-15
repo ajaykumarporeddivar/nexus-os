@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import EmailCaptureForm from '@/components/EmailCaptureForm'
 
 /* ─── Data ──────────────────────────────────────────────────────────── */
 
@@ -361,6 +362,18 @@ export default function LandingPage() {
         <p style={{ fontSize: '0.8rem', color: '#475569' }}>
           Free tier includes 3 full pipeline runs · No credit card · Cancel anytime
         </p>
+
+        {/* Email capture — pre-auth lead */}
+        <div style={{ marginTop: '2.5rem', paddingTop: '2rem', borderTop: '1px solid rgba(99,102,241,0.12)' }}>
+          <p style={{ fontSize: '0.8rem', color: '#64748b', marginBottom: '1rem', letterSpacing: '0.05em' }}>
+            OR — get updates before signing up
+          </p>
+          <EmailCaptureForm
+            style={{ justifyContent: 'center', maxWidth: '480px', margin: '0 auto' }}
+            placeholder="your@agency.com"
+            buttonText="Notify me →"
+          />
+        </div>
       </section>
 
       {/* ── Metrics bar ────────────────────────────────────────────── */}
@@ -843,6 +856,18 @@ export default function LandingPage() {
           }}>
             Start Free — No card required →
           </Link>
+
+          {/* Footer email capture */}
+          <div style={{ marginTop: '2.5rem' }}>
+            <p style={{ fontSize: '0.85rem', color: '#475569', marginBottom: '1rem' }}>
+              Not ready to sign up? Drop your email and we&#39;ll keep you updated.
+            </p>
+            <EmailCaptureForm
+              style={{ justifyContent: 'center', maxWidth: '440px', margin: '0 auto' }}
+              placeholder="your@agency.com"
+              buttonText="Keep me updated →"
+            />
+          </div>
         </div>
       </section>
 

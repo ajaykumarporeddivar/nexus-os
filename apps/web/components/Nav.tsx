@@ -348,6 +348,7 @@ export default function Nav({
   const [wsOpen,       setWsOpen]       = useState(false)
   const [userMenuOpen, setUserMenuOpen] = useState(false)
   const [subDays,      setSubDays]      = useState<number | null>(null)
+  const [quota,        setQuota]        = useState<{ used: number; limit: number } | null>(null)
   const { data: session, status }       = useSession()
   const { workspaces, active, setActive } = useWorkspace()
 
@@ -363,6 +364,20 @@ export default function Nav({
       .then(d => { if (d.ok) setSubDays(d.data.activeSub?.daysRemaining ?? null) })
       .catch(() => null)
   }, [userMenuOpen, session, plan])
+
+  // Quota bar — fetch run usage for free users
+  useEffect(() => {
+    if (!session || plan !== 'free') return
+    fetch('/api/quota')
+      .then(r => r.json())
+      .then((d: { ok?: boolean; data?: { count?: number; limit?: number; runLimit?: number } }) => {
+        if (d.ok && d.data) setQuota({
+          used:  d.data.count    ?? 0,
+          limit: d.data.runLimit ?? d.data.limit ?? 3,
+        })
+      })
+      .catch(() => null)
+  }, [session, plan])
 
   const handleNav = useCallback((id: PageId) => {
     onNavigate(id)
@@ -485,6 +500,35 @@ export default function Nav({
             <p className="text-[10px] text-ink3 leading-relaxed">
               Run Demo Journey → Client Delivery → FORGE
             </p>
+          </div>
+        )}
+
+        {/* ── Free plan quota progress bar ── */}
+        {plan === 'free' && !isAdmin && !collapsed && quota && (
+          <div className="mx-1 px-3 py-2.5 rounded-xl border border-border bg-paper2 space-y-1.5">
+            <div className="flex items-center justify-between">
+              <p className="text-[10px] text-ink3">
+                <span className="font-semibold text-ink">{quota.used}</span> / {quota.limit} pipeline runs
+              </p>
+              <button
+                onClick={() => handleNav('pricing')}
+                className="text-[9px] font-bold text-acid hover:underline"
+              >
+                Upgrade →
+              </button>
+            </div>
+            <div style={{ background: 'var(--ink2)', borderRadius: '4px', height: '4px', overflow: 'hidden' }}>
+              <div style={{
+                background:   'var(--acid)',
+                borderRadius: '4px',
+                height:       '100%',
+                width:        `${Math.min(100, (quota.used / quota.limit) * 100)}%`,
+                transition:   'width 0.5s ease',
+              }} />
+            </div>
+            {quota.used >= quota.limit && (
+              <p className="text-[9px] text-red-400 font-mono">Limit reached — upgrade to keep shipping</p>
+            )}
           </div>
         )}
 

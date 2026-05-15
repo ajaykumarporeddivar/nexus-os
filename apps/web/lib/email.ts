@@ -196,6 +196,152 @@ export async function sendPlanExpiryEmail(opts: {
   ])
 }
 
+// ── Activation nudge (24h after signup, no pipeline run yet) ──────────────
+export async function sendFirstRunNudge(to: string, name: string): Promise<void> {
+  const resend = getResend()
+  if (!resend) return
+  await resend.emails.send({
+    from: FROM(),
+    to,
+    subject: `You're one run away from seeing ${brand.name} in action`,
+    html: baseHtml(
+      `Start your first pipeline`,
+      `<p>Hi ${name || 'there'} — you signed up but haven't run a pipeline yet.</p>
+       <p>It takes 60 seconds to go from an idea to a full 23-agent delivery run. Here's how:</p>
+       <div class="box">
+         <span>Step 1</span><strong>Click "Launch FORGE Engine" in the sidebar</strong>
+         <span style="margin-top:10px;display:block">Step 2</span><strong>Paste any client brief, app idea, or niche</strong>
+         <span style="margin-top:10px;display:block">Step 3</span><strong>Watch 23 agents build your project spec in real-time</strong>
+       </div>
+       <a href="${appUrl}/shell?page=forge" class="cta">Run your first pipeline →</a>
+       <p style="margin-top:20px;font-size:12px;color:#666">Free plan includes 3 pipeline runs — no credit card needed.</p>`
+    ),
+  })
+}
+
+// ── First run completed — congrats + next step ─────────────────────────────
+export async function sendFirstRunCongrats(to: string, name: string, summary?: string): Promise<void> {
+  const resend = getResend()
+  if (!resend) return
+  await resend.emails.send({
+    from: FROM(),
+    to,
+    subject: `Your first ${brand.name} pipeline completed`,
+    html: baseHtml(
+      `Pipeline complete <span class="accent">✓</span>`,
+      `<p>Hi ${name || 'there'} — your first pipeline just finished. ${summary ? `Here's what was built: <strong style="color:#fff">${summary}</strong>` : ''}</p>
+       <p>Next steps to get more value:</p>
+       <div class="box">
+         <span>Share it</span><strong>Download the ZIP and show a client — close them faster</strong>
+         <span style="margin-top:10px;display:block">Run again</span><strong>Try a different niche, brief, or product idea</strong>
+         <span style="margin-top:10px;display:block">Upgrade</span><strong>Starter plan gives you 20 runs/month — enough for 4-5 client projects</strong>
+       </div>
+       <a href="${appUrl}/shell?page=forge" class="cta">Run another pipeline →</a>`
+    ),
+  })
+}
+
+// ── Quota warning (80% of plan runs used) ─────────────────────────────────
+export async function sendQuotaWarning(to: string, name: string, used: number, limit: number): Promise<void> {
+  const resend = getResend()
+  if (!resend) return
+  await resend.emails.send({
+    from: FROM(),
+    to,
+    subject: `You've used ${used} of ${limit} pipeline runs this month`,
+    html: baseHtml(
+      `Running low on pipeline runs`,
+      `<p>Hi ${name || 'there'} — you've used <strong style="color:#fff">${used} of ${limit} runs</strong> this month.</p>
+       <p>Upgrade before you hit the limit — plans are instant, no waiting.</p>
+       <div class="box">
+         <span>Starter — $49/mo</span><strong>20 runs/month + all reasoning lenses</strong>
+         <span style="margin-top:10px;display:block">Agency — $199/mo</span><strong>Unlimited runs + BYO API key + full analytics</strong>
+       </div>
+       <a href="${appUrl}/shell?page=pricing" class="cta">Upgrade now →</a>`
+    ),
+  })
+}
+
+// ── Upgrade intent (user hit plan gate multiple times) ─────────────────────
+export async function sendUpgradeIntent(to: string, name: string, feature: string): Promise<void> {
+  const resend = getResend()
+  if (!resend) return
+  await resend.emails.send({
+    from: FROM(),
+    to,
+    subject: `Unlock ${feature} — one upgrade away`,
+    html: baseHtml(
+      `You keep hitting this wall`,
+      `<p>Hi ${name || 'there'} — you've tried to access <strong style="color:#fff">${feature}</strong> a few times.</p>
+       <p>It's locked on your current plan. Here's what one upgrade unlocks:</p>
+       <div class="box">
+         <span>Starter — $49/mo</span><strong>20 runs + basic analytics + 5 kits</strong>
+         <span style="margin-top:10px;display:block">Agency — $199/mo</span><strong>${feature} + unlimited runs + BYO API key</strong>
+       </div>
+       <a href="${appUrl}/shell?page=pricing" class="cta">See what you unlock →</a>`
+    ),
+  })
+}
+
+// ── Monthly usage digest ────────────────────────────────────────────────────
+export async function sendMonthlyDigest(to: string, name: string, stats: {
+  totalRuns: number; avgScore: number; tokensUsed: number; topAgent?: string
+}): Promise<void> {
+  const resend = getResend()
+  if (!resend) return
+  await resend.emails.send({
+    from: FROM(),
+    to,
+    subject: `Your ${brand.name} monthly summary`,
+    html: baseHtml(
+      `Monthly pipeline summary`,
+      `<p>Hi ${name || 'there'} — here's what you built with ${brand.name} this month.</p>
+       <div class="box">
+         <span>Pipeline runs</span><strong>${stats.totalRuns}</strong>
+         <span style="margin-top:10px;display:block">Avg quality score</span><strong>${stats.avgScore.toFixed(1)} / 10</strong>
+         <span style="margin-top:10px;display:block">Tokens consumed</span><strong>${stats.tokensUsed.toLocaleString()}</strong>
+         ${stats.topAgent ? `<span style="margin-top:10px;display:block">Top agent</span><strong>${stats.topAgent}</strong>` : ''}
+       </div>
+       <a href="${appUrl}/shell?page=forge" class="cta">Run another pipeline →</a>`
+    ),
+  })
+}
+
+// ── Win-back sequences ─────────────────────────────────────────────────────
+export async function sendWinBack7(to: string, name: string, plan: string): Promise<void> {
+  const resend = getResend()
+  if (!resend) return
+  await resend.emails.send({
+    from: FROM(),
+    to,
+    subject: `Your ${brand.name} access expired — here's what you built`,
+    html: baseHtml(
+      `We miss you`,
+      `<p>Hi ${name || 'there'} — your <strong style="color:#fff">${plan}</strong> plan expired 7 days ago.</p>
+       <p>You've still got your free plan, but you no longer have access to unlimited runs, analytics, and the full vault.</p>
+       <p>One click to get back in:</p>
+       <a href="${appUrl}/shell?page=pricing" class="cta">Renew my plan →</a>
+       <p style="margin-top:20px;font-size:12px;color:#666">Questions? Just reply to this email.</p>`
+    ),
+  })
+}
+
+export async function sendWinBack30(to: string, name: string, plan: string): Promise<void> {
+  const resend = getResend()
+  if (!resend) return
+  await resend.emails.send({
+    from: FROM(),
+    to,
+    subject: `Still thinking about it? Here's a reason to come back`,
+    html: baseHtml(
+      `Come back to ${brand.name}`,
+      `<p>Hi ${name || 'there'} — it's been 30 days since your <strong style="color:#fff">${plan}</strong> plan expired.</p>
+       <p>If cost was the reason, reply to this email and we'll sort something out. We'd rather have you building than not.</p>
+       <a href="${appUrl}/shell?page=pricing" class="cta">See current plans →</a>`
+    ),
+  })
+}
+
 export async function sendPlanUpgradeEmail(opts: {
   to: string
   name: string
