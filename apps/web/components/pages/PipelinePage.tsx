@@ -874,6 +874,12 @@ function StepRow({
 
 const BRIEF_TEMPLATES = [
   {
+    label: 'ClientFlow OS',
+    icon: '⟁',
+    brief: 'Build ClientFlow OS — an agentic back-office web app for freelancers, solo consultants, and independent professionals. Core feature: a 5-agent AI council that runs in the browser with no external integrations. Agent 1 (LeadQual): paste an inbound lead message, get a scored reply in seconds — scores Budget clarity, Timeline realism, Scope clarity, Decision-maker access, and Fit signal, outputs a ready-to-send qualifying email. Agent 2 (ProposalWriter): input project type and client context, output a fully structured proposal with 3 pricing tiers, scope boundary, timeline, and scope-creep protection language. Agent 3 (ChaseBot): input invoice number + days overdue, output the correctly escalated chase email (Gentle/Firm/Direct/Formal/Escalation) — removes the emotional friction of chasing payment. Agent 4 (OnboardBot): input client name + project type, output a complete onboarding checklist, welcome email, kickoff agenda, and contract essentials checklist. Agent 5 (WeeklyReview): paste the week\'s projects, deliverables, and invoices, output a prioritized weekly brief with One Thing, Must Do list, Money Actions, and Project Health Scan. Revenue model: $29/month solo, $79/month agency (3 seats). Target persona: freelance designer, copywriter, or consultant billing $3K–$20K/month who loses 5–8 hours/week to admin. Key differentiator: every output is a production-ready artifact (email copy, proposal document, priority list) — not advice, not suggestions. Tech stack: Next.js 14, Tailwind CSS, Claude API (Sonnet) for all 5 agents, session-based context persistence, no database required for v1.',
+    client: 'ClientFlow OS',
+  },
+  {
     label: 'B2B SaaS Dashboard',
     icon: '◈',
     brief: 'Build a B2B analytics dashboard for marketing teams (10–200 employees). Core features: campaign performance tracking (impressions, clicks, CPC, ROAS), multi-channel attribution (Google/Meta/LinkedIn), automated weekly reports, and team workspace with role-based access (admin/analyst/viewer). Revenue: per-seat at $49/month. Target persona: Head of Growth at a scale-up spending $10K–$100K/month on ads. Key differentiator: AI-generated campaign insights and anomaly detection alerts.',
