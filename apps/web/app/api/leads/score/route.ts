@@ -49,19 +49,21 @@ export async function POST(req: NextRequest) {
         await prisma.lead.update({
           where: { id: lead.id },
           data: {
-            icpScore:        result.score,
-            scoreConfidence: result.confidence,
-            scoreRationale:  result.rationale as never,
-            scoredAt:        new Date(),
-            scoringCostUsd:  (lead.scoringCostUsd ?? 0) + result.costUsd,
-            firmographic:    mergedFirmo2 as never,
-            enrichedAt:      freshFirmo2 ? new Date() : undefined,
-            routingDecision: routing.decision,
-            assignedRep:     routing.assignedRep || null,
-            routedAt:        new Date(),
-            status:          routing.decision === 'disqualified' ? 'disqualified' : 'routed',
-            dlqAt:           null,
-            dlqReason:       null,
+            icpScore:         result.score,
+            scoreConfidence:  result.confidence,
+            scoreRationale:   result.rationale as never,
+            scoredAt:         new Date(),
+            scoringCostUsd:   (lead.scoringCostUsd ?? 0) + result.costUsd,
+            firmographic:     mergedFirmo2 as never,
+            enrichedAt:       freshFirmo2 ? new Date() : undefined,
+            enrichmentFailed: freshFirmo2 ? false : undefined,  // L3 FIX: clear flag on fresh enrichment
+            routingDecision:  routing.decision,
+            assignedRep:      routing.assignedRep || null,
+            routedAt:         new Date(),
+            status:           routing.decision === 'disqualified' ? 'disqualified' : 'routed',
+            dlqAt:            null,
+            dlqReason:        null,
+            dlqRetries:       0,            // L3 FIX: reset retry counter on rescoreAll success
           },
         })
         scored++

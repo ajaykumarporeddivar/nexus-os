@@ -8,25 +8,28 @@
  * SME-11: rep_override_audit GDSL rule
  */
 import { NextRequest, NextResponse } from 'next/server'
+import { Prisma } from '@prisma/client'
 import { requireAdmin } from '@/lib/session'
 import { prisma } from '@/lib/prisma'
 import { routeLead } from '@/lib/leadScoring'
 
 export const runtime = 'nodejs'
 
-export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const auth = await requireAdmin()
   if (auth.error) return auth.error
 
-  const lead = await prisma.lead.findUnique({ where: { id: params.id } })
+  const { id } = await params
+  const lead = await prisma.lead.findUnique({ where: { id } })
   if (!lead) return NextResponse.json({ ok: false, error: 'Not found' }, { status: 404 })
   return NextResponse.json({ ok: true, lead })
 }
 
-export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
+export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const auth = await requireAdmin()
   if (auth.error) return auth.error
 
+  const { id } = await params
   const body = await req.json() as {
     action: 'override_score' | 'disqualify' | 'mark_converted'
     score?:  number
@@ -34,7 +37,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     rep?:    string
   }
 
-  const lead = await prisma.lead.findUnique({ where: { id: params.id } })
+  const lead = await prisma.lead.findUnique({ where: { id } })
   if (!lead) return NextResponse.json({ ok: false, error: 'Not found' }, { status: 404 })
 
   if (body.action === 'override_score') {
@@ -126,21 +129,32 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   return NextResponse.json({ ok: false, error: 'Unknown action' }, { status: 400 })
 }
 
-export async function DELETE(_req: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const auth = await requireAdmin()
   if (auth.error) return auth.error
 
+  const { id } = await params
   // SME-6: DPDP Act right-to-deletion — hard delete PII fields, keep anonymised record
-  const lead = await prisma.lead.findUnique({ where: { id: params.id } })
+  const lead = await prisma.lead.findUnique({ where: { id } })
   if (!lead) return NextResponse.json({ ok: false, error: 'Not found' }, { status: 404 })
 
   await prisma.lead.update({
-    where: { id: params.id },
+    where: { id },
     data: {
-      email:  `deleted_${params.id}@redacted`,
+      email:  `deleted_${id}@redacted`,
       name:   null,
       phone:  null,
+      company: null,
       role:   null,
+      firmographic: Prisma.JsonNull,
+      utmSource: null,
+      utmMedium: null,
+      utmCampaign: null,
+      utmContent: null,
+      pipelineRunId: null,
+      consentCaptured: false,
+      consentAt: null,
+      consentSource: null,
       status: 'disqualified',
       disqualificationReason: 'DPDP right-to-deletion exercised',
       disqualifiedAt: new Date(),
@@ -150,9 +164,9 @@ export async function DELETE(_req: NextRequest, { params }: { params: { id: stri
   await prisma.auditEvent.create({
     data: {
       action:    'lead_pii_deleted',
-      sessionId: `lead_${params.id}`,
+      sessionId: `lead_${id}`,
       userId:    null,
-      meta:      { leadId: params.id } as never,
+      meta:      { leadId: id } as never,
     },
   })
 

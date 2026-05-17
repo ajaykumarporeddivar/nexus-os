@@ -40,6 +40,7 @@ const VALID_PAGES = [
   'forge', 'dashboard', 'vault', 'agent-editor', 'audit',
   'trending', 'workspaces', 'pricing', 'deploy', 'build', 'pipeline', 'evolve',
   'higgs-ai', 'keys', 'admin', 'client-agents', 'image-prompts', 'video-prompts',
+  'leads', 'proposals',
 ] as const
 
 function ShellInner() {
@@ -69,6 +70,7 @@ function ShellInner() {
     pipeline: 'One-Click Pipeline', evolve: 'Evolve', 'higgs-ai': 'Higgs AI',
     keys: 'API Keys', admin: 'Admin', 'client-agents': 'Client Agents',
     'image-prompts': 'Image Prompts', 'video-prompts': 'Video Prompts',
+    leads: 'Lead Pipeline', proposals: 'Proposals',
   }
 
   // Restore sidebar + theme from localStorage/cookie on mount
@@ -156,6 +158,11 @@ function ShellInner() {
   }, [])
 
   const onNavigate = useCallback((page: PageId) => {
+    // proposals lives at /shell/proposals (standalone Next.js page) — navigate directly
+    if (page === 'proposals') {
+      router.push('/shell/proposals')
+      return
+    }
     router.push(`/shell?page=${page}`, { scroll: false })
   }, [router])
 

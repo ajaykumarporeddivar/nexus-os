@@ -64,19 +64,21 @@ export async function GET(req: NextRequest) {
       await prisma.lead.update({
         where: { id: lead.id },
         data: {
-          firmographic:    merged as never,
-          enrichedAt:      new Date(),
-          icpScore:        result.score,
-          scoreConfidence: result.confidence,
-          scoreRationale:  result.rationale as never,
-          scoredAt:        new Date(),
-          scoringCostUsd:  (lead.scoringCostUsd ?? 0) + result.costUsd,
-          routingDecision: routing.decision,
-          assignedRep:     routing.assignedRep || null,
-          routedAt:        new Date(),
-          status:          routing.decision === 'disqualified' ? 'disqualified' : 'routed',
-          dlqAt:           null,
-          dlqReason:       null,
+          firmographic:     merged as never,
+          enrichedAt:       new Date(),
+          enrichmentFailed: false,          // L2 FIX: clear enrichment failure flag
+          icpScore:         result.score,
+          scoreConfidence:  result.confidence,
+          scoreRationale:   result.rationale as never,
+          scoredAt:         new Date(),
+          scoringCostUsd:   (lead.scoringCostUsd ?? 0) + result.costUsd,
+          routingDecision:  routing.decision,
+          assignedRep:      routing.assignedRep || null,
+          routedAt:         new Date(),
+          status:           routing.decision === 'disqualified' ? 'disqualified' : 'routed',
+          dlqAt:            null,
+          dlqReason:        null,
+          dlqRetries:       0,              // L1 FIX: reset retry counter so future DLQs get full quota
         },
       })
 

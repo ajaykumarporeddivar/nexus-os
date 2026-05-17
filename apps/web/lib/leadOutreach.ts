@@ -118,12 +118,7 @@ export async function sendLeadOutreachEmail(payload: LeadOutreachPayload): Promi
   const r = getResend()
   if (!r) return
 
-  // N3 fix: mark lead as in_outreach before sending so status is accurate even if email fails silently
   const { prisma } = await import('./prisma')
-  await prisma.lead.updateMany({
-    where: { id: payload.leadId, status: { notIn: ['converted', 'disqualified'] } },
-    data:  { status: 'in_outreach' as never },
-  }).catch(e => console.error('[outreach] status update failed:', e))
 
   const firstName = payload.name?.split(' ')[0] ?? 'there'
   const companyContext = payload.company ? ` at ${payload.company}` : ''
@@ -162,6 +157,11 @@ export async function sendLeadOutreachEmail(payload: LeadOutreachPayload): Promi
   </div>
 </div></body></html>`,
   })
+
+  await prisma.lead.updateMany({
+    where: { id: payload.leadId, status: { notIn: ['converted', 'disqualified'] } },
+    data:  { status: 'in_outreach' as never },
+  }).catch(e => console.error('[outreach] status update failed:', e))
 }
 
 // ── 3. Nurture email for score 40–69 leads (N4 fix) ──────────────────────────
@@ -173,6 +173,8 @@ export async function sendNurtureEmail(payload: LeadOutreachPayload): Promise<vo
   if (!r) return
 
   const firstName = payload.name?.split(' ')[0] ?? 'there'
+
+  const { prisma } = await import('./prisma')
 
   await r.emails.send({
     from:    FROM(),
@@ -200,6 +202,12 @@ export async function sendNurtureEmail(payload: LeadOutreachPayload): Promise<vo
   </div>
 </div></body></html>`,
   }).catch(e => console.error('[outreach] nurture email failed:', e))
+
+  // L4 FIX: mark lead as in_outreach after nurture email is sent
+  await prisma.lead.updateMany({
+    where: { id: payload.leadId, status: { notIn: ['converted', 'disqualified', 'in_outreach'] } },
+    data:  { status: 'in_outreach' as never },
+  }).catch(e => console.error('[outreach] nurture status update failed:', e))
 }
 
 // ── 4. Orchestrate all outreach for a freshly-routed hot lead ─────────────────

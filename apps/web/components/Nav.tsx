@@ -12,6 +12,7 @@ const ALL_PAGES = [
   'runtime', 'dashboard', 'vault', 'agent-editor', 'audit',
   'trending', 'workspaces', 'pricing', 'deploy', 'build', 'pipeline', 'evolve',
   'higgs-ai', 'keys', 'admin', 'client-agents', 'image-prompts', 'video-prompts',
+  'leads', 'proposals',
 ] as const
 
 export type PageId = typeof ALL_PAGES[number]
@@ -215,6 +216,22 @@ const GROUPS: NavGroup[] = [
         description: 'Manage your Anthropic API keys',
       },
       {
+        id: 'leads',
+        label: 'Lead Pipeline',
+        icon: '◎',
+        description: 'AI-scored leads, routing & ROI',
+        minPlan: 'admin',
+        isNew: true,
+      },
+      {
+        id: 'proposals',
+        label: 'Proposals',
+        icon: '◉',
+        description: '13-SME AI proposal pipeline — RFP to delivery',
+        minPlan: 'admin',
+        isNew: true,
+      },
+      {
         id: 'admin',
         label: 'Admin',
         icon: '⬡',
@@ -384,6 +401,10 @@ export default function Nav({
   }, [session, plan])
 
   const handleNav = useCallback((id: PageId) => {
+    if (id === 'leads') {
+      window.location.href = '/shell/leads'
+      return
+    }
     onNavigate(id)
     setWsOpen(false)
     setUserMenuOpen(false)
