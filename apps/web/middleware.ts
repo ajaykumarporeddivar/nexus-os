@@ -160,6 +160,15 @@ export default withAuth(
           pathname === '/og'
         ) return true
 
+        // G5: /api/leads POST — unauthenticated external ingest (route enforces its own secret)
+        if (pathname === '/api/leads' && req.method === 'POST') return true
+
+        // P1: /api/proposals POST — unauthenticated internal ingest (route enforces its own secret)
+        if (pathname === '/api/proposals' && req.method === 'POST') return true
+
+        // N1: /api/leads/convert POST — webhook from payment processors (no session)
+        if (pathname === '/api/leads/convert' && req.method === 'POST') return true
+
         // Allow /shell?page=pricing and other public shell pages without login
         if (pathname === '/shell') {
           const page = req.nextUrl.searchParams.get('page')
