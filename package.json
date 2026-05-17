@@ -4,12 +4,17 @@
   "private": true,
   "packageManager": "pnpm@10.33.0",
   "scripts": {
-    "dev": "turbo dev",
-    "build": "turbo build",
-    "test": "turbo test",
-    "lint": "turbo lint",
-    "db:push": "prisma db push",
-    "db:seed": "tsx prisma/seed.ts"
+    "setup":    "node scripts/setup.mjs",
+    "setup:ci": "node scripts/setup.mjs --yes",
+    "check":    "node scripts/setup.mjs --check",
+    "dev":      "turbo dev",
+    "build":    "turbo build",
+    "test":     "turbo test",
+    "lint":     "turbo lint",
+    "db:push":  "prisma db push",
+    "db:seed":  "tsx prisma/seed.ts",
+    "db:studio":"prisma studio",
+    "tsc":      "tsc --noEmit -p apps/web/tsconfig.json"
   },
   "dependencies": {
     "@prisma/client": "5.22.0"

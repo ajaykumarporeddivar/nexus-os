@@ -55,10 +55,11 @@ export async function GET() {
       : 'RAZORPAY_KEY_ID / RAZORPAY_KEY_SECRET missing — payments disabled',
   }
 
-  // GitHub token check
+  // GitHub token check (also accepts legacy GUTHUB_TOKEN typo)
+  const ghToken = process.env.GITHUB_TOKEN || process.env.GUTHUB_TOKEN
   checks.github = {
-    ok: !!process.env.GITHUB_TOKEN,
-    label: process.env.GITHUB_TOKEN
+    ok: !!ghToken,
+    label: ghToken
       ? 'GitHub token'
       : 'GITHUB_TOKEN missing — pipeline GitHub push will fail',
   }
@@ -96,13 +97,27 @@ export async function GET() {
       : 'RESEND_API_KEY missing — transactional emails (welcome, receipts) disabled',
   }
 
-  const requiredChecks = ['db', 'ai']
+  // Auth check
+  checks.auth = {
+    ok: !!(process.env.NEXTAUTH_SECRET && process.env.NEXTAUTH_SECRET.length > 20),
+    label: process.env.NEXTAUTH_SECRET
+      ? 'NextAuth secret'
+      : 'NEXTAUTH_SECRET missing — auth will fail',
+  }
+
+  const requiredChecks = ['db', 'ai', 'auth']
   const allOk = requiredChecks.every(key => checks[key]?.ok)
 
+  // Machine-readable setup tiers for the setup wizard and CI
+  const setup = {
+    minimal:     checks.db.ok && checks.ai.ok && checks.auth.ok,
+    recommended: checks.db.ok && checks.ai.ok && checks.auth.ok && checks.groq.ok && checks.resend.ok,
+    production:  checks.db.ok && checks.ai.ok && checks.auth.ok && checks.groq.ok && checks.resend.ok
+                 && checks.vercel_token.ok && checks.github.ok && checks.upstash.ok,
+  }
+
   return NextResponse.json(
-    { ok: allOk, version: '11.0.0', timestamp: new Date().toISOString(), checks },
-    // Keep health reachable for local startup/readiness even when Neon is cold
-    // or an optional provider is degraded. Callers should inspect `ok`.
+    { ok: allOk, version: '11.0.0', timestamp: new Date().toISOString(), checks, setup },
     { status: 200 }
   )
 }
