@@ -23,17 +23,22 @@ function pipelineCompleteHtml(opts: {
   deployReady: boolean
   specRepoUrl: string
   appRepoUrl:  string
+  shareSlug?:  string | null
+  refCode?:    string | null
 }): string {
-  const scoreStr  = opts.score !== null ? opts.score.toFixed(1) : '—'
+  const scoreStr   = opts.score !== null ? opts.score.toFixed(1) : '—'
   const scoreColor = opts.score !== null && opts.score >= 8 ? '#22c55e' : opts.score !== null && opts.score >= 7 ? '#c8ff00' : '#f59e0b'
-  const hasLive = opts.deployReady && !!opts.liveUrl
-  const hasRepo = !!opts.appRepoUrl
+  const hasLive    = opts.deployReady && !!opts.liveUrl
+  const hasRepo    = !!opts.appRepoUrl
+  const shareUrl   = opts.shareSlug ? `${appUrl}/s/${opts.shareSlug}` : null
+  const refUrl     = opts.refCode   ? `${appUrl}?ref=${opts.refCode}` : null
+
   const headline = hasLive
-    ? `<h1>🚀 <span class="accent">${opts.projectName}</span> is live</h1>`
-    : `<h1>🚀 <span class="accent">${opts.projectName}</span> deployment submitted</h1>`
+    ? `<h1><span class="accent">${opts.projectName}</span> is live</h1>`
+    : `<h1><span class="accent">${opts.projectName}</span> deployment submitted</h1>`
   const intro = hasLive
-    ? `<p>Hi ${opts.name} — your One-Click Pipeline just completed successfully.</p>`
-    : `<p>Hi ${opts.name} — generation completed successfully and deployment was submitted. Public readiness is still being verified.</p>`
+    ? `<p>Hi ${opts.name} — your One-Click Pipeline just completed. 23 AI agents took your brief to a live app.</p>`
+    : `<p>Hi ${opts.name} — generation completed and deployment was submitted. Public readiness is still being verified.</p>`
 
   return `<!DOCTYPE html>
 <html>
@@ -48,8 +53,13 @@ function pipelineCompleteHtml(opts: {
   .box{background:#111;border-radius:8px;padding:16px;margin:16px 0;font-size:13px}
   .box-label{color:#555;font-size:11px;text-transform:uppercase;letter-spacing:.1em;margin-bottom:4px}
   .box-val{color:#e5e5e5;word-break:break-all}
-  .cta{display:inline-block;background:#c8ff00;color:#000;font-weight:700;font-size:13px;padding:12px 24px;border-radius:8px;text-decoration:none;margin-top:16px}
+  .cta{display:inline-block;background:#c8ff00;color:#000;font-weight:700;font-size:13px;padding:12px 24px;border-radius:8px;text-decoration:none;margin-top:8px}
   .cta-secondary{display:inline-block;background:#222;color:#aaa;font-weight:600;font-size:13px;padding:12px 24px;border-radius:8px;text-decoration:none;margin-top:8px;border:1px solid #333}
+  .share-row{display:flex;gap:8px;margin-top:16px;flex-wrap:wrap}
+  .share-btn{display:inline-block;padding:10px 20px;border-radius:8px;font-size:12px;font-weight:700;text-decoration:none;border:1px solid #333;color:#aaa;background:#181818}
+  .ref-box{background:#0f1a00;border:1px solid #c8ff0030;border-radius:8px;padding:16px;margin-top:16px}
+  .ref-label{color:#c8ff0080;font-size:11px;text-transform:uppercase;letter-spacing:.1em;margin-bottom:6px}
+  .ref-val{color:#c8ff00;font-family:monospace;font-size:13px;word-break:break-all}
   .footer{font-size:11px;color:#555;margin-top:28px;border-top:1px solid #222;padding-top:16px}
 </style></head>
 <body><div class="card">
@@ -74,18 +84,27 @@ function pipelineCompleteHtml(opts: {
   <a href="${opts.liveUrl}" class="cta">Open Live App ↗</a>
   ` : ''}
 
-  ${hasRepo ? `
-  <div class="box">
-    <div class="box-label">App Repository</div>
-    <div class="box-val"><a href="${opts.appRepoUrl}" style="color:#aaa">${opts.appRepoUrl}</a></div>
-  </div>
+  ${hasRepo && !hasLive ? `
   <a href="${opts.appRepoUrl}" class="cta-secondary">View Repo ↗</a>
   ` : ''}
 
-  ${opts.specRepoUrl ? `
-  <div class="box">
-    <div class="box-label">Spec Repository (private)</div>
-    <div class="box-val"><a href="${opts.specRepoUrl}" style="color:#aaa">${opts.specRepoUrl}</a></div>
+  ${shareUrl ? `
+  <div class="box" style="margin-top:20px">
+    <div class="box-label">Your shareable build page</div>
+    <div class="box-val"><a href="${shareUrl}" style="color:#c8ff00">${shareUrl}</a></div>
+  </div>
+  <div class="share-row">
+    <a href="https://twitter.com/intent/tweet?text=${encodeURIComponent(`Just built "${opts.projectName}" with @NexusOS — 23 AI agents, brief to live app. ${shareUrl}`)}" class="share-btn">𝕏 Tweet this</a>
+    <a href="https://www.linkedin.com/shareArticle?mini=true&url=${encodeURIComponent(shareUrl)}" class="share-btn">in Share</a>
+    <a href="https://wa.me/?text=${encodeURIComponent(`Check this out — built "${opts.projectName}" with AI: ${shareUrl}`)}" class="share-btn">WhatsApp</a>
+  </div>
+  ` : ''}
+
+  ${refUrl ? `
+  <div class="ref-box">
+    <div class="ref-label">Your referral link — share to earn credits</div>
+    <div class="ref-val"><a href="${refUrl}" style="color:#c8ff00">${refUrl}</a></div>
+    <p style="font-size:12px;color:#666;margin:8px 0 0">Every signup through your link earns you a free pipeline run.</p>
   </div>
   ` : ''}
 
@@ -117,6 +136,8 @@ export async function POST(req: NextRequest) {
       deployReady: boolean
       specRepoUrl: string
       appRepoUrl:  string
+      shareSlug?:  string | null
+      refCode?:    string | null
     }
 
     if (!body.to || !body.projectName) {

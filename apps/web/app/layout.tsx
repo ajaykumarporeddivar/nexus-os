@@ -1,6 +1,8 @@
 import type { Metadata } from 'next'
+import { Suspense } from 'react'
 import './globals.css'
 import Providers from '@/components/Providers'
+import { ReferralTracker } from '@/components/ReferralTracker'
 
 const brandName = process.env.NEXT_PUBLIC_BRAND_NAME ?? 'NEXUS OS'
 const brandTagline = process.env.NEXT_PUBLIC_BRAND_TAGLINE ?? 'AI Delivery Infrastructure for Digital Agencies'
@@ -52,6 +54,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           aria-atomic="true"
           className="sr-only"
         />
+        <Suspense fallback={null}><ReferralTracker /></Suspense>
         <Providers>{children}</Providers>
       </body>
     </html>

@@ -805,3 +805,43 @@ model ClientAgentJob {
   @@index([workspaceId])
   @@index([createdAt])
 }
+
+// ─── Growth Engine ─────────────────────────────────────────────────────────────
+
+/// Public shareable run card — created when a pipeline completes with a live URL.
+/// Accessible at /s/[slug] without authentication.
+model SharedRun {
+  id           String   @id @default(cuid())
+  slug         String   @unique  // short URL-safe string, e.g. "abc12"
+  userId       String?
+  projectName  String
+  brief        String   @db.Text
+  vertical     String   @default("saas")
+  qaScore      Float?
+  elapsedSec   Int?
+  agentCount   Int      @default(23)
+  fileCount    Int      @default(0)
+  liveUrl      String?
+  appRepoUrl   String?
+  refCode      String?  // referral code at time of share (for attribution)
+  viewCount    Int      @default(0)
+  createdAt    DateTime @default(now())
+
+  @@index([slug])
+  @@index([userId])
+  @@index([createdAt])
+}
+
+/// Per-user referral code. One code per user, generated on first use.
+model ReferralCode {
+  id          String   @id @default(cuid())
+  userId      String   @unique
+  code        String   @unique  // e.g. "NEXUS-A3X7"
+  clicks      Int      @default(0)
+  signups     Int      @default(0)
+  conversions Int      @default(0)  // free→paid upgrades from referral
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([code])
+}

@@ -1589,75 +1589,216 @@ function RunsBadge({ plan, runsUsed }: { plan: string; runsUsed: number | null }
 function ResultShareCard({
   projectName,
   qaScore,
-  liveUrl,           // G9: may be '' — falls back to appRepoUrl
+  liveUrl,
   appRepoUrl,
+  elapsedSec,
+  agentCount,
+  fileCount,
+  brief,
+  vertical,
 }: {
   projectName: string
   qaScore:     number | null
   liveUrl:     string
   appRepoUrl:  string
+  elapsedSec?: number | null
+  agentCount?: number
+  fileCount?:  number
+  brief?:      string
+  vertical?:   string
 }) {
-  const [copied, setCopied] = useState(false)
-  const shareUrl = liveUrl || appRepoUrl
-  if (!shareUrl) return null
+  const [copied,       setCopied]       = useState(false)
+  const [shareSlug,    setShareSlug]    = useState<string | null>(null)
+  const [shareLoading, setShareLoading] = useState(false)
+  const [refCode,      setRefCode]      = useState<string | null>(null)
+  const [refCopied,    setRefCopied]    = useState(false)
 
-  const score  = qaScore?.toFixed(1) ?? '–'
-  const handle = () => {
-    navigator.clipboard.writeText(shareUrl).then(() => {
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
+  const shareUrl = liveUrl || appRepoUrl
+  if (!shareUrl && !projectName) return null
+
+  const score   = qaScore?.toFixed(1) ?? '–'
+  const elapsed = elapsedSec
+    ? elapsedSec >= 60
+      ? `${Math.floor(elapsedSec / 60)}m ${elapsedSec % 60}s`
+      : `${elapsedSec}s`
+    : null
+
+  // Fetch referral code once
+  useEffect(() => {
+    fetch('/api/referral').then(r => r.json()).then(d => {
+      if (d.ok && d.code) setRefCode(d.code)
+    }).catch(() => {})
+  }, [])
+
+  // Generate shareable link
+  const generateShareLink = async () => {
+    if (shareSlug) return
+    setShareLoading(true)
+    try {
+      const res  = await fetch('/api/share', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          projectName, brief: brief ?? '', vertical: vertical ?? 'saas',
+          qaScore, elapsedSec, agentCount: agentCount ?? 23, fileCount: fileCount ?? 0,
+          liveUrl, appRepoUrl, refCode,
+        }),
+      })
+      const data = await res.json()
+      if (data.ok) setShareSlug(data.slug)
+    } catch { /* non-fatal */ }
+    finally { setShareLoading(false) }
+  }
+
+  const baseUrl  = typeof window !== 'undefined' ? window.location.origin : ''
+  const pageLink = shareSlug ? `${baseUrl}/s/${shareSlug}` : null
+
+  const copyUrl = (url: string, setter: (v: boolean) => void) => {
+    navigator.clipboard.writeText(url).then(() => {
+      setter(true)
+      setTimeout(() => setter(false), 2000)
     }).catch(() => {})
   }
-  const tweetText = encodeURIComponent(`Just built "${projectName}" with NEXUS OS — live in 4 minutes. QA score: ${score}/10\n\n${shareUrl}`)
+
+  // Pre-written platform copy — tailored to the build
+  const buildLine = `"${projectName}" — ${agentCount ?? 23} AI agents took my brief to a live app${elapsed ? ` in ${elapsed}` : ''}.`
+  const scoreLine = qaScore ? ` QA: ${score}/10.` : ''
+  const linkLine  = pageLink ?? shareUrl ?? ''
+
+  const tweetText = encodeURIComponent(`${buildLine}${scoreLine}\n\nBuilt with NEXUS OS One-Click Pipeline 👇\n${linkLine}`)
+  const liText    = encodeURIComponent(
+    `Just shipped ${buildLine}${scoreLine}\n\nFORGE spec + BUILD code + live deployment — all AI-native.\nThis is what product delivery looks like in 2026.\n\n${linkLine}`
+  )
+  const waText    = encodeURIComponent(`${buildLine} Check it out: ${linkLine}`)
+
   return (
-    <div className="border border-border rounded-2xl bg-paper p-5 space-y-4 shadow-sm">
+    <div className="border border-white/10 rounded-2xl bg-[#090b0d] p-5 space-y-4 shadow-sm">
+      {/* Title row */}
       <div className="flex items-center gap-3">
         <div className="flex-1 min-w-0">
-          <p className="text-[9px] font-black font-mono tracking-widest text-ink3 uppercase">{liveUrl ? 'Project delivered' : 'Project generated'}</p>
-          <p className="font-black text-ink truncate text-base mt-0.5">{projectName}</p>
+          <p className="text-[9px] font-black font-mono tracking-widest text-zinc-500 uppercase">{liveUrl ? 'Project delivered' : 'Project generated'}</p>
+          <p className="font-black text-white truncate text-base mt-0.5">{projectName}</p>
         </div>
         {qaScore !== null && (
           <div className={`px-3 py-1.5 rounded-xl border text-sm font-black font-mono ${
-            qaScore >= 8 ? 'border-green-300 bg-green-50 text-green-700 shadow-[0_0_12px_rgba(34,197,94,0.2)]' :
-            qaScore >= 7 ? 'border-[#c8f23c]/60 bg-[#c8f23c]/10 text-[#5a6e00]' :
-            'border-amber-300 bg-amber-50 text-amber-700'
+            qaScore >= 8 ? 'border-green-400/60 bg-green-400/10 text-green-400' :
+            qaScore >= 7 ? 'border-[#c8f23c]/60 bg-[#c8f23c]/10 text-[#c8f23c]' :
+            'border-amber-400/60 bg-amber-400/10 text-amber-400'
           }`}>
             QA {score}/10
           </div>
         )}
       </div>
 
-      <div className="flex items-center gap-2 p-3 rounded-xl border border-border bg-paper2 font-mono text-xs text-ink2 min-w-0">
-        <span className="flex-1 truncate text-ink3">{shareUrl}</span>
-        <button
-          onClick={handle}
-          className={`flex-shrink-0 px-3 py-1.5 rounded-lg border text-[10px] font-bold transition-all ${
-            copied ? 'border-green-300 bg-green-50 text-green-700' : 'border-border hover:border-ink/30 text-ink3 hover:text-ink bg-paper'
-          }`}
-        >
-          {copied ? '✓ Copied' : '⎘ Copy'}
-        </button>
+      {/* Stats mini-grid */}
+      <div className="grid grid-cols-3 gap-2">
+        {[
+          { label: 'Agents',  value: `${agentCount ?? 23}` },
+          { label: 'Time',    value: elapsed ?? '—' },
+          { label: 'Files',   value: fileCount ? `${fileCount}` : '—' },
+        ].map(s => (
+          <div key={s.label} className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-center">
+            <p className="text-[8px] font-mono uppercase tracking-widest text-zinc-500">{s.label}</p>
+            <p className="mt-0.5 text-xs font-black text-zinc-100">{s.value}</p>
+          </div>
+        ))}
       </div>
 
-      <div className="flex gap-2">
+      {/* Live URL copy row */}
+      {shareUrl && (
+        <div className="flex items-center gap-2 p-3 rounded-xl border border-white/10 bg-white/[0.02] font-mono text-xs text-zinc-400 min-w-0">
+          <span className="flex-1 truncate text-zinc-500">{shareUrl}</span>
+          <button
+            onClick={() => copyUrl(shareUrl, setCopied)}
+            className={`flex-shrink-0 px-3 py-1.5 rounded-lg border text-[10px] font-bold transition-all ${
+              copied ? 'border-green-400/60 bg-green-400/10 text-green-400' : 'border-white/10 hover:border-white/20 text-zinc-400 hover:text-zinc-200 bg-transparent'
+            }`}
+          >
+            {copied ? '✓ Copied' : '⎘ Copy'}
+          </button>
+        </div>
+      )}
+
+      {/* Primary action */}
+      {shareUrl && (
         <a
           href={shareUrl}
           target="_blank"
           rel="noopener noreferrer"
-          className="flex-1 flex items-center justify-center gap-1.5 py-3 rounded-xl bg-[#c8f23c] text-black text-xs font-black hover:bg-[#d4f74a] transition-all shadow-[0_0_20px_rgba(200,242,60,0.3)] hover:scale-[1.01] active:scale-[0.99]"
+          className="flex items-center justify-center gap-1.5 w-full py-3 rounded-xl bg-[#c8f23c] text-black text-xs font-black hover:bg-[#d4f74a] transition-all shadow-[0_0_20px_rgba(200,242,60,0.3)] hover:scale-[1.01] active:scale-[0.99]"
         >
           {liveUrl ? 'Open Live App ↗' : 'Open Repo ↗'}
         </a>
-        <a
-          href={`https://twitter.com/intent/tweet?text=${tweetText}`}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex items-center justify-center gap-1.5 py-3 px-4 rounded-xl border border-border text-xs font-black hover:bg-paper3 transition-all"
-          title="Share on X"
-        >
-          𝕏 Share
-        </a>
+      )}
+
+      {/* Shareable link generator */}
+      <div className="space-y-2">
+        <p className="text-[9px] font-mono uppercase tracking-widest text-zinc-500">Shareable link</p>
+        {pageLink ? (
+          <div className="flex items-center gap-2 p-3 rounded-xl border border-[#c8f23c]/30 bg-[#c8f23c]/5 font-mono text-xs min-w-0">
+            <span className="flex-1 truncate text-zinc-300">{pageLink}</span>
+            <button
+              onClick={() => copyUrl(pageLink, setCopied)}
+              className="flex-shrink-0 px-3 py-1.5 rounded-lg border border-[#c8f23c]/40 text-[10px] font-bold text-[#c8f23c] hover:bg-[#c8f23c]/10 transition-all"
+            >
+              {copied ? '✓' : '⎘ Copy'}
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={generateShareLink}
+            disabled={shareLoading}
+            className="w-full py-2.5 rounded-xl border border-white/10 text-xs font-black text-zinc-300 hover:bg-white/5 transition-all disabled:opacity-50"
+          >
+            {shareLoading ? 'Generating…' : '⊕ Generate shareable page'}
+          </button>
+        )}
       </div>
+
+      {/* Social share strip */}
+      <div className="space-y-2">
+        <p className="text-[9px] font-mono uppercase tracking-widest text-zinc-500">Share on</p>
+        <div className="flex gap-2">
+          <a
+            href={`https://twitter.com/intent/tweet?text=${tweetText}`}
+            target="_blank" rel="noopener noreferrer"
+            className="flex-1 flex items-center justify-center gap-1 py-2.5 rounded-xl border border-white/10 text-xs font-black hover:bg-white/5 transition-all"
+          >𝕏</a>
+          <a
+            href={`https://www.linkedin.com/shareArticle?mini=true&url=${encodeURIComponent(pageLink ?? shareUrl ?? '')}&summary=${liText}`}
+            target="_blank" rel="noopener noreferrer"
+            className="flex-1 flex items-center justify-center gap-1 py-2.5 rounded-xl border border-white/10 text-xs font-black hover:bg-white/5 transition-all"
+          >in</a>
+          <a
+            href={`https://wa.me/?text=${waText}`}
+            target="_blank" rel="noopener noreferrer"
+            className="flex-1 flex items-center justify-center gap-1 py-2.5 rounded-xl border border-white/10 text-xs font-black hover:bg-white/5 transition-all"
+          >WA</a>
+        </div>
+      </div>
+
+      {/* Referral strip */}
+      {refCode && (
+        <div className="rounded-xl border border-white/10 bg-white/[0.02] px-4 py-3 space-y-1.5">
+          <p className="text-[9px] font-mono uppercase tracking-widest text-zinc-500">Your referral link — earn credits</p>
+          <div className="flex items-center gap-2">
+            <span className="flex-1 font-mono text-xs text-zinc-400 truncate">
+              {typeof window !== 'undefined' ? window.location.origin : ''}/?ref={refCode}
+            </span>
+            <button
+              onClick={() => {
+                const url = `${typeof window !== 'undefined' ? window.location.origin : ''}/?ref=${refCode}`
+                copyUrl(url, setRefCopied)
+              }}
+              className={`flex-shrink-0 px-3 py-1.5 rounded-lg border text-[10px] font-bold transition-all ${
+                refCopied ? 'border-green-400/60 bg-green-400/10 text-green-400' : 'border-white/10 text-zinc-400 hover:text-zinc-200'
+              }`}
+            >
+              {refCopied ? '✓' : '⎘'}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -4169,6 +4310,33 @@ REPAIR SCOPE:
   ) => {
     if (!userEmail) return
     try {
+      // Generate a share slug for the email (best-effort, non-blocking)
+      let shareSlugForEmail: string | null = null
+      let refCodeForEmail:   string | null = null
+      try {
+        const refRes = await fetch('/api/referral')
+        const refData = await refRes.json()
+        if (refData.ok) refCodeForEmail = refData.code
+      } catch { /* non-fatal */ }
+
+      try {
+        const shareRes = await fetch('/api/share', {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            projectName: forge.projectName, brief: forge.brief,
+            vertical:    detectVertical(forge.brief),
+            qaScore: forge.score, elapsedSec: finalElapsedSec || null,
+            agentCount: forgeDoneAgents.size + buildDoneAgents.size,
+            fileCount: Object.keys(buildFilesRef.current).length,
+            liveUrl: result.deployReady ? result.proposalUrl : '',
+            appRepoUrl: result.appRepoUrl, refCode: refCodeForEmail,
+          }),
+        })
+        const shareData = await shareRes.json()
+        if (shareData.ok) shareSlugForEmail = shareData.slug
+      } catch { /* non-fatal */ }
+
       const emailRes = await fetch('/api/pipeline/complete-email', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -4182,6 +4350,8 @@ REPAIR SCOPE:
           deployReady: result.deployReady,
           specRepoUrl: result.specRepoUrl,
           appRepoUrl:  result.appRepoUrl,
+          shareSlug:   shareSlugForEmail,
+          refCode:     refCodeForEmail,
         }),
       })
       if (emailRes.ok) {
@@ -4192,7 +4362,7 @@ REPAIR SCOPE:
     } catch (err) {
       log(`⚠ Completion email error: ${(err as Error).message?.slice(0, 80)}`, 'warn')
     }
-  }, [userEmail, userName, log])
+  }, [userEmail, userName, log, finalElapsedSec, forgeDoneAgents, buildDoneAgents, buildFilesRef])
 
   // ── Full pipeline ─────────────────────────────────────────────────────────────
 
@@ -4915,6 +5085,11 @@ REPAIR SCOPE:
             qaScore={forgeQaScore}
             liveUrl={deployResult.deployReady ? deployResult.proposalUrl : ''}
             appRepoUrl={deployResult.appRepoUrl}
+            elapsedSec={finalElapsedSec || null}
+            agentCount={forgeDoneAgents.size + buildDoneAgents.size}
+            fileCount={Object.keys(buildFilesRef.current).length}
+            brief={forgeSpecRef.current?.brief ?? brief}
+            vertical={forgeSpecRef.current ? detectVertical(forgeSpecRef.current.brief) : undefined}
           />
         )}
 
