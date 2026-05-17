@@ -79,6 +79,11 @@ export default withAuth(
       return NextResponse.next()
     }
 
+    // P1: /api/proposals POST — allow internal CRM/webhook ingestion (route handles its own auth)
+    if (pathname === '/api/proposals' && req.method === 'POST') {
+      return NextResponse.next()
+    }
+
     // N1: /api/leads/convert — auth handled by route itself (INTERNAL_API_SECRET / WEBHOOK_SECRET)
     // Webhook callers (Stripe, Razorpay) have no session cookie — let route check its own secret
     if (pathname === '/api/leads/convert' && req.method === 'POST') {
@@ -107,7 +112,9 @@ export default withAuth(
       pathname === '/api/cron/subscription-expiry' ||
       pathname === '/api/cron/activate' ||
       pathname === '/api/cron/digest' ||
-      pathname === '/api/cron/winback'
+      pathname === '/api/cron/winback' ||
+      pathname === '/api/cron/proposal-deadline-monitor' ||
+      pathname === '/api/cron/proposal-digest'
     ) {
       const secret = req.headers.get('x-cron-secret') ?? req.nextUrl.searchParams.get('secret')
       if (secret === process.env.CRON_SECRET) return NextResponse.next()
@@ -166,7 +173,9 @@ export default withAuth(
           pathname === '/api/cron/subscription-expiry' ||
           pathname === '/api/cron/activate' ||
           pathname === '/api/cron/digest' ||
-          pathname === '/api/cron/winback'
+          pathname === '/api/cron/winback' ||
+          pathname === '/api/cron/proposal-deadline-monitor' ||
+          pathname === '/api/cron/proposal-digest'
         ) {
           // Strict: CRON_SECRET only (no session bypass)
           const cronSecret = process.env.CRON_SECRET

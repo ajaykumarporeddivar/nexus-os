@@ -7,6 +7,91 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// ── Lead Management (SME Council v1) ─────────────────────────────────────────
+
+enum LeadStatus {
+  new
+  enriched
+  scored
+  routed
+  in_outreach
+  converted
+  disqualified
+  dlq
+}
+
+model Lead {
+  id          String     @id @default(cuid())
+  userId      String?    // linked if they signed up
+  email       String
+  name        String?
+  phone       String?
+  company     String?
+  role        String?    // job title / seniority
+
+  // ICP scoring (SME-5)
+  icpScore        Int?        // 0–100
+  scoreConfidence Float?      // 0.0–1.0
+  scoreRationale  Json?       // [{factor, direction, weight}]
+  scoredAt        DateTime?
+
+  // Pipeline status (SME-2)
+  status          LeadStatus  @default(new)
+
+  // Routing (SME-2 / SME-4)
+  routingDecision String?     // "hot_queue" | "nurture" | "disqualified"
+  assignedRep     String?
+  routedAt        DateTime?
+
+  // Enrichment (SME-4)
+  firmographic    Json?       // {companySize, industry, location, linkedinUrl}
+  enrichedAt      DateTime?
+  enrichmentFailed Boolean    @default(false)
+
+  // Consent (SME-6 / SME-11 consent_gate)
+  consentCaptured Boolean     @default(false)
+  consentAt       DateTime?
+  consentSource   String?     // "landing_form" | "pipeline_complete" | "api"
+
+  // Attribution (SME-13)
+  source          String?     // "landing_page" | "pipeline_complete" | "api" | "referral"
+  utmSource       String?
+  utmMedium       String?
+  utmCampaign     String?
+  utmContent      String?
+  pipelineRunId   String?     // links back to pipeline execution for ROI
+
+  // Disqualification (SME-9)
+  disqualifiedAt     DateTime?
+  disqualificationReason String?
+
+  // Rep override audit (SME-11 rep_override_audit)
+  repOverrideScore  Int?
+  repOverrideReason String?
+  repOverrideAt     DateTime?
+  repOverrideBy     String?
+
+  // DLQ (SME-8)
+  dlqAt     DateTime?
+  dlqReason String?
+  dlqRetries Int      @default(0)
+
+  // Cost attribution (SME-13)
+  scoringCostUsd Float?
+  enrichCostUsd  Float?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([email])
+  @@index([status])
+  @@index([icpScore])
+  @@index([createdAt])
+  @@index([userId])
+}
+
 model User {
   id              String    @id @default(cuid())
   email           String    @unique
@@ -32,6 +117,7 @@ model User {
   auditEvents   AuditEvent[]
   subscriptions Subscription[]
   workspaces    Workspace[]
+  leads         Lead[]
 
   @@index([plan])
 }
@@ -192,6 +278,170 @@ model VaultPrompt {
 
   @@unique([vaultItemId, version])
   @@index([vaultItemId, isActive])
+}
+
+// ── Proposal Management (SME Council v2 — 13-SME spec) ───────────────────────
+
+enum ProposalStage {
+  intake
+  bid_decision
+  scoping
+  drafting
+  pricing
+  review
+  approved
+  delivered
+  no_bid
+  dlq
+}
+
+enum BidDecision {
+  pending
+  bid
+  no_bid
+}
+
+enum ApprovalStatus {
+  pending
+  approved
+  rejected
+}
+
+enum WinLossOutcome {
+  won
+  lost
+  no_decision
+}
+
+model Proposal {
+  id              String         @id @default(cuid())
+  rfpRef          String?        // e.g. RFQ-2025-0441 — client-provided reference
+  pipelineRunId   String?        // ROI attribution link (SME-13)
+
+  // Client & RFP (SME-6 PII classification: PII-DIRECT)
+  clientName      String?
+  clientEmail     String?
+  clientCompany   String?
+  rfpTitle        String
+  rfpText         String         @db.Text  // raw RFP document
+  ndaActive       Boolean        @default(false)   // nda_access_gate trigger
+  consentCaptured Boolean        @default(false)   // DPDP §6.16
+
+  // Deal economics (SME-11 high_value_review_gate: >₹10L)
+  dealValueInr    Decimal?       @db.Decimal(14,2)
+  dealValueUsd    Decimal?       @db.Decimal(14,2)
+
+  // Pipeline stage (SME-2)
+  stage           ProposalStage  @default(intake)
+  deadline        DateTime?      // RFP submission deadline — drives deadline_dlq_monitor
+  deadlineAlertSentAt DateTime?
+
+  // Bid/No-bid (SME-4 bid-decision-agent)
+  bidDecision        BidDecision @default(pending)
+  bidFitScore        Int?        // 0–100
+  winProbabilityPct  Int?        // 0–100
+  bidRationale       Json?       // [{factor, direction, confidence}] top-3 required
+  bidDecisionAt      DateTime?
+  bidDecisionBy      String?     // "agent" | userId for human override
+
+  // Scoping (SME-2 scoping stage)
+  scopeOutline        String?    @db.Text
+  effortEstimateDays  Int?
+  scopedAt            DateTime?
+
+  // Drafting (SME-5 drafting-agent)
+  proposalDraft       String?    @db.Text
+  draftVersion        Int        @default(0)
+  revisionDepth       Int        @default(0)  // revision_depth_halt: halt at 3
+  sourceReferences    Json?      // [KB articles, templates] used by drafting-agent
+  hallucinationFlags  Json?      // sections flagged for human review
+  marginLeakScanPassed Boolean   @default(false) // margin_leak_guard
+  draftedAt           DateTime?
+
+  // Pricing (SME-5 pricing-agent)
+  pricingModel        Json?      // [{item, qty, rateInr, rate_source}]
+  pricingTotalInr     Decimal?   @db.Decimal(14,2)
+  pricingFloorMet     Boolean    @default(false)  // pricing_floor_gate
+  pricedAt            DateTime?
+
+  // Review & approval (SME-11 proposal_mutation_gate)
+  approvalStatus      ApprovalStatus @default(pending)
+  approvedBy          String?
+  approvedAt          DateTime?
+  rejectionReason     String?
+  secondReviewRequired Boolean   @default(false)  // high_value_review_gate
+  secondApprovedBy    String?
+  secondApprovedAt    DateTime?
+  mutationBlockedAt   DateTime?  // last time proposal_mutation_gate fired
+
+  // Delivery
+  deliveredAt         DateTime?
+  deliveryMethod      String?    // "email" | "portal" | "manual"
+
+  // Win/loss outcome (SME-13 ROI loop)
+  outcome             WinLossOutcome?
+  outcomeAt           DateTime?
+  lossReason          String?
+  qualityScoreAtSubmission Int?  // review-agent score at delivery
+
+  // LLM cost attribution (SME-13)
+  llmCostUsd          Float?
+  agentCostBreakdown  Json?      // {intake, bidDecision, drafting, pricing, review}
+
+  // DLQ (SME-8 deadline-aware)
+  dlqAt               DateTime?
+  dlqReason           String?
+  dlqRetries          Int        @default(0)
+
+  // Escalation
+  escalatedAt         DateTime?
+
+  createdAt           DateTime   @default(now())
+  updatedAt           DateTime   @updatedAt
+
+  revisions           ProposalRevision[]
+  winLossEvents       WinLossEvent[]
+
+  @@index([stage])
+  @@index([clientEmail])
+  @@index([deadline])
+  @@index([createdAt])
+  @@index([bidDecision])
+}
+
+model ProposalRevision {
+  id           String    @id @default(cuid())
+  proposalId   String
+  version      Int
+  draftText    String    @db.Text
+  reviewNotes  String?   @db.Text
+  agentFlags   Json?     // issues raised by review-agent
+  triggeredBy  String?   // "review-agent" | userId
+  createdAt    DateTime  @default(now())
+
+  proposal     Proposal  @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+
+  @@index([proposalId])
+}
+
+model WinLossEvent {
+  id                       String          @id @default(cuid())
+  proposalId               String
+  outcome                  WinLossOutcome
+  valueUsd                 Decimal?        @db.Decimal(14,2)
+  conversionLagDays        Int?
+  qualityScoreAtSubmission Int?
+  revisionCycles           Int?
+  pricingDeltaFromFloorPct Float?          // pricing_delta_from_floor_pct (SME-13)
+  lossReason               String?
+  notes                    String?         @db.Text
+  linkedAt                 DateTime        @default(now())
+
+  proposal                 Proposal        @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+
+  @@index([proposalId])
+  @@index([outcome])
+  @@index([linkedAt])
 }
 
 model AuditEvent {
