@@ -845,3 +845,34 @@ model ReferralCode {
 
   @@index([code])
 }
+
+/// Generated content items for distribution (X posts, LinkedIn, Reddit, etc.)
+model ContentItem {
+  id          String   @id @default(cuid())
+  userId      String?
+  sharedRunId String?  // links back to the pipeline run that generated this
+  platform    String   // 'x_thread' | 'x_single' | 'linkedin' | 'reddit' | 'whatsapp' | 'newsletter'
+  content     String   @db.Text
+  hook        String?  // first line / hook — for quick preview
+  posted      Boolean  @default(false)
+  postedAt    DateTime?
+  createdAt   DateTime @default(now())
+
+  @@index([userId])
+  @@index([sharedRunId])
+  @@index([platform])
+  @@index([createdAt])
+}
+
+/// Tracks which growth drip emails have been sent per user
+model GrowthDrip {
+  id        String   @id @default(cuid())
+  userId    String
+  runSlug   String?  // SharedRun slug the drip references
+  day       Int      // 1 | 3 | 7
+  sentAt    DateTime @default(now())
+
+  @@unique([userId, runSlug, day])
+  @@index([userId])
+  @@index([sentAt])
+}

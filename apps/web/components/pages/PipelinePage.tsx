@@ -2037,6 +2037,159 @@ function parseCloseHandoff(closure: string): Record<string, string> {
   return fields
 }
 
+// ─── Content Engine Card ──────────────────────────────────────────────────────
+
+type ContentPack = {
+  xThread: string; xSingle: string; linkedin: string
+  reddit: string; community: string; hook: string
+}
+
+function ContentEngineCard({
+  forge, elapsedSec, agentCount, fileCount, shareSlug, vertical,
+}: {
+  forge:       ForgeBuild | null
+  elapsedSec:  number | null
+  agentCount:  number
+  fileCount:   number
+  shareSlug?:  string | null
+  vertical?:   string
+}) {
+  const [loading,  setLoading]  = useState(false)
+  const [pack,     setPack]     = useState<ContentPack | null>(null)
+  const [error,    setError]    = useState<string | null>(null)
+  const [tab,      setTab]      = useState<'x_thread' | 'x_single' | 'linkedin' | 'reddit' | 'community'>('x_thread')
+  const [copied,   setCopied]   = useState(false)
+
+  if (!forge) return null
+
+  const generate = async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const res  = await fetch('/api/content/generate', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          projectName: forge.projectName, brief: forge.brief,
+          vertical: vertical ?? 'saas', qaScore: forge.score,
+          elapsedSec, agentCount, fileCount, shareSlug,
+        }),
+      })
+      const data = await res.json()
+      if (data.ok) setPack(data.pack)
+      else setError(data.error ?? 'Generation failed')
+    } catch (e) {
+      setError((e as Error).message?.slice(0, 80) ?? 'Network error')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const TABS: { id: typeof tab; label: string }[] = [
+    { id: 'x_thread',  label: '𝕏 Thread' },
+    { id: 'x_single',  label: '𝕏 Single' },
+    { id: 'linkedin',  label: 'LinkedIn' },
+    { id: 'reddit',    label: 'Reddit' },
+    { id: 'community', label: 'Community' },
+  ]
+
+  const currentContent = pack ? pack[tab === 'x_thread' ? 'xThread' : tab === 'x_single' ? 'xSingle' : tab] : ''
+
+  const copy = () => {
+    navigator.clipboard.writeText(currentContent).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    }).catch(() => {})
+  }
+
+  const platformUrls: Record<typeof tab, string> = {
+    x_thread:  `https://twitter.com/intent/tweet?text=${encodeURIComponent((pack?.xThread ?? '').slice(0, 280))}`,
+    x_single:  `https://twitter.com/intent/tweet?text=${encodeURIComponent(pack?.xSingle ?? '')}`,
+    linkedin:  `https://www.linkedin.com/feed/`,
+    reddit:    `https://www.reddit.com/r/SaaS/submit`,
+    community: '',
+  }
+
+  return (
+    <div className="border border-white/10 rounded-2xl bg-[#090b0d] p-5 space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-[9px] font-black font-mono tracking-widest text-zinc-500 uppercase">Content Engine</p>
+          <p className="text-sm font-black text-zinc-100 mt-0.5">Distribution copy — ready to post</p>
+        </div>
+        {!pack && (
+          <button
+            onClick={generate}
+            disabled={loading}
+            className="px-4 py-2 rounded-xl bg-[#c8f23c] text-black text-xs font-black hover:bg-[#d4f74a] transition-all disabled:opacity-50 flex items-center gap-1.5"
+          >
+            {loading ? (
+              <><span className="w-3 h-3 border-2 border-black/30 border-t-black rounded-full animate-spin" />Generating…</>
+            ) : '⊕ Generate content'}
+          </button>
+        )}
+      </div>
+
+      {error && (
+        <p className="text-xs text-red-400 font-mono">{error}</p>
+      )}
+
+      {!pack && !loading && (
+        <p className="text-xs text-zinc-500">
+          Generate a full week of distribution content — X thread, LinkedIn post, Reddit post, and community message — all tailored to your build.
+        </p>
+      )}
+
+      {pack && (
+        <>
+          {/* Tab strip */}
+          <div className="flex gap-1 flex-wrap">
+            {TABS.map(t => (
+              <button
+                key={t.id}
+                onClick={() => setTab(t.id)}
+                className={`px-3 py-1.5 rounded-lg text-[10px] font-black transition-all ${
+                  tab === t.id
+                    ? 'bg-[#c8f23c] text-black'
+                    : 'border border-white/10 text-zinc-400 hover:text-zinc-200 hover:bg-white/5'
+                }`}
+              >{t.label}</button>
+            ))}
+          </div>
+
+          {/* Content area */}
+          <div className="relative">
+            <div className="rounded-xl border border-white/10 bg-black/40 p-4 text-xs text-zinc-300 leading-relaxed whitespace-pre-wrap font-mono min-h-[120px] max-h-[280px] overflow-y-auto">
+              {currentContent}
+            </div>
+            <div className="absolute top-2 right-2 flex gap-1.5">
+              <button
+                onClick={copy}
+                className={`px-2.5 py-1 rounded-lg border text-[9px] font-bold transition-all ${
+                  copied ? 'border-green-400/60 bg-green-400/10 text-green-400' : 'border-white/10 bg-black/60 text-zinc-400 hover:text-zinc-200'
+                }`}
+              >{copied ? '✓' : '⎘ Copy'}</button>
+              {platformUrls[tab] && (
+                <a
+                  href={platformUrls[tab]}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-2.5 py-1 rounded-lg border border-white/10 bg-black/60 text-[9px] font-bold text-zinc-400 hover:text-zinc-200 transition-all"
+                >Post ↗</a>
+              )}
+            </div>
+          </div>
+
+          <button
+            onClick={generate}
+            className="text-[9px] font-mono text-zinc-500 hover:text-zinc-300 transition-colors"
+          >↺ Regenerate</button>
+        </>
+      )}
+    </div>
+  )
+}
+
 function DealClosureCard({ forge, result }: { forge: ForgeBuild | null; result: DeployResult }) {
   const closure = forge?.files['SALES_CLOSURE_PLAYBOOK.md'] ?? ''
   if (!forge || !closure.trim()) return null
@@ -2421,6 +2574,7 @@ export default function PipelinePage() {
   // Results
   const [deployResult,    setDeployResult]    = useState<DeployResult | null>(null)
   const [forgeQaScore,    setForgeQaScore]    = useState<number | null>(null)
+  const [pipelineShareSlug, setPipelineShareSlug] = useState<string | null>(null)
   const [_streamingOutput, _setStreamingOutput] = useState('') // kept for state shape compat, not rendered
 
   // Modals
@@ -4334,7 +4488,10 @@ REPAIR SCOPE:
           }),
         })
         const shareData = await shareRes.json()
-        if (shareData.ok) shareSlugForEmail = shareData.slug
+        if (shareData.ok) {
+          shareSlugForEmail = shareData.slug
+          setPipelineShareSlug(shareData.slug)
+        }
       } catch { /* non-fatal */ }
 
       const emailRes = await fetch('/api/pipeline/complete-email', {
@@ -4362,7 +4519,7 @@ REPAIR SCOPE:
     } catch (err) {
       log(`⚠ Completion email error: ${(err as Error).message?.slice(0, 80)}`, 'warn')
     }
-  }, [userEmail, userName, log, finalElapsedSec, forgeDoneAgents, buildDoneAgents, buildFilesRef])
+  }, [userEmail, userName, log, finalElapsedSec, forgeDoneAgents, buildDoneAgents, buildFilesRef, setPipelineShareSlug])
 
   // ── Full pipeline ─────────────────────────────────────────────────────────────
 
@@ -4453,6 +4610,7 @@ REPAIR SCOPE:
     // ACORA: reset circuit breakers + cost ledger for fresh run
     circuitBreakers.current.clear()
     agentCostLedger.current.clear()
+    setPipelineShareSlug(null)
     setTotalCostUsd(0)
     try { sessionStorage.removeItem('nexus-pipeline-forge-spec') } catch { /* ignore */ }
     try { sessionStorage.removeItem('nexus-pipeline-build-files') } catch { /* ignore */ }
@@ -5098,6 +5256,14 @@ REPAIR SCOPE:
           <>
             <DoneCard result={deployResult} elapsedSec={finalElapsedSec || undefined} />
             <DealClosureCard forge={forgeSpecRef.current} result={deployResult} />
+            <ContentEngineCard
+              forge={forgeSpecRef.current}
+              elapsedSec={finalElapsedSec || null}
+              agentCount={forgeDoneAgents.size + buildDoneAgents.size}
+              fileCount={Object.keys(buildFilesRef.current).length}
+              shareSlug={pipelineShareSlug}
+              vertical={forgeSpecRef.current ? detectVertical(forgeSpecRef.current.brief) : undefined}
+            />
             {Object.keys(buildFilesRef.current).length > 0 && (
               <button
                 onClick={() => setShowFilesView(true)}

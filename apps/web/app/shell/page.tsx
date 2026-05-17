@@ -30,6 +30,7 @@ const AdminPage             = dynamic(() => import('@/components/pages/AdminPage
 const ClientAgentsPage      = dynamic(() => import('@/components/pages/ClientAgentsPage'),      { loading: PageLoader })
 const ImagePromptsPage      = dynamic(() => import('@/components/pages/ImagePromptsPage'),      { loading: PageLoader })
 const VideoPromptsPage      = dynamic(() => import('@/components/pages/VideoPromptsPage'),      { loading: PageLoader })
+const GrowthPage            = dynamic(() => import('@/components/pages/GrowthPage'),            { loading: PageLoader })
 import { WorkspaceProvider } from '@/lib/workspaceContext'
 import { AutoPilotProvider } from '@/lib/autoPilotContext'
 import AutoPilotBar from '@/components/AutoPilotBar'
@@ -40,7 +41,7 @@ const VALID_PAGES = [
   'forge', 'dashboard', 'vault', 'agent-editor', 'audit',
   'trending', 'workspaces', 'pricing', 'deploy', 'build', 'pipeline', 'evolve',
   'higgs-ai', 'keys', 'admin', 'client-agents', 'image-prompts', 'video-prompts',
-  'leads', 'proposals',
+  'leads', 'proposals', 'growth',
 ] as const
 
 function ShellInner() {
@@ -70,7 +71,7 @@ function ShellInner() {
     pipeline: 'One-Click Pipeline', evolve: 'Evolve', 'higgs-ai': 'Higgs AI',
     keys: 'API Keys', admin: 'Admin', 'client-agents': 'Client Agents',
     'image-prompts': 'Image Prompts', 'video-prompts': 'Video Prompts',
-    leads: 'Lead Pipeline', proposals: 'Proposals',
+    leads: 'Lead Pipeline', proposals: 'Proposals', growth: 'Growth Engine',
   }
 
   // Restore sidebar + theme from localStorage/cookie on mount
@@ -249,6 +250,7 @@ function ShellInner() {
               {currentPage === 'client-agents'  && <ClientAgentsPage />}
               {currentPage === 'image-prompts'  && <ImagePromptsPage />}
               {currentPage === 'video-prompts'  && <VideoPromptsPage />}
+              {currentPage === 'growth'         && <GrowthPage />}
             </div>
           </main>
 

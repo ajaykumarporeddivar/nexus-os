@@ -12,7 +12,7 @@ const ALL_PAGES = [
   'runtime', 'dashboard', 'vault', 'agent-editor', 'audit',
   'trending', 'workspaces', 'pricing', 'deploy', 'build', 'pipeline', 'evolve',
   'higgs-ai', 'keys', 'admin', 'client-agents', 'image-prompts', 'video-prompts',
-  'leads', 'proposals',
+  'leads', 'proposals', 'growth',
 ] as const
 
 export type PageId = typeof ALL_PAGES[number]
@@ -229,6 +229,14 @@ const GROUPS: NavGroup[] = [
         icon: '◉',
         description: '13-SME AI proposal pipeline — RFP to delivery',
         minPlan: 'admin',
+        isNew: true,
+      },
+      {
+        id: 'growth',
+        label: 'Growth Engine',
+        icon: '▲',
+        description: 'Share analytics, referral stats, content engine',
+        minPlan: 'free',
         isNew: true,
       },
       {
