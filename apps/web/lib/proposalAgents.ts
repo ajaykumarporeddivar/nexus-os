@@ -123,6 +123,7 @@ Never invent data not present in the RFP. Use null for missing fields.`
 export async function bidDecisionAgent(
   rfpRecord: RfpRecord,
   companyCapabilities: string = 'Full-stack product engineering, AI/ML integration, cloud-native architecture, SaaS platform development',
+  historicalWinRate?: number | null,  // P13 FIX: fed from WinLossEvent aggregate
 ): Promise<BidDecisionResult> {
   const system = `You are a bid/no-bid decision specialist at a technology consulting firm.
 Evaluate the RFP against company capabilities. Return ONLY valid JSON:
@@ -146,6 +147,7 @@ RFP Summary:
 - Requirements: ${rfpRecord.requirements.slice(0, 5).join('; ')}
 
 Our capabilities: ${companyCapabilities}
+${historicalWinRate != null ? `Historical win rate (last 90d): ${historicalWinRate}% — factor this into confidence calibration.` : ''}
 
 Provide bid/no-bid decision with fit score and 3-point rationale.`
 

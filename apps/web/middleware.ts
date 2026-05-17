@@ -26,6 +26,7 @@ const PUBLIC_PAGES = new Set([
   '/terms',
   '/privacy',
   '/og',
+  '/unsubscribe',
 ])
 
 // Query-param-based public pages on /shell — accessible without login
@@ -113,8 +114,13 @@ export default withAuth(
       pathname === '/api/cron/activate' ||
       pathname === '/api/cron/digest' ||
       pathname === '/api/cron/winback' ||
+      pathname === '/api/cron/lead-dlq-retry' ||
+      pathname === '/api/cron/lead-digest' ||
+      pathname === '/api/cron/lead-retention' ||
       pathname === '/api/cron/proposal-deadline-monitor' ||
-      pathname === '/api/cron/proposal-digest'
+      pathname === '/api/cron/proposal-digest' ||
+      pathname === '/api/cron/proposal-dlq-retry' ||
+      pathname === '/api/cron/proposal-retention'
     ) {
       const secret = req.headers.get('x-cron-secret') ?? req.nextUrl.searchParams.get('secret')
       if (secret === process.env.CRON_SECRET) return NextResponse.next()
@@ -150,6 +156,7 @@ export default withAuth(
           pathname === '/' ||
           pathname === '/terms' ||
           pathname === '/privacy' ||
+          pathname === '/unsubscribe' ||
           pathname === '/og'
         ) return true
 
@@ -174,8 +181,13 @@ export default withAuth(
           pathname === '/api/cron/activate' ||
           pathname === '/api/cron/digest' ||
           pathname === '/api/cron/winback' ||
+          pathname === '/api/cron/lead-dlq-retry' ||
+          pathname === '/api/cron/lead-digest' ||
+          pathname === '/api/cron/lead-retention' ||
           pathname === '/api/cron/proposal-deadline-monitor' ||
-          pathname === '/api/cron/proposal-digest'
+          pathname === '/api/cron/proposal-digest' ||
+          pathname === '/api/cron/proposal-dlq-retry' ||
+          pathname === '/api/cron/proposal-retention'
         ) {
           // Strict: CRON_SECRET only (no session bypass)
           const cronSecret = process.env.CRON_SECRET

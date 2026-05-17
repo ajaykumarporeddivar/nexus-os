@@ -90,6 +90,13 @@ export async function POST(req: NextRequest, { params }: Params) {
   let llmCostUsd = 0
 
   try {
+    // ── P13 FIX: Fetch historical win rate for bid calibration ───────────────
+    const [wonCount, totalCount] = await Promise.all([
+      prisma.winLossEvent.count({ where: { outcome: 'won', linkedAt: { gte: new Date(Date.now() - 90 * 86400000) } } }),
+      prisma.winLossEvent.count({ where: { linkedAt: { gte: new Date(Date.now() - 90 * 86400000) } } }),
+    ])
+    const historicalWinRate = totalCount > 0 ? Math.round((wonCount / totalCount) * 100) : null
+
     // ── Step 1: Bid decision ─────────────────────────────────────────────────
     const bid = await bidDecisionAgent({
       title:        proposal.rfpTitle,
@@ -99,18 +106,21 @@ export async function POST(req: NextRequest, { params }: Params) {
       scopeSummary: proposal.scopeOutline ?? '',
       requirements: [],
       contactEmail: proposal.clientEmail,
-    })
+    }, undefined, historicalWinRate)
     llmCostUsd += 0.002 // ~1K tokens blended
 
     if (bid.decision === 'no_bid') {
       await prisma.proposal.update({
         where: { id },
         data: {
-          stage:        'no_bid',
-          bidDecision:  'no_bid',
-          bidFitScore:  bid.bidFitScore,
-          bidRationale: bid.noBidReason ?? bid.rationale.join(' | '),
-          llmCostUsd:   (proposal.llmCostUsd ?? 0) + llmCostUsd,
+          stage:             'no_bid',
+          bidDecision:       'no_bid',
+          bidFitScore:       bid.bidFitScore,
+          winProbabilityPct: bid.winProbabilityPct,
+          bidRationale:      { rationale: bid.rationale, noBidReason: bid.noBidReason },
+          bidDecisionAt:     new Date(),
+          bidDecisionBy:     'agent',
+          llmCostUsd:        (proposal.llmCostUsd ?? 0) + llmCostUsd,
         },
       })
       return NextResponse.json({ ok: true, decision: 'no_bid', bidFitScore: bid.bidFitScore, rationale: bid.rationale })
@@ -119,10 +129,13 @@ export async function POST(req: NextRequest, { params }: Params) {
     await prisma.proposal.update({
       where: { id },
       data: {
-        stage:       'drafting',
-        bidDecision: 'bid',
-        bidFitScore: bid.bidFitScore,
-        bidRationale: bid.rationale.join(' | '),
+        stage:             'drafting',
+        bidDecision:       'bid',
+        bidFitScore:       bid.bidFitScore,
+        winProbabilityPct: bid.winProbabilityPct,
+        bidRationale:      { rationale: bid.rationale },
+        bidDecisionAt:     new Date(),
+        bidDecisionBy:     'agent',
       },
     })
 
@@ -160,10 +173,13 @@ export async function POST(req: NextRequest, { params }: Params) {
       return NextResponse.json({ ok: false, rule: credCheck.rule, reason: credCheck.reason }, { status: 422 })
     }
 
-    // ── Step 3: Pricing ──────────────────────────────────────────────────────
+    // ── Step 3: Pricing (estimate effort from scope word count if not set) ───
+    const estimatedEffort = proposal.effortEstimateDays ??
+      Math.max(5, Math.min(90, Math.ceil((proposal.scopeOutline ?? '').split(' ').length / 50)))
+
     const pricing = await pricingAgent(
       proposal.scopeOutline ?? '',
-      proposal.effortEstimateDays ?? 10,
+      estimatedEffort,
     )
     llmCostUsd += 0.002
 
@@ -172,9 +188,11 @@ export async function POST(req: NextRequest, { params }: Params) {
     await prisma.proposal.update({
       where: { id },
       data: {
-        stage:           'pricing',
-        pricingTotalInr: String(pricing.totalInr),
-        pricingFloorMet: floorCheck.passed,
+        stage:              'pricing',
+        pricingTotalInr:    String(pricing.totalInr),
+        pricingFloorMet:    floorCheck.passed,
+        pricingModel:       pricing.lineItems,         // P2 FIX: save line items
+        effortEstimateDays: estimatedEffort,
       },
     })
 
@@ -211,11 +229,37 @@ export async function POST(req: NextRequest, { params }: Params) {
         stage:                nextStage,
         proposalDraft:        fullDraft,
         revisionDepth:        newDepth,
+        draftVersion:         newDepth,
         marginLeakScanPassed: true,
+        hallucinationFlags:   allFlags,           // P8 FIX: persist flags
+        sourceReferences:     sectionResults.flatMap(r => r.sourceReferences),
+        qualityScoreAtSubmission: review.qualityScore,
         llmCostUsd:           (proposal.llmCostUsd ?? 0) + llmCostUsd,
+        agentCostBreakdown:   {
+          bidDecision: 0.002,
+          drafting:    0.012,
+          pricing:     0.002,
+          review:      0.003,
+          total:       llmCostUsd,
+        },
+        draftedAt:            new Date(),
         updatedAt:            new Date(),
       },
     })
+
+    // ── Notify reviewer if draft passed to review stage ──────────────────────
+    if (nextStage === 'review') {
+      const slack = process.env.SLACK_WEBHOOK_URL
+      if (slack) {
+        fetch(slack, {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            text: `📋 Proposal ready for review\n*${proposal.rfpTitle}* (${proposal.clientName ?? 'Unknown'})\nQuality score: ${review.qualityScore}/10 | Rev depth: ${newDepth}/3\nhttps://web-xi-vert-58.vercel.app/shell?page=proposals`,
+          }),
+        }).catch(e => console.error('[draft] slack notify error:', e))
+      }
+    }
 
     return NextResponse.json({
       ok:              true,
