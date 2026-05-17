@@ -19,6 +19,37 @@ interface MicroSaaSOpportunity {
   opportunityScore: number
 }
 
+// Fix 9: compute opportunityScore from observable fields rather than trusting LLM self-assignment.
+// LLMs tend to cluster at 75-85 regardless of signal quality; this spreads the range correctly.
+function computeOpportunityScore(op: MicroSaaSOpportunity): number {
+  let score = 50
+
+  // buildComplexity: lower = faster to market = higher score
+  if (op.buildComplexity === 'low')    score += 20
+  else if (op.buildComplexity === 'medium') score += 10
+  // high = 0 bonus
+
+  // revenueModel specificity: contains a dollar amount → concrete pricing
+  if (/\$\d+/.test(op.revenueModel ?? '')) score += 10
+
+  // targetMarket specificity: longer and more specific = better signal
+  const tmWords = (op.targetMarket ?? '').split(/\s+/).filter(Boolean).length
+  if (tmWords >= 4)      score += 10
+  else if (tmWords >= 2) score += 5
+
+  // trendReason word count: short reasons are vague
+  const trWords = (op.trendReason ?? '').split(/\s+/).filter(Boolean).length
+  if (trWords >= 12)     score += 8
+  else if (trWords >= 6) score += 4
+
+  // tags count: more workflow tags = more buildable
+  const tagCount = Array.isArray(op.tags) ? op.tags.length : 0
+  if (tagCount >= 4)     score += 7
+  else if (tagCount >= 2) score += 3
+
+  return Math.min(99, Math.max(50, score))
+}
+
 async function generateOpportunities(): Promise<MicroSaaSOpportunity[]> {
   const result = await aiComplete({
     system: `You are a micro-SaaS trend analyst for NEXUS OS, an AI-powered software delivery platform. Generate ${KEEP_TOP} trending micro-SaaS opportunities that are genuinely viral and underserved right now in 2026.
@@ -277,11 +308,14 @@ export async function POST(req: NextRequest) {
     const loopVersion   = await prisma.cRSnapshot.count().catch(() => 0)
     const eRatio        = exploreRatio(regimeClass, loopVersion)
 
-    // AAS v4 — compute batch-level saturation: how many existing items share the same niche?
+    // AAS v4 — compute batch-level saturation: items in same niche within last 7 days only.
+    // All-time counts inflate saturation for evergreen niches — window to recent signal.
+    const saturationSince = new Date(Date.now() - 7 * 86400000)
     type NicheCount = { category: string; _count: { id: number } }
     const existingByNiche: NicheCount[] = await prisma.trendingItem.groupBy({
       by: ['category'],
       _count: { id: true },
+      where: { fetchedAt: { gte: saturationSince } },
       orderBy: { _count: { id: 'desc' } },
     }).then(rows => rows as NicheCount[]).catch(() => [] as NicheCount[])
     const totalExisting  = existingByNiche.reduce((s: number, g: NicheCount) => s + g._count.id, 0)
@@ -323,11 +357,12 @@ export async function POST(req: NextRequest) {
         ? Math.min(1, nicheCount / Math.max(totalExisting, 1))
         : 0
 
-      // Confidence: derived from opportunityScore (LLM-assigned) normalised to [0,1].
+      // Confidence: derived from computed opportunityScore (observable fields, not LLM self-assignment).
       // Novelty slots (first 20% of batch, per explore ratio) get lower confidence floor.
-      const rawConf      = Math.min(1, (Number(op.opportunityScore) || 70) / 100)
+      const computedScore = computeOpportunityScore(op)
+      const rawConf       = Math.min(1, computedScore / 100)
       const isNoveltySlot = idx < Math.ceil(KEEP_TOP * eRatio)
-      const confidence   = isNoveltySlot ? Math.max(0.25, rawConf * 0.8) : rawConf
+      const confidence    = isNoveltySlot ? Math.max(0.25, rawConf * 0.8) : rawConf
 
       // causalMechanism: a non-null string summarising WHY this opportunity exists.
       // Null = kill per AAS v4 Phase 02 rule — so we always generate one from LLM data.
@@ -352,7 +387,7 @@ export async function POST(req: NextRequest) {
           op.buildComplexity ? `build:${op.buildComplexity}`    : '',
           regimeClass !== 'unknown' ? `regime:${regimeClass}`   : '',
         ].filter(Boolean),
-        hnScore:          Number(op.opportunityScore) || 70,
+        hnScore:          computedScore,
         batchId,
         // AAS v4 signal fields
         confidence,

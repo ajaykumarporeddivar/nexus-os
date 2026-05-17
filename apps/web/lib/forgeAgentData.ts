@@ -87,14 +87,20 @@ export interface ForgeAgent {
 // Previously declared inline in PipelinePage.tsx; moved here so it's co-located
 // with the agent definitions and testable in isolation.
 export const FORGE_QA_CTX_CAPS: Record<string, number> = {
-  orchestrator: 1800,
-  analyst:      4200,
-  architect:    4200,
-  planner:      3600,
-  'test-writer': 5200,
-  builder:       900,
-  security:     1800,
-  'db-opt':     3600,
+  // Structural agents — QA needs substantial context from these
+  orchestrator:      1800,
+  analyst:           4200,
+  architect:         4200,
+  planner:           3600,
+  'test-writer':     5200,
+  builder:            900,
+  security:          1800,
+  'db-opt':          3600,
+  // Post-gate agents — previously missing; QA was capped at fallback 800 tokens for these
+  'workflow-mapper': 2500,
+  growth:            3000,
+  monetisation:      3000,
+  closer:            2000,
 }
 
 export const FORGE_AGENTS: ForgeAgent[] = [
@@ -248,13 +254,23 @@ export const FORGE_AGENTS: ForgeAgent[] = [
 export type Vertical = 'marketplace' | 'dashboard' | 'saas' | 'social' | 'mobile' | 'ecommerce'
 
 export function detectVertical(brief: string): Vertical {
-  const b = brief.toLowerCase()
-  if (/\bshop\b|store|ecommerce|e-commerce|cart|checkout|product listing/i.test(b)) return 'ecommerce'
-  if (/marketplace|two-sided|buyer|seller|listing|commission/i.test(b)) return 'marketplace'
-  if (/\bdashboard\b|analytics|reporting|kpi|metric|chart|business intelligence/i.test(b)) return 'dashboard'
-  if (/social|community|feed|post|follow|like|comment|share|profile/i.test(b)) return 'social'
-  if (/mobile|pwa|ios|android|swipe|gesture/i.test(b)) return 'mobile'
-  return 'saas'
+  // Score ALL verticals; pick the highest. Prevents "mobile banking app" → mobile (wrong)
+  // when finance/dashboard signals are stronger. Falls back to 'saas' only when no signals fire.
+  const scores: Record<Vertical, number> = {
+    ecommerce: 0, marketplace: 0, dashboard: 0, social: 0, mobile: 0, saas: 0,
+  }
+
+  if (/\bshop\b|store|ecommerce|e-commerce|cart|checkout|product.?listing/i.test(brief)) scores.ecommerce += 3
+  if (/marketplace|two.?sided|buyer.*seller|listing.*commission|commission.*listing/i.test(brief)) scores.marketplace += 3
+  if (/\bdashboard\b|analytics|reporting|\bkpi\b|\bmetric\b|\bchart\b|business.?intelligence|performance.?track|monitoring/i.test(brief)) scores.dashboard += 3
+  if (/\bsocial\b|community|feed|posts?|followers?|\blikes?\b|comment|share.*profile|profile.*share/i.test(brief)) scores.social += 3
+  if (/\bmobile\b|pwa|ios|android|swipe|gesture|bottom.?nav/i.test(brief)) scores.mobile += 2  // modifier — lower weight
+  if (/\bsaas\b|subscription|per.?seat|workspace|multi.?tenant|invite.*team|roles.*permission|billing.*plan/i.test(brief)) scores.saas += 2
+
+  // Find the highest-scoring vertical; ties go to saas as the broadest fit
+  const [best] = (Object.entries(scores) as [Vertical, number][])
+    .sort((a, b) => b[1] - a[1])
+  return best[1] > 0 ? best[0] : 'saas'
 }
 
 export const VERTICAL_CONTEXTS: Record<Vertical, string> = {
@@ -312,16 +328,21 @@ Revenue signals: sale badges, stock indicators ("Only 3 left!"), cross-sell ("Cu
 // ─── Score parser — used by both ForgeEnginePage and PipelinePage ─────────────
 
 export function extractQAScore(text: string): number | null {
+  // Strip markdown bold/italic/code markers before matching.
+  // LLMs bold the score line ~15% of the time (**Overall Quality Score: 7.8/10**)
+  // which previously broke all 6 patterns and triggered a false NEEDS_WORK loop.
+  const clean = text.replace(/\*+/g, '').replace(/_{1,2}/g, '').replace(/`/g, '')
+
   const patterns = [
     /overall[_\s]quality[_\s]score\s*[:\s]+(\d+\.?\d*)/i,
     /quality[_\s]score\s*[:\s]+(\d+\.?\d*)\/10/i,
-    /\*{0,2}score\s*:\s*(\d+\.?\d*)\/10\*{0,2}/i,
+    /score\s*:\s*(\d+\.?\d*)\/10/i,
     /score\s*[:\s]+(\d+\.?\d*)\/10/i,
     /\bscore\b[^0-9]*(\d+\.?\d*)\s*\/\s*10/i,
     /(\d+\.?\d*)\/10/,
   ]
   for (const p of patterns) {
-    const m = text.match(p)
+    const m = clean.match(p)
     if (m) return Math.min(10, Math.max(0, parseFloat(m[1])))
   }
   return null
@@ -437,16 +458,7 @@ ARCHITECT PRINCIPLES:
 • Record every non-trivial decision as an ADR (Architecture Decision Record) — future builders need to know WHY, not just WHAT.
 • Think in bounded contexts: each domain owns its data. Cross-context calls go through defined interfaces.
 • Score quality attributes explicitly: you cannot optimise for everything simultaneously.
-• Query app generation memory FIRST — NEXUS OS has built many apps. Learn from them before designing this one.
-
-APP GENERATION MEMORY (query before writing architecture):
-If claude-mem is available, run:
-  npx claude-mem search --project nexus-os --query "architecture decisions for [detected vertical from brief] vertical AND ADR patterns" --limit 5 --format compact
-Use the results to:
-- Reuse ADR patterns that worked in similar verticals (marketplace, dashboard, HR, finance, CRM, ecommerce)
-- Avoid stack choices that caused build failures in past generated apps for this vertical
-- Apply learned slug conventions that prevented 404s in past pipeline runs
-If claude-mem is not available: proceed with the standard architecture below.
+• Draw on NEXUS OS's learned ADR patterns — the pipeline has built many apps; reuse what worked.
 
 Read the PROJECT_MANIFEST carefully. Design everything to work with zero environment variables and zero external dependencies.
 
@@ -1001,15 +1013,6 @@ This relationship map helps the MOCK DATA agent set up consistent foreign key va
 qa: `You are the NEXUS REALITY CHECKER — the final quality checkpoint before the BUILD ENGINE runs.
 
 Your default position is NEEDS_WORK. You do not certify quality on faith. Every APPROVED or CONDITIONAL_PASS verdict must be backed by explicit evidence from the visible FORGE output. When evidence is absent, you say so — you do not assume.
-
-APP GENERATION MEMORY (query before scoring — historical failure patterns raise the bar):
-If claude-mem is available, run:
-  npx claude-mem search --project nexus-os --query "FORGE QA failures AND auto-trigger fired AND NEEDS_WORK reason" --limit 5 --format compact
-Use the results to:
-- Weight automatic failure triggers more heavily if they have historically fired for this vertical
-- Check for slug drift more carefully if past apps in this vertical had slug consistency issues
-- Apply stricter spec_contract_quality scoring if the vertical has a history of missing entity interfaces
-If not available: proceed with standard scoring below.
 
 REALITY CHECKER PRINCIPLES:
 • Default to NEEDS_WORK. Shift upward only when evidence is confirmed.

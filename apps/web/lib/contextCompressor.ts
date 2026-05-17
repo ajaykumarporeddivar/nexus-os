@@ -21,8 +21,13 @@ import { aiComplete } from './ai'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-/** Trigger compression when history exceeds this fraction of the context window */
-const COMPRESSION_THRESHOLD = 0.50
+/**
+ * Fixed token threshold for compression trigger.
+ * Replaces the percentage-based approach (0.50 * contextWindow) which fired
+ * never on Gemini (1M * 0.50 = 500K — unreachable) and too early on Groq
+ * (32K * 0.50 = 16K — fires after just a few agents).
+ */
+const COMPRESSION_THRESHOLD_TOKENS = 15_000
 
 /** Always protect this many recent messages from compression */
 const TAIL_PROTECT_MESSAGES = 4
@@ -128,14 +133,12 @@ export async function compressContext(
   systemPrompt = '',
   agentNames:  string[] = [],
 ): Promise<CompressionResult> {
-  const contextWindow   = getContextWindow(model)
-  const thresholdTokens = Math.floor(contextWindow * COMPRESSION_THRESHOLD)
-  const systemTokens    = estimateTokens(systemPrompt)
-  const historyTokens   = totalTokens(messages)
-  const totalUsed       = systemTokens + historyTokens
+  const systemTokens  = estimateTokens(systemPrompt)
+  const historyTokens = totalTokens(messages)
+  const totalUsed     = systemTokens + historyTokens
 
   // No compression needed
-  if (totalUsed < thresholdTokens) {
+  if (totalUsed < COMPRESSION_THRESHOLD_TOKENS) {
     return { messages, compressed: false, savedTokens: 0 }
   }
 

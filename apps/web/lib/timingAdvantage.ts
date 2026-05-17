@@ -38,12 +38,14 @@ export async function computeTimingAdvantage(phases: string[]): Promise<{
   // Count recent executions with the same phase fingerprint (7-day window)
   const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
 
-  // Fetch recent executions with any overlapping phases — then filter in JS
-  // (Postgres array overlap is hard to parameterise in Prisma without raw SQL)
-  const recentSimilar = await prisma.execution.count({
+  // Count recent TrendingItems in this niche category (7-day window).
+  // phases[0] is the niche category string (e.g. 'b2b', 'ai-tools').
+  // Previously queried Execution.phases (FORGE agent names) — always returned 0.
+  const category = phases[0] ?? 'b2b'
+  const recentSimilar = await prisma.trendingItem.count({
     where: {
-      createdAt: { gte: since },
-      phases:    { hasEvery: phases },  // all phases present = same pipeline
+      fetchedAt: { gte: since },
+      category,
     },
   }).catch(() => 0)
 

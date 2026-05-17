@@ -1865,14 +1865,33 @@ function DoneCard({ result, elapsedSec }: { result: DeployResult; elapsedSec?: n
   )
 }
 
-// Parse CLOSE_READY_HANDOFF block from SALES CLOSER output
+// Parse CLOSE_READY_HANDOFF block from SALES CLOSER output.
+// Hardened: strips markdown fences before parsing (LLMs wrap output in ``` ~20% of the time),
+// and fills missing keys with defaults so CTA buttons are never blank.
+const CLOSE_HANDOFF_DEFAULTS: Record<string, string> = {
+  BOOKING_CTA:      'Book a 20-min strategy call',
+  PROPOSAL_CTA:     'Get your custom proposal in 2 hours',
+  PAYMENT_CTA:      'Start your first project today',
+  FAST_MOVER_CTA:   'Lock in founding rate this week',
+  EMAIL_SUBJECT:    'Your app is live — here\'s the ROI breakdown',
+  WHATSAPP_NUDGE:   'Your app is live. Want to discuss next steps?',
+  DEMO_HOOK:        'We just built a complete app in under 15 minutes.',
+  PIPELINE_HEADLINE:'Your SaaS is live. Built by 13 AI agents.',
+}
+
 function parseCloseHandoff(closure: string): Record<string, string> {
-  const block = closure.match(/CLOSE_READY_HANDOFF[\s\S]*?(?=\n---|\n##|$)/i)?.[0] ?? closure
+  // Strip markdown fences before extracting the key-value block
+  const stripped = closure.replace(/```[a-z]*\n?/gi, '').replace(/```/g, '')
+  const block    = stripped.match(/CLOSE_READY_HANDOFF[\s\S]*?(?=\n---|\n##|$)/i)?.[0] ?? stripped
   const fields: Record<string, string> = {}
-  const keys = ['BOOKING_CTA','PROPOSAL_CTA','PAYMENT_CTA','FAST_MOVER_CTA','EMAIL_SUBJECT','WHATSAPP_NUDGE','DEMO_HOOK','PIPELINE_HEADLINE']
+  const keys     = Object.keys(CLOSE_HANDOFF_DEFAULTS)
   for (const key of keys) {
     const m = block.match(new RegExp(`${key}:\\s*"?([^"\\n]+)"?`, 'i'))
     if (m?.[1]?.trim()) fields[key] = m[1].trim().replace(/^["']|["']$/g, '')
+  }
+  // Fill any missing keys with defaults — ensures CTA buttons are never blank
+  for (const key of keys) {
+    if (!fields[key]) fields[key] = CLOSE_HANDOFF_DEFAULTS[key]
   }
   return fields
 }
