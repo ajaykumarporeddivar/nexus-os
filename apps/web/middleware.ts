@@ -15,7 +15,9 @@ const PUBLIC_API = new Set([
   '/api/categories',        // industry taxonomy — public static data
   '/api/lead-capture',      // pre-auth email capture — no login required
   '/api/lead-event',        // behavioral event sink — client-side, no login required
+  // NOTE: /api/leads POST is allowed below via method-check (G5) — GET stays admin-only
 ])
+
 
 // Public page routes
 const PUBLIC_PAGES = new Set([
@@ -68,6 +70,12 @@ export default withAuth(
 
     // Allow explicitly public API routes
     if (PUBLIC_API.has(pathname)) {
+      return NextResponse.next()
+    }
+
+    // G5: /api/leads POST — allow unauthenticated external CRM/webhook ingestion
+    // GET stays auth-required (admin list). Route handler enforces its own rate-limit.
+    if (pathname === '/api/leads' && req.method === 'POST') {
       return NextResponse.next()
     }
 

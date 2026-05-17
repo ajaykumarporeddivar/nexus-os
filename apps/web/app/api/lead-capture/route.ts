@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
+import crypto from 'crypto'
 import { prisma } from '@/lib/prisma'
 import { sendWelcomeEmail } from '@/lib/email'
 import { checkPublicRateLimit, rateLimitHeaders } from '@/lib/ratelimit'
+import { llmScore, checkScoringBudget, routeLead } from '@/lib/leadScoring'
+import type { ScoreRationaleItem } from '@/lib/leadScoring'
+import { enrichLead, mergeFirmographic } from '@/lib/leadEnrichment'
+import { triggerHotLeadOutreach } from '@/lib/leadOutreach'
 
 export async function POST(req: NextRequest) {
   try {
@@ -85,9 +90,86 @@ export async function POST(req: NextRequest) {
       sendWelcomeEmail(email, body.name ?? '').catch(console.error)
     }
 
+    // SME-2: Ingest stage — create/upsert Lead record
+    const existingLead = await prisma.lead.findFirst({ where: { email }, orderBy: { createdAt: 'desc' } })
+    const lead = await prisma.lead.upsert({
+      where:  { id: existingLead?.id ?? 'new' },
+      create: {
+        email,
+        name:            body.name     ?? null,
+        source:          'landing_page',
+        utmSource:       utmSource     ?? null,
+        utmMedium:       utmMedium     ?? null,
+        utmCampaign:     utmCampaign   ?? null,
+        utmContent:      utmContent    ?? null,
+        consentCaptured: true,   // landing form = explicit consent (DPDP)
+        consentAt:       new Date(),
+        consentSource:   'landing_form',
+        status:          'new',
+        pipelineRunId:   `lp_${crypto.randomUUID()}`,  // G7: auto-generate for ROI attribution
+      },
+      update: {
+        name: body.name ?? undefined,
+        ...(!(existingLead?.consentCaptured) ? { consentCaptured: true, consentAt: new Date(), consentSource: 'landing_form' } : {}),
+      },
+    })
+
+    // Async AI scoring (non-blocking)
+    if (isNew) {
+      scoreNewLead(lead.id, { email, name: body.name ?? null, source: 'landing_page', utmSource: utmSource ?? null }).catch(console.error)
+    }
+
     return NextResponse.json({ ok: true, isNew })
   } catch (err) {
     console.error('[lead-capture POST]', err)
     return NextResponse.json({ ok: false, error: 'Internal error' }, { status: 500 })
+  }
+}
+
+async function scoreNewLead(leadId: string, input: { email: string; name: string | null; source: string; utmSource: string | null }) {
+  try {
+    await checkScoringBudget()
+    const freshFirmo = await enrichLead(input.email)
+    const result     = await llmScore({ ...input, firmographic: freshFirmo })
+    const routing    = routeLead(result.score)
+
+    const lead = await prisma.lead.update({
+      where: { id: leadId },
+      data: {
+        firmographic:    freshFirmo as never,
+        enrichedAt:      new Date(),
+        icpScore:        result.score,
+        scoreConfidence: result.confidence,
+        scoreRationale:  result.rationale as never,
+        scoredAt:        new Date(),
+        scoringCostUsd:  result.costUsd,
+        routingDecision: routing.decision,
+        assignedRep:     routing.assignedRep || null,
+        routedAt:        new Date(),
+        status:          routing.decision === 'disqualified' ? 'disqualified' : 'routed',
+      },
+    })
+
+    if (routing.decision === 'hot_queue') {
+      await triggerHotLeadOutreach({
+        leadId,
+        email:           input.email,
+        name:            input.name,
+        company:         freshFirmo.website?.replace('https://', '') ?? null,
+        role:            null,
+        icpScore:        result.score,
+        routingDecision: routing.decision,
+        rationale:       result.rationale as ScoreRationaleItem[],
+        source:          input.source,
+        consentCaptured: lead.consentCaptured,
+        pipelineRunId:   lead.pipelineRunId,
+      }).catch(console.error)
+    }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    await prisma.lead.update({
+      where: { id: leadId },
+      data: { status: 'dlq', dlqAt: new Date(), dlqReason: msg, dlqRetries: { increment: 1 } },
+    }).catch(console.error)
   }
 }

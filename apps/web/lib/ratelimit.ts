@@ -11,7 +11,7 @@ import { Ratelimit } from '@upstash/ratelimit'
 
 const AUTH_REQUESTS   = 40
 const AUTH_WINDOW     = '60 s'
-const PUBLIC_REQUESTS = 5
+const PUBLIC_REQUESTS = 20    // G4: raised from 5 — supports batch submissions, office NAT, multi-tab
 const PUBLIC_WINDOW   = '60 s'
 const WINDOW_MS       = 60_000
 
