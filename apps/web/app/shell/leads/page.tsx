@@ -397,11 +397,14 @@ export default function LeadsPage() {
     exportCSV(leads)
   }
 
-  const totalLeads = Object.values(statusCounts).reduce((s, n) => s + n, 0)
-  const hotCount   = hotLeadsTotal
-  const dlqCount   = statusCounts['dlq'] ?? 0
-  const converted  = statusCounts['converted'] ?? 0
-  const avgScore   = leads.filter(l => l.icpScore !== null).reduce((s, l, _, a) => s + (l.icpScore ?? 0) / a.length, 0)
+  const totalLeads  = Object.values(statusCounts).reduce((s, n) => s + n, 0)
+  const hotCount    = hotLeadsTotal
+  const dlqCount    = statusCounts['dlq'] ?? 0
+  const converted   = statusCounts['converted'] ?? 0
+  const inOutreach  = statusCounts['in_outreach'] ?? 0
+  const funnelDenom = inOutreach + converted
+  const conversionRate = funnelDenom > 0 ? Math.round((converted / funnelDenom) * 100) : null
+  const avgScore    = leads.filter(l => l.icpScore !== null).reduce((s, l, _, a) => s + (l.icpScore ?? 0) / a.length, 0)
 
   // ICHS proxy — % leads with rationale (SME-13)
   const scoredWithRationale = leads.filter(l => l.scoreRationale && (l.scoreRationale as ScoreRationaleItem[]).length > 0).length
@@ -456,6 +459,26 @@ export default function LeadsPage() {
             <div className="text-[10px] text-zinc-500 mt-0.5">{s.label}</div>
           </div>
         ))}
+      </div>
+
+      {/* G6: Outreach → Conversion Funnel */}
+      <div className="bg-zinc-900/40 border border-zinc-800 rounded-xl px-4 py-3 mb-4 flex items-center gap-6 flex-wrap">
+        <span className="text-[10px] text-zinc-500 uppercase tracking-wider font-medium">Outreach funnel</span>
+        <div className="flex items-center gap-2 text-xs">
+          <span className="text-zinc-400">Routed</span>
+          <span className="text-zinc-500">→</span>
+          <span className="font-semibold text-amber-400">{inOutreach} in outreach</span>
+          <span className="text-zinc-500">→</span>
+          <span className="font-semibold text-emerald-400">{converted} converted</span>
+          {conversionRate !== null && (
+            <span className="ml-2 px-2 py-0.5 rounded bg-emerald-900/30 text-emerald-400 text-[11px] font-medium border border-emerald-800/40">
+              {conversionRate}% close rate
+            </span>
+          )}
+          {conversionRate === null && (
+            <span className="ml-2 text-zinc-600 text-[11px]">no outreach yet</span>
+          )}
+        </div>
       </div>
 
       {/* G14: ICP Drift Panel */}
@@ -538,13 +561,17 @@ export default function LeadsPage() {
 
                       {/* Score with rationale tooltip (G11 fix) */}
                       <td className="px-4 py-3">
-                        <div className="relative inline-block" data-lead-score={lead.id}>
+                        {/* G12 FIX: move enter/leave to wrapper so tooltip doesn't flicker on mouse-move */}
+                        <div
+                          className="relative inline-block"
+                          data-lead-score={lead.id}
+                          onMouseEnter={() => setTooltip(lead.id)}
+                          onMouseLeave={() => setTooltip(null)}
+                        >
                           {lead.icpScore !== null ? (
                             <button
                               data-tip="hover-score"
                               className={`font-semibold tabular-nums ${scoreColor(lead.icpScore)} hover:underline`}
-                              onMouseEnter={() => setTooltip(lead.id)}
-                              onMouseLeave={() => setTooltip(null)}
                             >
                               {lead.icpScore}/100
                             </button>

@@ -47,9 +47,10 @@ export async function GET(_req: NextRequest) {
     }),
   ])
 
+  // G7 FIX: return 0 (not null) when there are outcomes but zero wins
   const winRate = wonThisWeek + lostThisWeek > 0
     ? Math.round((wonThisWeek / (wonThisWeek + lostThisWeek)) * 100)
-    : null
+    : wonThisWeek === 0 && lostThisWeek === 0 ? null : 0
 
   const stages = Object.fromEntries(
     stageBreakdown.map(s => [s.stage, s._count.id])

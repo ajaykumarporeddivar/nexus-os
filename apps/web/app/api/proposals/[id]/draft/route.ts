@@ -173,13 +173,49 @@ export async function POST(req: NextRequest, { params }: Params) {
       return NextResponse.json({ ok: false, rule: credCheck.rule, reason: credCheck.reason }, { status: 422 })
     }
 
-    // ── Step 3: Pricing (estimate effort from scope word count if not set) ───
-    const estimatedEffort = proposal.effortEstimateDays ??
-      Math.max(5, Math.min(90, Math.ceil((proposal.scopeOutline ?? '').split(' ').length / 50)))
+    // ── Step 3: Pricing — value-anchored effort estimation ──────────────────
+    // G1/G3/G5/G9 FIX: anchor to dealValueInr, classify scope complexity
+    const computeEffortDays = (): number => {
+      const dealInr   = proposal.dealValueInr ? Number(proposal.dealValueInr) : 0
+      const wordCount = (proposal.scopeOutline ?? '').split(/\s+/).filter(Boolean).length
+
+      // Scope complexity tier (S/M/L/XL) based on deal value + word count
+      type ScopeTier = 'S' | 'M' | 'L' | 'XL'
+      let tier: ScopeTier
+      if      (dealInr >= 2_000_000 || wordCount >= 500) tier = 'XL'
+      else if (dealInr >= 1_000_000 || wordCount >= 300) tier = 'L'
+      else if (dealInr >=   500_000 || wordCount >= 150) tier = 'M'
+      else                                               tier = 'S'
+
+      // Floor/ceiling per tier (days)
+      const tierBounds: Record<ScopeTier, [number, number]> = {
+        S:  [5,  30],
+        M:  [20, 60],
+        L:  [45, 120],
+        XL: [90, 180],
+      }
+      const [tFloor, tCeil] = tierBounds[tier]
+
+      // Value-based estimate: assume ₹25,000/day blended rate
+      const valueBased = dealInr > 0
+        ? Math.ceil(dealInr / 25_000)
+        : wordCount > 0 ? Math.ceil(wordCount / 20) : tFloor
+
+      // Word-count fallback: words / 20 (conservative)
+      const wordBased = wordCount > 0 ? Math.ceil(wordCount / 20) : tFloor
+
+      // Take the higher of the two estimates, then clamp to tier bounds
+      return Math.max(tFloor, Math.min(tCeil, Math.max(valueBased, wordBased)))
+    }
+
+    const estimatedEffort = proposal.effortEstimateDays ?? computeEffortDays()
 
     const pricing = await pricingAgent(
       proposal.scopeOutline ?? '',
       estimatedEffort,
+      '50:50',
+      proposal.deadline?.toISOString().split('T')[0] ?? null,
+      proposal.dealValueInr ? Number(proposal.dealValueInr) : null,
     )
     llmCostUsd += 0.002
 

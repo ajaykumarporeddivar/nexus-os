@@ -278,7 +278,7 @@ export default function ProposalsPage() {
               { label: 'New 7d',  value: String(stats.newThisWeek),  red: false },
               { label: 'Won 7d',  value: String(stats.wonThisWeek),  red: false },
               { label: 'Lost 7d', value: String(stats.lostThisWeek), red: false },
-              { label: 'Win %',   value: stats.winRatePct !== null ? `${stats.winRatePct}%` : '—', red: false },
+              { label: 'Win %',   value: stats.winRatePct !== null ? `${stats.winRatePct}%` : '0%', red: false },
               { label: 'Avg fit', value: String(stats.avgBidFitScore), red: false },
               { label: 'DLQ',     value: String(stats.dlqCount), red: stats.dlqCount > 0 },
               { label: 'LLM $',   value: `$${(stats.totalLlmCostUsd ?? 0).toFixed(3)}`, red: false },

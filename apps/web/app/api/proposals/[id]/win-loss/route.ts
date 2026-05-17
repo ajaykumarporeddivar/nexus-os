@@ -42,14 +42,22 @@ export async function POST(req: NextRequest, { params }: Params) {
     return NextResponse.json({ ok: false, error: 'Invalid outcome' }, { status: 400 })
   }
 
+  // G4 FIX: auto-compute missing win-loss metrics from proposal data
+  const draftedAt = proposal.draftedAt ?? proposal.createdAt
+  const computedLag = body.conversionLagDays ??
+    Math.round((Date.now() - draftedAt.getTime()) / 86_400_000)
+  const computedQuality = body.qualityScoreAtSubmission ?? proposal.qualityScoreAtSubmission ?? null
+  const computedRevisions = (proposal as { revisionDepth?: number }).revisionDepth ?? 0
+
   const [winLoss] = await prisma.$transaction([
     prisma.winLossEvent.create({
       data: {
         proposalId:               id,
         outcome:                  body.outcome,
-        valueUsd:                 body.valueUsd ?? null,
-        conversionLagDays:        body.conversionLagDays ?? null,
-        qualityScoreAtSubmission: body.qualityScoreAtSubmission ?? null,
+        valueUsd:                 body.valueUsd ?? (proposal.dealValueInr ? Number(proposal.dealValueInr) / 85 : null),
+        conversionLagDays:        computedLag,
+        qualityScoreAtSubmission: computedQuality,
+        revisionCycles:           computedRevisions,
         lossReason:               body.lostReason ?? null,
         notes:                    body.notes ?? null,
       },
@@ -67,5 +75,40 @@ export async function POST(req: NextRequest, { params }: Params) {
     }),
   ])
 
-  return NextResponse.json({ ok: true, winLoss })
+  // G11 FIX: link won proposal back to originating lead for ROI attribution
+  let linkedLeadId: string | null = null
+  if (body.outcome === 'won' && proposal.pipelineRunId) {
+    try {
+      const linkedLead = await prisma.lead.findFirst({
+        where:  { pipelineRunId: proposal.pipelineRunId },
+        select: { id: true },
+      })
+      if (linkedLead) {
+        linkedLeadId = linkedLead.id
+        await prisma.lead.update({
+          where: { id: linkedLead.id },
+          data: {
+            status: 'converted',
+            // store proposal win metadata for ROI loop
+          },
+        })
+        await prisma.auditEvent.create({
+          data: {
+            action:    'lead_proposal_won',
+            sessionId: linkedLead.id,
+            meta: {
+              proposalId:   id,
+              rfpTitle:     proposal.rfpTitle,
+              dealValueInr: proposal.dealValueInr ? Number(proposal.dealValueInr) : null,
+              clientName:   proposal.clientName,
+            } as never,
+          },
+        })
+      }
+    } catch (e) {
+      console.error('[win-loss] lead linkage failed (non-fatal):', e)
+    }
+  }
+
+  return NextResponse.json({ ok: true, winLoss, linkedLeadId })
 }

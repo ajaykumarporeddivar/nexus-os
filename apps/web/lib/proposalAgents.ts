@@ -192,9 +192,15 @@ CRITICAL RULES:
   "hallucinationRiskFlags": ["flag1 if any"]
 }`
 
+  const deadlineLine = rfpRecord.deadline
+    ? `Deadline: ${rfpRecord.deadline} (${Math.ceil((new Date(rfpRecord.deadline).getTime() - Date.now()) / 86_400_000)} days from today)`
+    : ''
+
   const user = `
 Client: ${rfpRecord.clientName}
 Scope: ${rfpRecord.scopeSummary}
+${deadlineLine}
+${rfpRecord.budgetInr ? `Budget: ₹${rfpRecord.budgetInr.toLocaleString('en-IN')}` : ''}
 ${scopeContext ? `Additional context: ${scopeContext}` : ''}
 
 Section to write: ${sectionKey}
@@ -220,6 +226,8 @@ export async function pricingAgent(
   scopeSummary:    string,
   effortDays:      number,
   seniorityMix:    '60:40' | '50:50' | '40:60' = '50:50', // senior:junior
+  deadline?:       string | null,
+  budgetInr?:      number | null,
 ): Promise<PricingResult> {
   // ₹25K/day blended (SME-9 approved rate band: ₹20K–₹35K/day)
   const BLENDED_RATE_PER_DAY = 25_000
@@ -237,11 +245,19 @@ Return ONLY valid JSON:
 }
 Minimum total must be ₹50,000. Flag floorMet:true only if total >= 50000.`
 
+  // G8: include deadline awareness for timeline-based pricing context
+  const deadlineCtx = deadline
+    ? `\nDeadline: ${deadline} (${Math.ceil((new Date(deadline).getTime() - Date.now()) / 86_400_000)} days from today — adjust staffing if compressed)`
+    : ''
+  const budgetCtx = budgetInr
+    ? `\nClient budget: ₹${budgetInr.toLocaleString('en-IN')} — pricing should be competitive relative to this`
+    : ''
+
   const user = `
 Scope: ${scopeSummary}
 Effort: ${effortDays} person-days
 Seniority mix: ${seniorityMix} (senior:junior)
-Blended rate: ₹25,000/day
+Blended rate: ₹25,000/day${deadlineCtx}${budgetCtx}
 
 Break down into logical line items (Discovery, Design, Development, Testing, PM, etc.).`
 

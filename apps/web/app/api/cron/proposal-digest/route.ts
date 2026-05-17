@@ -52,8 +52,8 @@ export async function GET(req: NextRequest) {
     totalLlmCostUsd: (totalLlmCost._sum.llmCostUsd ?? 0).toFixed(4),
   }
 
-  // Email ops team
-  const opsEmail = process.env.OPS_DIGEST_EMAIL
+  // Email ops team — fallback to NEXUS_ADMIN_EMAIL if OPS_DIGEST_EMAIL not set
+  const opsEmail = process.env.OPS_DIGEST_EMAIL ?? process.env.NEXUS_ADMIN_EMAIL
   if (opsEmail && process.env.RESEND_API_KEY) {
     const resend = new Resend(process.env.RESEND_API_KEY)
     await resend.emails.send({
