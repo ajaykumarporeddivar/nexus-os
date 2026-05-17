@@ -9,7 +9,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { verifyCronRequest } from '@/lib/cronAuth'
 import { llmScore, checkScoringBudget, routeLead, DAILY_SCORING_BUDGET_USD } from '@/lib/leadScoring'
-import { triggerHotLeadOutreach } from '@/lib/leadOutreach'
+import { triggerHotLeadOutreach, sendNurtureEmail } from '@/lib/leadOutreach'
 import { enrichLead, mergeFirmographic } from '@/lib/leadEnrichment'
 import type { ScoreRationaleItem } from '@/lib/leadScoring'
 
@@ -80,21 +80,24 @@ export async function GET(req: NextRequest) {
         },
       })
 
-      // Fire outreach if hot
+      // Fire outreach for hot or nurture leads on DLQ recovery
+      const dlqOutreachPayload = {
+        leadId:          lead.id,
+        email:           lead.email,
+        name:            lead.name,
+        company:         lead.company,
+        role:            lead.role,
+        icpScore:        result.score,
+        routingDecision: routing.decision,
+        rationale:       result.rationale as ScoreRationaleItem[],
+        source:          lead.source,
+        consentCaptured: lead.consentCaptured,
+        pipelineRunId:   lead.pipelineRunId,
+      }
       if (routing.decision === 'hot_queue') {
-        await triggerHotLeadOutreach({
-          leadId:          lead.id,
-          email:           lead.email,
-          name:            lead.name,
-          company:         lead.company,
-          role:            lead.role,
-          icpScore:        result.score,
-          routingDecision: routing.decision,
-          rationale:       result.rationale as ScoreRationaleItem[],
-          source:          lead.source,
-          consentCaptured: lead.consentCaptured,
-          pipelineRunId:   lead.pipelineRunId,
-        }).catch(console.error)
+        await triggerHotLeadOutreach(dlqOutreachPayload).catch(console.error)
+      } else if (routing.decision === 'nurture' && lead.consentCaptured) {
+        await sendNurtureEmail(dlqOutreachPayload).catch(console.error)
       }
 
       retried++

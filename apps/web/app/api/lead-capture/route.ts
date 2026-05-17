@@ -6,7 +6,7 @@ import { checkPublicRateLimit, rateLimitHeaders } from '@/lib/ratelimit'
 import { llmScore, checkScoringBudget, routeLead } from '@/lib/leadScoring'
 import type { ScoreRationaleItem } from '@/lib/leadScoring'
 import { enrichLead, mergeFirmographic } from '@/lib/leadEnrichment'
-import { triggerHotLeadOutreach } from '@/lib/leadOutreach'
+import { triggerHotLeadOutreach, sendNurtureEmail } from '@/lib/leadOutreach'
 
 export async function POST(req: NextRequest) {
   try {
@@ -150,20 +150,24 @@ async function scoreNewLead(leadId: string, input: { email: string; name: string
       },
     })
 
+    // N6 fix: use lead.company not freshFirmo.website as company in outreach
+    const outreachPayload = {
+      leadId,
+      email:           input.email,
+      name:            input.name,
+      company:         lead.company ?? freshFirmo.description ?? null,
+      role:            null,
+      icpScore:        result.score,
+      routingDecision: routing.decision,
+      rationale:       result.rationale as ScoreRationaleItem[],
+      source:          input.source,
+      consentCaptured: lead.consentCaptured,
+      pipelineRunId:   lead.pipelineRunId,
+    }
     if (routing.decision === 'hot_queue') {
-      await triggerHotLeadOutreach({
-        leadId,
-        email:           input.email,
-        name:            input.name,
-        company:         freshFirmo.website?.replace('https://', '') ?? null,
-        role:            null,
-        icpScore:        result.score,
-        routingDecision: routing.decision,
-        rationale:       result.rationale as ScoreRationaleItem[],
-        source:          input.source,
-        consentCaptured: lead.consentCaptured,
-        pipelineRunId:   lead.pipelineRunId,
-      }).catch(console.error)
+      await triggerHotLeadOutreach(outreachPayload).catch(console.error)
+    } else if (routing.decision === 'nurture' && lead.consentCaptured) {
+      await sendNurtureEmail(outreachPayload).catch(console.error)
     }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)

@@ -118,6 +118,13 @@ export async function sendLeadOutreachEmail(payload: LeadOutreachPayload): Promi
   const r = getResend()
   if (!r) return
 
+  // N3 fix: mark lead as in_outreach before sending so status is accurate even if email fails silently
+  const { prisma } = await import('./prisma')
+  await prisma.lead.updateMany({
+    where: { id: payload.leadId, status: { notIn: ['converted', 'disqualified'] } },
+    data:  { status: 'in_outreach' as never },
+  }).catch(e => console.error('[outreach] status update failed:', e))
+
   const firstName = payload.name?.split(' ')[0] ?? 'there'
   const companyContext = payload.company ? ` at ${payload.company}` : ''
 
@@ -157,7 +164,45 @@ export async function sendLeadOutreachEmail(payload: LeadOutreachPayload): Promi
   })
 }
 
-// ── 3. Orchestrate all outreach for a freshly-routed hot lead ─────────────────
+// ── 3. Nurture email for score 40–69 leads (N4 fix) ──────────────────────────
+export async function sendNurtureEmail(payload: LeadOutreachPayload): Promise<void> {
+  if (!payload.consentCaptured) return
+  if (payload.icpScore < 40 || payload.icpScore >= 70) return  // only nurture band
+
+  const r = getResend()
+  if (!r) return
+
+  const firstName = payload.name?.split(' ')[0] ?? 'there'
+
+  await r.emails.send({
+    from:    FROM(),
+    to:      payload.email,
+    subject: `${firstName}, here's what ${brand.name} can build for you`,
+    html: `<!DOCTYPE html>
+<html><head><meta charset="utf-8"><style>
+  body{font-family:-apple-system,sans-serif;background:#0f0f0f;color:#e5e5e5;margin:0;padding:40px 20px}
+  .card{background:#1a1a1a;border:1px solid #2a2a2a;border-radius:12px;padding:32px;max-width:520px;margin:0 auto}
+  .logo{font-size:11px;letter-spacing:.15em;color:#888;margin-bottom:24px}
+  h1{font-size:18px;font-weight:700;margin:0 0 8px}
+  p{font-size:14px;color:#aaa;line-height:1.6;margin:8px 0}
+  .cta{display:inline-block;background:#c8ff00;color:#000;font-weight:700;font-size:13px;padding:12px 24px;border-radius:8px;text-decoration:none;margin-top:20px}
+  .footer{font-size:11px;color:#555;margin-top:28px}
+</style></head>
+<body><div class="card">
+  <div class="logo">${brand.name}</div>
+  <h1>Hi ${firstName} — still exploring ${brand.name}?</h1>
+  <p>You signed up but haven't run a pipeline yet. In 15 minutes our 23-agent system can produce a full product spec, architecture, security audit, and GTM playbook for any idea.</p>
+  <p>No prompt engineering needed — just describe what you want to build.</p>
+  <a href="${appUrl}/shell?page=pipeline" class="cta">Try it free →</a>
+  <div class="footer">
+    ${brand.name}<br>
+    <a href="${appUrl}/unsubscribe?email=${encodeURIComponent(payload.email)}" style="color:#444">Unsubscribe</a>
+  </div>
+</div></body></html>`,
+  }).catch(e => console.error('[outreach] nurture email failed:', e))
+}
+
+// ── 4. Orchestrate all outreach for a freshly-routed hot lead ─────────────────
 export async function triggerHotLeadOutreach(payload: LeadOutreachPayload): Promise<void> {
   const tasks = [
     sendHotLeadAlert(payload).catch(e => console.error('[outreach] founder alert failed:', e)),

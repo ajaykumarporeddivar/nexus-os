@@ -14,7 +14,7 @@ import { checkPublicRateLimit, rateLimitHeaders } from '@/lib/ratelimit'
 import { llmScore, checkScoringBudget, routeLead } from '@/lib/leadScoring'
 import type { ScoreRationaleItem } from '@/lib/leadScoring'
 import { enrichLead, mergeFirmographic } from '@/lib/leadEnrichment'
-import { triggerHotLeadOutreach } from '@/lib/leadOutreach'
+import { triggerHotLeadOutreach, sendNurtureEmail } from '@/lib/leadOutreach'
 
 export const runtime     = 'nodejs'
 export const dynamic     = 'force-dynamic'
@@ -27,13 +27,26 @@ export async function GET(req: NextRequest) {
 
   const { searchParams } = new URL(req.url)
   const status   = searchParams.get('status')   ?? undefined
+  const q        = searchParams.get('q')?.trim() ?? undefined
   const page     = Math.max(1, parseInt(searchParams.get('page')  ?? '1',  10))
   const limit    = Math.min(100, parseInt(searchParams.get('limit') ?? '50', 10))
   const skip     = (page - 1) * limit
   const sortBy   = searchParams.get('sortBy')   ?? 'createdAt'
   const order    = (searchParams.get('order') === 'asc' ? 'asc' : 'desc') as 'asc' | 'desc'
 
-  const where = status ? { status: status as never } : {}
+  // N2 fix: full-text search across email, name, company
+  const searchFilter = q ? {
+    OR: [
+      { email:   { contains: q, mode: 'insensitive' as const } },
+      { name:    { contains: q, mode: 'insensitive' as const } },
+      { company: { contains: q, mode: 'insensitive' as const } },
+    ],
+  } : {}
+
+  const where = {
+    ...(status ? { status: status as never } : {}),
+    ...searchFilter,
+  }
 
   const [leads, total] = await Promise.all([
     prisma.lead.findMany({
@@ -194,21 +207,26 @@ async function scoreLeadAsync(leadId: string, input: Parameters<typeof llmScore>
       },
     })
 
-    // Stage 4: Outreach — hot leads only (SME-4)
+    // Stage 4: Outreach — hot leads + nurture sequence (N4 fix)
+    const outreachPayload = {
+      leadId,
+      email:           input.email,
+      name:            input.name ?? null,
+      company:         input.company ?? null,
+      role:            input.role ?? null,
+      icpScore:        result.score,
+      routingDecision: routing.decision,
+      rationale:       result.rationale as ScoreRationaleItem[],
+      source:          input.source ?? null,
+      consentCaptured: lead.consentCaptured,
+      pipelineRunId:   lead.pipelineRunId,
+    }
     if (routing.decision === 'hot_queue') {
-      await triggerHotLeadOutreach({
-        leadId,
-        email:           input.email,
-        name:            input.name ?? null,
-        company:         input.company ?? null,
-        role:            input.role ?? null,
-        icpScore:        result.score,
-        routingDecision: routing.decision,
-        rationale:       result.rationale as ScoreRationaleItem[],
-        source:          input.source ?? null,
-        consentCaptured: lead.consentCaptured,
-        pipelineRunId:   lead.pipelineRunId,
-      }).catch(e => console.error('[scoreLeadAsync] outreach error:', e))
+      await triggerHotLeadOutreach(outreachPayload)
+        .catch(e => console.error('[scoreLeadAsync] outreach error:', e))
+    } else if (routing.decision === 'nurture' && lead.consentCaptured) {
+      await sendNurtureEmail(outreachPayload)
+        .catch(e => console.error('[scoreLeadAsync] nurture error:', e))
     }
 
   } catch (err) {

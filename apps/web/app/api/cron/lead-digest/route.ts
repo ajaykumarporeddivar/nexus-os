@@ -48,7 +48,7 @@ export async function GET(req: NextRequest) {
     prisma.lead.aggregate({ _sum: { scoringCostUsd: true }, where: { scoredAt: { gte: day7ago } } }),
     prisma.lead.count({ where: { status: 'converted', updatedAt: { gte: day30ago } } }),
     prisma.lead.count({ where: { status: 'dlq' } }),
-    prisma.lead.aggregate({ _avg: { icpScore: true }, where: { icpScore: { not: null } } }),
+    prisma.lead.aggregate({ _avg: { icpScore: true }, where: { icpScore: { gt: 0 } } }),
   ])
 
   const statusMap: Record<string, number> = {}

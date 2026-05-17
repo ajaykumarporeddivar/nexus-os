@@ -79,6 +79,12 @@ export default withAuth(
       return NextResponse.next()
     }
 
+    // N1: /api/leads/convert — auth handled by route itself (INTERNAL_API_SECRET / WEBHOOK_SECRET)
+    // Webhook callers (Stripe, Razorpay) have no session cookie — let route check its own secret
+    if (pathname === '/api/leads/convert' && req.method === 'POST') {
+      return NextResponse.next()
+    }
+
     // Allow public pages
     if (PUBLIC_PAGES.has(pathname)) {
       return NextResponse.next()

@@ -37,7 +37,9 @@ export async function GET(req: NextRequest) {
   // ── Phase 2: Anonymise email + name after 180 days if uncontacted ──────────
   const staleLeads = await prisma.lead.findMany({
     where: {
-      status:    { notIn: ['in_outreach', 'converted'] },
+      // N8 fix: exclude dlq — lead may still be recoverable via retry cron
+      // Exclude in_outreach and converted as they have active commercial relationships
+      status:    { notIn: ['in_outreach', 'converted', 'dlq'] },
       createdAt: { lte: day180ago },
       email:     { not: { startsWith: 'deleted_' } },  // not already anonymised
     },

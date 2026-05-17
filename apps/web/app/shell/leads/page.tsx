@@ -36,10 +36,10 @@ interface LeadsResponse {
   meta: { statusCounts: Record<string, number>; costTodayUsd: number }
 }
 
+// Matches /api/leads/digest-stats response shape (stats sub-object)
 interface DigestStats {
-  ok: boolean; newLast7: number; hotLeads: number; conversionLast30: number
-  costWeekUsd: number; avgIcpScore: number; dlqCount: number
-  disqualRate: number; costPerHotLead: number | null; warnings: string[]
+  totalLeads: number; avgIcpScore: number; disqualRate: number
+  dlqCount: number; costPerHotLead: number; warnings: string[]
 }
 
 type SortField = 'createdAt' | 'icpScore' | 'scoringCostUsd' | 'status'
