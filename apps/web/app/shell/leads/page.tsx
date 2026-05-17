@@ -14,6 +14,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useRouter } from 'next/navigation'
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -33,7 +34,8 @@ interface Lead {
 interface LeadsResponse {
   ok: boolean
   data: { leads: Lead[]; total: number; page: number; limit: number }
-  meta: { statusCounts: Record<string, number>; costTodayUsd: number }
+  meta: { statusCounts: Record<string, number>; costTodayUsd: number; hotLeads?: number }
+  error?: string
 }
 
 // Matches /api/leads/digest-stats response shape (stats sub-object)
@@ -258,6 +260,7 @@ function SortTh({ field, label, current, order, onSort }: {
 // ── Main Component ───────────────────────────────────────────────────────────
 
 export default function LeadsPage() {
+  const router = useRouter()
   const [leads, setLeads]             = useState<Lead[]>([])
   const [total, setTotal]             = useState(0)
   const [page, setPage]               = useState(1)
@@ -268,6 +271,8 @@ export default function LeadsPage() {
   const [loading, setLoading]         = useState(false)
   const [statusCounts, setStatusCounts] = useState<Record<string, number>>({})
   const [costToday, setCostToday]     = useState(0)
+  const [hotLeadsTotal, setHotLeadsTotal] = useState(0)
+  const [notice, setNotice]           = useState('')
   const [overrideLead, setOverride]   = useState<Lead | null>(null)
   const [scoringLead, setScoring]     = useState<string | null>(null)
   const [tooltipLead, setTooltip]     = useState<string | null>(null)
@@ -284,6 +289,7 @@ export default function LeadsPage() {
     q = search,
   ) => {
     setLoading(true)
+    setNotice('')
     try {
       const qs = new URLSearchParams({
         page:   String(p),
@@ -295,13 +301,15 @@ export default function LeadsPage() {
       if (q.trim()) qs.set('q', q.trim())
       const resp = await fetch(`/api/leads?${qs}`)
       const data = await resp.json() as LeadsResponse
-      if (data.ok) {
-        setLeads(data.data.leads)
-        setTotal(data.data.total)
-        setPage(p)
-        setStatusCounts(data.meta.statusCounts)
-        setCostToday(data.meta.costTodayUsd)
-      }
+      if (!resp.ok || !data.ok) throw new Error(data.error ?? 'Failed to load leads')
+      setLeads(data.data.leads)
+      setTotal(data.data.total)
+      setPage(p)
+      setStatusCounts(data.meta.statusCounts)
+      setCostToday(data.meta.costTodayUsd)
+      setHotLeadsTotal(data.meta.hotLeads ?? 0)
+    } catch (e) {
+      setNotice(e instanceof Error ? e.message : 'Failed to load leads')
     } finally {
       setLoading(false)
     }
@@ -335,13 +343,18 @@ export default function LeadsPage() {
 
   async function triggerScore(leadId: string) {
     setScoring(leadId)
+    setNotice('')
     try {
-      await fetch('/api/leads/score', {
+      const resp = await fetch('/api/leads/score', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ leadId }),
       })
+      const data = await resp.json() as { ok: boolean; error?: string }
+      if (!resp.ok || !data.ok) throw new Error(data.error ?? 'Failed to score lead')
       await loadLeads(page, statusFilter)
+    } catch (e) {
+      setNotice(e instanceof Error ? e.message : 'Failed to score lead')
     } finally {
       setScoring(null)
     }
@@ -349,20 +362,43 @@ export default function LeadsPage() {
 
   async function rescoreAll() {
     setLoading(true)
+    setNotice('')
     try {
-      await fetch('/api/leads/score', {
+      const resp = await fetch('/api/leads/score', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ rescoreAll: true }),
       })
+      const data = await resp.json() as { ok: boolean; error?: string; scored?: number; total?: number }
+      if (!resp.ok || !data.ok) throw new Error(data.error ?? 'Failed to re-score leads')
+      setNotice(`Re-score complete: ${data.scored ?? 0}/${data.total ?? 0} leads processed`)
       await loadLeads(1, statusFilter)
+    } catch (e) {
+      setNotice(e instanceof Error ? e.message : 'Failed to re-score leads')
     } finally {
       setLoading(false)
     }
   }
 
+  async function handleExport() {
+    setNotice('')
+    try {
+      await fetch('/api/audit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'lead_csv_export',
+          meta: { visibleRows: leads.length, statusFilter, search, sortBy, sortOrder },
+        }),
+      })
+    } catch {
+      setNotice('Export started, but audit logging failed')
+    }
+    exportCSV(leads)
+  }
+
   const totalLeads = Object.values(statusCounts).reduce((s, n) => s + n, 0)
-  const hotCount   = Object.values(leads).filter(l => (l.icpScore ?? 0) >= 70).length
+  const hotCount   = hotLeadsTotal
   const dlqCount   = statusCounts['dlq'] ?? 0
   const converted  = statusCounts['converted'] ?? 0
   const avgScore   = leads.filter(l => l.icpScore !== null).reduce((s, l, _, a) => s + (l.icpScore ?? 0) / a.length, 0)
@@ -375,19 +411,34 @@ export default function LeadsPage() {
     <div className="min-h-screen bg-black text-white p-6 lg:p-8">
       {/* Header */}
       <div className="flex items-start justify-between mb-6">
-        <div>
-          <h1 className="text-lg font-semibold text-white mb-1">Lead Management</h1>
-          <p className="text-xs text-zinc-500">SME Council v1 · ICP scoring · Routing · DLQ · DPDP compliance</p>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => router.push('/shell')}
+            className="text-zinc-500 hover:text-zinc-200 transition-colors text-sm flex items-center gap-1.5"
+            title="Back to shell"
+          >
+            ← Back
+          </button>
+          <div>
+            <h1 className="text-lg font-semibold text-white mb-1">Lead Management</h1>
+            <p className="text-xs text-zinc-500">SME Council v1 · ICP scoring · Routing · DLQ · DPDP compliance</p>
+          </div>
         </div>
         {/* G10: CSV Export */}
         <button
-          onClick={() => exportCSV(leads)}
+          onClick={handleExport}
           disabled={leads.length === 0}
           className="text-xs px-3 py-1.5 rounded-lg border border-zinc-700 text-zinc-400 hover:border-zinc-500 hover:text-zinc-200 transition-all disabled:opacity-30 flex items-center gap-1.5"
         >
           ↓ Export CSV
         </button>
       </div>
+
+      {notice && (
+        <div className="mb-5 rounded-xl border border-amber-500/30 bg-amber-950/30 px-4 py-3 text-xs text-amber-200">
+          {notice}
+        </div>
+      )}
 
       {/* Stats bar — SME-13 (G13 expanded) */}
       <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3 mb-5">

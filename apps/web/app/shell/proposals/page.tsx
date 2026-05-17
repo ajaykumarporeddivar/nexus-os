@@ -12,6 +12,7 @@
  */
 
 import { useState, useEffect, useCallback } from 'react'
+import { useRouter } from 'next/navigation'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -78,6 +79,7 @@ const CAN_APPROVE = ['review', 'approved']
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export default function ProposalsPage() {
+  const router = useRouter()
   const [proposals,   setProposals]   = useState<Proposal[]>([])
   const [stats,       setStats]       = useState<Stats | null>(null)
   const [loading,     setLoading]     = useState(true)
@@ -248,9 +250,18 @@ export default function ProposalsPage() {
 
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Proposal Pipeline</h1>
-          <p className="text-xs text-gray-400 mt-0.5">13-SME governed · 10 GDSL rules · 5 AI agents</p>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => router.push('/shell')}
+            className="text-gray-400 hover:text-gray-700 transition-colors text-sm flex items-center gap-1"
+            title="Back to shell"
+          >
+            ← Back
+          </button>
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">Proposal Pipeline</h1>
+            <p className="text-xs text-gray-400 mt-0.5">13-SME governed · 10 GDSL rules · 5 AI agents</p>
+          </div>
         </div>
         <div className="flex gap-2">
           <button onClick={exportCsv} className="px-3 py-2 border border-gray-300 rounded-lg text-sm hover:bg-gray-50">Export CSV</button>
