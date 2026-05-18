@@ -31,6 +31,7 @@ const ClientAgentsPage      = dynamic(() => import('@/components/pages/ClientAge
 const ImagePromptsPage      = dynamic(() => import('@/components/pages/ImagePromptsPage'),      { loading: PageLoader })
 const VideoPromptsPage      = dynamic(() => import('@/components/pages/VideoPromptsPage'),      { loading: PageLoader })
 const GrowthPage            = dynamic(() => import('@/components/pages/GrowthPage'),            { loading: PageLoader })
+const ChaseBotPage          = dynamic(() => import('@/components/pages/ChaseBotPage'),          { loading: PageLoader })
 import { WorkspaceProvider } from '@/lib/workspaceContext'
 import { AutoPilotProvider } from '@/lib/autoPilotContext'
 import AutoPilotBar from '@/components/AutoPilotBar'
@@ -41,7 +42,7 @@ const VALID_PAGES = [
   'forge', 'dashboard', 'vault', 'agent-editor', 'audit',
   'trending', 'workspaces', 'pricing', 'deploy', 'build', 'pipeline', 'evolve',
   'higgs-ai', 'keys', 'admin', 'client-agents', 'image-prompts', 'video-prompts',
-  'leads', 'proposals', 'growth',
+  'leads', 'proposals', 'growth', 'chasebot',
 ] as const
 
 function ShellInner() {
@@ -72,6 +73,7 @@ function ShellInner() {
     keys: 'API Keys', admin: 'Admin', 'client-agents': 'Client Agents',
     'image-prompts': 'Image Prompts', 'video-prompts': 'Video Prompts',
     leads: 'Lead Pipeline', proposals: 'Proposals', growth: 'Growth Engine',
+    chasebot: 'ChaseBot CB',
   }
 
   // Restore sidebar + theme from localStorage/cookie on mount
@@ -251,6 +253,7 @@ function ShellInner() {
               {currentPage === 'image-prompts'  && <ImagePromptsPage />}
               {currentPage === 'video-prompts'  && <VideoPromptsPage />}
               {currentPage === 'growth'         && <GrowthPage />}
+              {currentPage === 'chasebot'       && <ChaseBotPage />}
             </div>
           </main>
 

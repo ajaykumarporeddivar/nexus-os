@@ -118,6 +118,7 @@ model User {
   subscriptions Subscription[]
   workspaces    Workspace[]
   leads         Lead[]
+  invoices      InvoiceRecord[]
 
   @@index([plan])
 }
@@ -875,4 +876,218 @@ model GrowthDrip {
   @@unique([userId, runSlug, day])
   @@index([userId])
   @@index([sentAt])
+}
+
+// ─── ChaseBot CB — Invoice Follow-up & Payment Recovery ──────────────────────
+// 13-SME Council specification v8.0
+// Tone state machine: WARM → FIRM → URGENT → PRE_LEGAL → LEGAL_NOTICE
+// Security rules: payment halt on webhook only, legal authoring human-only
+
+enum ToneState {
+  WARM        // 0–6 days overdue
+  FIRM        // 7–21 days overdue
+  URGENT      // 22–35 days overdue
+  PRE_LEGAL   // 36–50 days overdue — AI draft, human review required
+  LEGAL_NOTICE // 51+ days — human-authored only, AI HALTED
+}
+
+enum RelationshipTier {
+  STANDARD
+  STRATEGIC   // high-value client: extra safeguards + human-in-loop
+  VIP         // lifetime revenue >₹25L: CEO escalation path
+}
+
+enum ChaseChannel {
+  email
+  whatsapp
+  phone_required // triggers human callback
+}
+
+enum DisputeClass {
+  quality      // scope/quality dispute
+  billing      // billing error dispute
+  admin        // administrative delay
+  ghost        // no response / unreachable
+}
+
+// Core invoice record ingested from client billing systems
+model InvoiceRecord {
+  id                String           @id @default(cuid())
+  userId            String
+  workspaceId       String?
+  externalId        String?          // provider invoice ID (e.g. Stripe invoice_id)
+  clientId          String           // business identifier for the debtor client
+  clientName        String           // PII-DIRECT: encrypted at rest
+  clientEmail       String?          // PII-DIRECT: encrypted at rest
+  clientPhone       String?          // PII-DIRECT: encrypted at rest
+  amount            Decimal          @db.Decimal(14,2)
+  currency          String           @default("INR")  // ISO 4217
+  invoiceDate       DateTime
+  dueDate           DateTime
+  overdueDays       Int              @default(0)      // recomputed nightly
+  toneState         ToneState        @default(WARM)
+  toneLockedAt      DateTime?        // payment plan freezes tone changes
+  chaseActive       Boolean          @default(true)   // false = paid/disputed/halted
+  paymentPlanActive Boolean          @default(false)  // payment_plan_tone_freeze GDSL rule
+  disputeFlag       Boolean          @default(false)  // dispute_pause_gate GDSL rule
+  requiresHumanReview Boolean        @default(false)  // PRE_LEGAL+ always true
+  highValueFlag     Boolean          @default(false)  // >₹5L or >£5K: phone gate
+  relationshipTier  RelationshipTier @default(STANDARD)
+  strategic_ceiling_active Boolean   @default(false)  // strategic_client_ceiling GDSL rule
+  dlqFlag           Boolean          @default(false)  // invoice_age_dlq_monitor: 90d+
+  notes             String?          @db.Text
+  paidAt            DateTime?        // set by payment_webhook only
+  paidAmount        Decimal?         @db.Decimal(14,2)
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+
+  user              User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  chaseEvents       ChaseEvent[]
+  disputes          DisputeRecord[]
+  escalations       EscalationRecord[]
+  paymentEvents     PaymentEvent[]
+  legalNotices      LegalNoticeRecord[]
+
+  @@index([userId])
+  @@index([workspaceId])
+  @@index([clientId])
+  @@index([toneState])
+  @@index([dueDate])
+  @@index([chaseActive])
+  @@index([dlqFlag])
+}
+
+// Every chase message sent — immutable audit trail
+model ChaseEvent {
+  id               String       @id @default(cuid())
+  invoiceId        String
+  userId           String
+  toneState        ToneState
+  toneRationale    String?      // why this tone was selected by tone-selector-agent
+  channel          ChaseChannel @default(email)
+  messageSubject   String?
+  messageBody      String       @db.Text  // AI-composed message (WARM/FIRM/URGENT/PRE_LEGAL)
+  complianceCleared Boolean     @default(false) // compliance-check-agent cleared
+  prohibitedFlagged Boolean     @default(false) // prohibited_language_gate flagged
+  requiresHumanReview Boolean   @default(false) // PRE_LEGAL always true
+  humanReviewedBy  String?      // userId who approved before dispatch
+  humanReviewedAt  DateTime?
+  dispatched       Boolean      @default(false)
+  dispatchedAt     DateTime?
+  deliveredAt      DateTime?
+  openedAt         DateTime?
+  responseReceived Boolean      @default(false)
+  responseAt       DateTime?
+  idempotencyKey   String       @unique         // chase_idempotency GDSL rule
+  agentCostUsd     Float        @default(0)     // cost attribution per chase sequence
+  createdAt        DateTime     @default(now())
+
+  invoice          InvoiceRecord @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@index([invoiceId])
+  @@index([userId])
+  @@index([toneState])
+  @@index([dispatched])
+  @@index([createdAt])
+}
+
+// Dispute records — pause chase, route to dispute-agent
+model DisputeRecord {
+  id            String       @id @default(cuid())
+  invoiceId     String
+  userId        String
+  disputeClass  DisputeClass
+  description   String?      @db.Text
+  classifiedAt  DateTime     @default(now())
+  resolvedAt    DateTime?
+  resolvedBy    String?      // userId
+  resolution    String?      @db.Text
+  pausedChase   Boolean      @default(true)  // dispute_pause_gate GDSL rule
+  createdAt     DateTime     @default(now())
+
+  invoice       InvoiceRecord @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@index([invoiceId])
+  @@index([disputeClass])
+  @@index([createdAt])
+}
+
+// Escalation records — strategic ceiling, high-value, PRE_LEGAL human handoffs
+model EscalationRecord {
+  id              String   @id @default(cuid())
+  invoiceId       String
+  userId          String
+  escalationType  String   // "strategic_ceiling" | "high_value_phone" | "pre_legal" | "legal_notice"
+  escalatedTo     String?  // userId or "human_review_queue"
+  reason          String   @db.Text
+  resolvedAt      DateTime?
+  resolvedBy      String?
+  outcome         String?  // "chased" | "payment_plan" | "waived" | "legal_filed"
+  createdAt       DateTime @default(now())
+
+  invoice         InvoiceRecord @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@index([invoiceId])
+  @@index([escalationType])
+  @@index([createdAt])
+}
+
+// Payment events — ONLY source of truth for payment confirmation
+// Populated by webhook only; message content NEVER confirms payment
+model PaymentEvent {
+  id            String   @id @default(cuid())
+  invoiceId     String
+  userId        String
+  source        String   // "stripe_webhook" | "razorpay_webhook" | "manual_admin"
+  amount        Decimal  @db.Decimal(14,2)
+  currency      String   @default("INR")
+  webhookId     String?  // provider webhook event ID for dedup
+  confirmedAt   DateTime @default(now())
+  createdAt     DateTime @default(now())
+
+  invoice       InvoiceRecord @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@unique([invoiceId, webhookId])
+  @@index([invoiceId])
+  @@index([confirmedAt])
+}
+
+// Legal notice record — LEGAL_NOTICE tone: human-authored only, AI HALTED
+model LegalNoticeRecord {
+  id              String   @id @default(cuid())
+  invoiceId       String
+  userId          String
+  authoredBy      String   // userId — must be human, never "agent"
+  noticeText      String   @db.Text  // human-written legal notice
+  legalAdvisorRef String?  // external legal advisor reference number
+  servedAt        DateTime?
+  servedMethod    String?  // "email" | "registered_post" | "courier" | "hand_delivery"
+  createdAt       DateTime @default(now())
+
+  invoice         InvoiceRecord @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@index([invoiceId])
+  @@index([createdAt])
+}
+
+// Client relationship score — drives strategic_client_ceiling GDSL rule
+model ClientRelationshipScore {
+  id               String   @id @default(cuid())
+  clientId         String
+  userId           String
+  score            Int      @default(50)   // 0–100 relationship health
+  lifetimeRevenue  Decimal  @db.Decimal(14,2) @default(0)
+  paymentHistory   Float    @default(0.5)  // 0–1: 1 = always on time
+  projectRecency   Int      @default(180)  // days since last project
+  referralValue    Int      @default(0)    // count of referred clients
+  strategicFlag    Boolean  @default(false) // marks as strategic: ceiling applies
+  computedAt       DateTime @default(now())
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@unique([clientId, userId])
+  @@index([clientId])
+  @@index([userId])
+  @@index([strategicFlag])
+  @@index([computedAt])
 }

@@ -12,7 +12,7 @@ const ALL_PAGES = [
   'runtime', 'dashboard', 'vault', 'agent-editor', 'audit',
   'trending', 'workspaces', 'pricing', 'deploy', 'build', 'pipeline', 'evolve',
   'higgs-ai', 'keys', 'admin', 'client-agents', 'image-prompts', 'video-prompts',
-  'leads', 'proposals', 'growth',
+  'leads', 'proposals', 'growth', 'chasebot',
 ] as const
 
 export type PageId = typeof ALL_PAGES[number]
@@ -228,6 +228,14 @@ const GROUPS: NavGroup[] = [
         label: 'Proposals',
         icon: '◉',
         description: '13-SME AI proposal pipeline — RFP to delivery',
+        minPlan: 'admin',
+        isNew: true,
+      },
+      {
+        id: 'chasebot',
+        label: 'ChaseBot CB',
+        icon: '⚡',
+        description: 'AI invoice follow-up & payment recovery',
         minPlan: 'admin',
         isNew: true,
       },

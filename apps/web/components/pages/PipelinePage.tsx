@@ -2037,6 +2037,264 @@ function parseCloseHandoff(closure: string): Record<string, string> {
   return fields
 }
 
+// ─── Pipeline Cost Breakdown Card ────────────────────────────────────────────
+// ACORA Phase 6: surfaces per-agent cost + duration after pipeline completes.
+// Previously the agentCostLedger ref accumulated data but nothing rendered it.
+
+function PipelineCostCard({
+  entries,
+  totalUsd,
+  totalElapsedSec,
+}: {
+  entries: AgentCostEntry[]
+  totalUsd: number
+  totalElapsedSec: number
+}) {
+  const [open, setOpen] = useState(false)
+  if (entries.length === 0) return null
+
+  const slowest = [...entries].sort((a, b) => b.durationMs - a.durationMs)[0]
+  const mostExpensive = entries[0] // already sorted by cost desc
+
+  return (
+    <div className="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden">
+      <button
+        onClick={() => setOpen(v => !v)}
+        className="w-full flex items-center justify-between px-4 py-3 hover:bg-white/[0.03] transition-colors"
+      >
+        <div className="flex items-center gap-3">
+          <span className="text-[9px] font-black font-mono tracking-widest text-zinc-500 uppercase">Run cost breakdown</span>
+          <span className="text-[10px] font-bold text-[#c8f23c] font-mono">${totalUsd.toFixed(4)}</span>
+          <span className="text-[9px] font-mono text-zinc-600">{entries.length} agents · {totalElapsedSec}s</span>
+        </div>
+        <span className="text-zinc-500 text-xs">{open ? '▲' : '▼'}</span>
+      </button>
+      {open && (
+        <div className="px-4 pb-4 space-y-3">
+          <div className="flex gap-3 text-[9px] font-mono text-zinc-600">
+            <span>Slowest: <span className="text-zinc-300 font-bold">{slowest.agentId}</span> ({(slowest.durationMs / 1000).toFixed(1)}s)</span>
+            <span>·</span>
+            <span>Costliest: <span className="text-zinc-300 font-bold">{mostExpensive.agentId}</span> (${mostExpensive.estimatedUsd.toFixed(4)})</span>
+          </div>
+          <div className="space-y-1">
+            {entries.map(e => {
+              const pct = totalUsd > 0 ? (e.estimatedUsd / totalUsd) * 100 : 0
+              const allAgents = [...FORGE_AGENTS, ...BUILD_AGENTS]
+              const agentInfo = allAgents.find(a => a.id === e.agentId)
+              return (
+                <div key={e.agentId} className="flex items-center gap-2">
+                  <span className="text-[9px] font-mono text-zinc-500 w-32 truncate flex-shrink-0">
+                    {agentInfo?.name ?? e.agentId}
+                  </span>
+                  <div className="flex-1 h-1 bg-white/10 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-[#c8f23c]/60 rounded-full transition-all"
+                      style={{ width: `${pct}%` }}
+                    />
+                  </div>
+                  <span className="text-[9px] font-mono text-zinc-500 w-20 text-right flex-shrink-0">
+                    ${e.estimatedUsd.toFixed(4)} · {e.tokens.toLocaleString()}t
+                  </span>
+                  <span className="text-[9px] font-mono text-zinc-600 w-12 text-right flex-shrink-0">
+                    {(e.durationMs / 1000).toFixed(1)}s
+                  </span>
+                  {e.attempts > 1 && (
+                    <span className="text-[9px] font-mono text-amber-400 flex-shrink-0">×{e.attempts}</span>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── Brief Quality Meter ─────────────────────────────────────────────────────
+// Scores the brief across 5 dimensions the ORCHESTRATOR uses internally.
+// Shows users what to add BEFORE they launch — prevents wasted runs on weak briefs.
+
+function scoreBrief(brief: string): { dimension: string; ok: boolean; hint: string }[] {
+  const b = brief.toLowerCase()
+  return [
+    {
+      dimension: 'Target market',
+      ok: /\b(smb|enterprise|b2b|b2c|freelancer|agency|startup|developer|ops|finance|health|legal|retail|restaurant|school|nonprofit|consumer|professional)\b/i.test(b)
+        || /\b(for\s+\w+s?|aimed at|targeting)\b/i.test(b),
+      hint: 'Add who will use this: e.g. "for B2B SaaS teams" or "targeting freelancers"',
+    },
+    {
+      dimension: 'Core features',
+      ok: /\b(dashboard|billing|auth|payment|invoice|report|analytics|notification|workflow|calendar|booking|chat|search|upload|api|integration|automation|tracking)\b/i.test(b)
+        || (b.match(/feature|screen|page|view|section/g) ?? []).length >= 2,
+      hint: 'Name 2-3 core features: e.g. "with invoicing, time tracking, and client portal"',
+    },
+    {
+      dimension: 'Revenue model',
+      ok: /\b(subscription|saas|freemium|per.seat|per.user|monthly|annual|one.time|usage.based|pay.per|marketplace|commission|ads|free)\b/i.test(b),
+      hint: 'Specify how it earns: e.g. "$29/mo subscription" or "free with paid upgrades"',
+    },
+    {
+      dimension: 'Problem / pain',
+      ok: /\b(problem|pain|struggle|current(ly)?|manually|waste|slow|expensive|hard|difficult|friction|tedious|time.consum|inefficien|lack|miss|gap)\b/i.test(b)
+        || b.includes(' because ') || b.includes(' so that ') || b.includes(' to help '),
+      hint: 'Describe the pain: e.g. "teams waste hours on manual..." or "current tools lack..."',
+    },
+    {
+      dimension: 'Scope / complexity',
+      ok: /\b(mvp|simple|full.stack|production|lightweight|enterprise|basic|complex|multi.tenant|mobile.first|real.time|offline|ai.powered|automation)\b/i.test(b)
+        || brief.trim().length > 200,
+      hint: 'Set scope: e.g. "MVP with 3 core screens" or "production-grade with multi-tenancy"',
+    },
+  ]
+}
+
+function BriefQualityMeter({ brief }: { brief: string }) {
+  const scores = scoreBrief(brief)
+  const passCount = scores.filter(s => s.ok).length
+  const pct = Math.round((passCount / scores.length) * 100)
+  const color = pct >= 80 ? '#c8f23c' : pct >= 60 ? '#f59e0b' : '#f87171'
+  const label = pct >= 80 ? 'Strong brief' : pct >= 60 ? 'Good — add more detail' : 'Weak — FORGE will guess'
+
+  return (
+    <div className="rounded-xl border border-white/10 bg-white/[0.02] px-4 py-3 space-y-2">
+      <div className="flex items-center justify-between">
+        <span className="text-[9px] font-black font-mono tracking-widest text-zinc-500 uppercase">Brief quality</span>
+        <span className="text-[9px] font-bold font-mono" style={{ color }}>{label}</span>
+      </div>
+      <div className="flex items-center gap-1.5">
+        {scores.map(s => (
+          <div
+            key={s.dimension}
+            title={s.ok ? `✓ ${s.dimension}` : `✗ ${s.hint}`}
+            className={`h-1.5 flex-1 rounded-full transition-all ${s.ok ? 'bg-[#c8f23c]' : 'bg-white/15'}`}
+          />
+        ))}
+      </div>
+      {passCount < scores.length && (
+        <div className="flex flex-wrap gap-1.5">
+          {scores.filter(s => !s.ok).slice(0, 2).map(s => (
+            <span key={s.dimension} className="text-[9px] font-mono text-zinc-500 bg-white/[0.04] border border-white/10 rounded px-2 py-0.5">
+              + {s.dimension}
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── FORGE Output Viewer ─────────────────────────────────────────────────────
+// Surfaces all 13 FORGE agent outputs in a tabbed panel after FORGE completes.
+// Previously these were buried in memory refs — now every deliverable is readable.
+
+const FORGE_OUTPUT_TABS: { id: string; label: string; file: string; color: string }[] = [
+  { id: 'analyst',        label: 'Product Manifest',  file: 'PROJECT_MANIFEST.md',             color: 'text-violet-300' },
+  { id: 'architect',      label: 'Architecture',      file: '.claude/architecture.md',          color: 'text-cyan-300' },
+  { id: 'planner',        label: 'Feature Cards',     file: '.claude/features/feature-cards.md',color: 'text-blue-300' },
+  { id: 'security',       label: 'Security Audit',    file: '.claude/security-report.md',       color: 'text-red-300' },
+  { id: 'db-opt',         label: 'DB Schema',         file: 'db/migrations/001_init.sql',       color: 'text-amber-300' },
+  { id: 'test-writer',    label: 'Spec Contract',     file: '.claude/spec-contract.md',         color: 'text-green-300' },
+  { id: 'qa',             label: 'QA Report',         file: '.forge/qa-report.md',              color: 'text-yellow-300' },
+  { id: 'workflow-mapper',label: 'Workflow Map',      file: '.claude/workflow-map.md',          color: 'text-teal-300' },
+  { id: 'growth',         label: 'Growth Playbook',   file: 'GROWTH_PLAYBOOK.md',               color: 'text-emerald-300' },
+  { id: 'monetisation',   label: 'Monetisation',      file: '.claude/monetisation.md',          color: 'text-orange-300' },
+  { id: 'closer',         label: 'Sales Closer',      file: 'SALES_CLOSURE_PLAYBOOK.md',        color: 'text-pink-300' },
+]
+
+function ForgeOutputViewer({
+  content,
+  qaScore,
+}: {
+  content: Record<string, string>
+  qaScore: number | null
+}) {
+  const [activeTab, setActiveTab] = useState(FORGE_OUTPUT_TABS[0].id)
+  const [copied, setCopied] = useState(false)
+  const [isOpen, setIsOpen] = useState(false)
+
+  const activeTabDef = FORGE_OUTPUT_TABS.find(t => t.id === activeTab)
+  // Try file key first, fall back to agent id key (some agents write to content[id] directly)
+  const activeContent = activeTabDef
+    ? (content[activeTabDef.file] ?? content[activeTabDef.id] ?? '')
+    : ''
+
+  const availableTabs = FORGE_OUTPUT_TABS.filter(t => {
+    const c = content[t.file] ?? content[t.id] ?? ''
+    return c.length > 20
+  })
+
+  if (availableTabs.length === 0) return null
+
+  return (
+    <div className="rounded-xl border border-violet-300/20 bg-violet-500/5 overflow-hidden">
+      <button
+        onClick={() => setIsOpen(v => !v)}
+        className="w-full flex items-center justify-between px-4 py-3 hover:bg-white/[0.03] transition-colors"
+      >
+        <div className="flex items-center gap-2.5">
+          <span className="text-[9px] font-black font-mono tracking-widest text-violet-300 uppercase">
+            FORGE Outputs
+          </span>
+          <span className="text-[9px] font-mono text-zinc-600 bg-white/5 border border-white/10 rounded px-2 py-0.5">
+            {availableTabs.length} deliverables
+          </span>
+          {qaScore !== null && (
+            <span className={`text-[9px] font-mono font-bold border rounded px-2 py-0.5 ${
+              qaScore >= 7 ? 'text-green-300 border-green-300/30 bg-green-500/5' : 'text-amber-300 border-amber-300/30 bg-amber-500/5'
+            }`}>
+              QA {qaScore.toFixed(1)}/10
+            </span>
+          )}
+        </div>
+        <span className="text-zinc-500 text-xs">{isOpen ? '▲' : '▼'}</span>
+      </button>
+
+      {isOpen && (
+        <>
+          {/* Tab strip */}
+          <div className="flex items-center gap-1 px-4 pb-2 flex-wrap border-t border-white/5">
+            {availableTabs.map(tab => (
+              <button
+                key={tab.id}
+                onClick={() => { setActiveTab(tab.id); setCopied(false) }}
+                className={`px-2.5 py-1 rounded-lg text-[9px] font-bold font-mono transition-all ${
+                  activeTab === tab.id
+                    ? `${tab.color} bg-white/10 border border-white/20`
+                    : 'text-zinc-500 bg-transparent border border-transparent hover:text-zinc-300 hover:bg-white/5'
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Content area */}
+          <div className="mx-4 mb-4 rounded-lg border border-white/10 bg-black/40 overflow-hidden">
+            <div className="flex items-center justify-between px-3 py-2 border-b border-white/10 bg-white/[0.02]">
+              <span className="text-[9px] font-mono text-zinc-600">{activeTabDef?.file ?? ''}</span>
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(activeContent).catch(() => {})
+                  setCopied(true)
+                  setTimeout(() => setCopied(false), 1800)
+                }}
+                className="text-[9px] font-mono text-zinc-400 hover:text-zinc-100 transition-colors"
+              >
+                {copied ? '✓ copied' : 'copy'}
+              </button>
+            </div>
+            <div className="px-4 py-3 font-mono text-[10px] text-zinc-300 leading-relaxed whitespace-pre-wrap break-words max-h-64 overflow-y-auto">
+              {activeContent || <span className="text-zinc-600 italic">No output yet for this agent.</span>}
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
 // ─── Content Engine Card ──────────────────────────────────────────────────────
 
 type ContentPack = {
@@ -2557,6 +2815,11 @@ export default function PipelinePage() {
   const [steps,        setSteps]        = useState<PipelineStep[]>(INITIAL_STEPS)
   const [logLines,     setLogLines]     = useState<string[]>([])
 
+  // Live streaming output: agent id + accumulated text of the active agent
+  const [streamingAgentId,   setStreamingAgentId]   = useState<string | null>(null)
+  const [streamingAgentText, setStreamingAgentText] = useState('')
+  const streamingTextRef = useRef('')   // avoids stale closure in chunk handler
+
   // Sub-agent tracking — forgeActiveAgents is a Set so parallel FORGE phases show multiple running
   const [forgeActiveAgents, setForgeActiveAgents] = useState<Set<string>>(new Set())
   const [forgeDoneAgents,   setForgeDoneAgents]   = useState<Set<string>>(new Set())
@@ -2604,7 +2867,9 @@ export default function PipelinePage() {
   const totalCallsRef  = useRef(0)
 
   // ACORA Phase 6: cost panel state — updated after every agent call
-  const [totalCostUsd, setTotalCostUsd] = useState(0)
+  const [totalCostUsd,       setTotalCostUsd]       = useState(0)
+  // Snapshot of per-agent cost ledger captured at pipeline completion for the breakdown panel
+  const [costBreakdown,      setCostBreakdown]      = useState<AgentCostEntry[]>([])
 
   // Fix 4: custom template save/load
   const [savedTemplates, saveTemplate, deleteSavedTemplate] = useSavedTemplates()
@@ -2899,7 +3164,7 @@ export default function PipelinePage() {
     setPhase('input')
     setSteps(INITIAL_STEPS.map(s => ({ ...s, status: 'pending' as StepStatus })))
     setLogLines([])
-    /* streamingOutput panel removed */void 0
+    setStreamingAgentId(null); setStreamingAgentText(''); streamingTextRef.current = ''
     setForgeQaScore(null)
     setFinalElapsedSec(0)
     setForgeActiveAgents(new Set())
@@ -2913,6 +3178,8 @@ export default function PipelinePage() {
     setLocalPreview(null)
     setDeployResult(null)
     setDeploySubStep(0)
+    setCostBreakdown([])
+    setTotalCostUsd(0)
     if (pollIntervalRef.current) { clearInterval(pollIntervalRef.current); pollIntervalRef.current = null }
     log('Pipeline cancelled by user', 'warn')
     announce('Pipeline cancelled. You are back on the launch screen. Say guide me if you want orientation.')
@@ -2924,7 +3191,7 @@ export default function PipelinePage() {
     systemPrompt: string,
     userMessage:  string,
   ): Promise<{ content: string; tokens: number }> => {
-    /* streamingOutput panel removed */void 0
+    setStreamingAgentId(null); setStreamingAgentText(''); streamingTextRef.current = ''
 
     // G1: check if aborted before starting each agent
     if (abortRef.current?.signal.aborted) throw new Error('Pipeline cancelled')
@@ -2984,7 +3251,11 @@ export default function PipelinePage() {
         }
         if (msg.type === 'chunk' && msg.content) {
           content += msg.content
-          // streaming display removed — content accumulates in memory only
+          // Throttled streaming display: update state every ~200 chars to avoid React re-render storm
+          streamingTextRef.current += msg.content
+          if (streamingTextRef.current.length % 200 < msg.content.length) {
+            setStreamingAgentText(content)
+          }
         } else if (msg.type === 'done') {
           tokens = msg.tokens ?? Math.ceil(content.length / 4)
         } else if (msg.type === 'error') {
@@ -2993,7 +3264,7 @@ export default function PipelinePage() {
       }
     }
 
-    /* streamingOutput panel removed */void 0
+    setStreamingAgentId(null); setStreamingAgentText(''); streamingTextRef.current = ''
     if (tokens <= 0 || content.trim().length < 20) {
       throw new Error('Empty response from AI provider')
     }
@@ -3033,12 +3304,10 @@ export default function PipelinePage() {
   const remainingAgentCount = Math.max(0, TOTAL_AGENTS - doneAgents)
   const remainingDeploySec = deploySubStep >= 5 ? 0 : deploySubStep > 0 ? 45 : 90
   // Parallel-adjusted ETA: FORGE runs 4+2 agents in parallel batches.
-  // Effective sequential equivalent ≈ TOTAL - 5 parallel slots saved.
-  // We apply a 0.72 parallelism factor to remaining agent count to avoid overestimating.
+  // BUILD now also has 2+2 parallel batches (mock-data+shell, landing+interactions).
+  // Apply 0.72 factor throughout since there are parallel savings across both phases.
   const PARALLEL_FACTOR = 0.72
-  const adjustedRemainingCount = doneAgents < 9
-    ? remainingAgentCount * PARALLEL_FACTOR   // still in FORGE parallel region
-    : remainingAgentCount                      // BUILD is sequential — no adjustment
+  const adjustedRemainingCount = remainingAgentCount * PARALLEL_FACTOR
   const liveEtaSeconds = averageAgentDurationSec !== null
     ? Math.max(0, Math.round((adjustedRemainingCount * averageAgentDurationSec) + remainingDeploySec))
     : null
@@ -3468,7 +3737,19 @@ export default function PipelinePage() {
     // where the caller emits a single combined narration instead.
     const runForgeAgent = async (agentId: string, system: string, userMsg: string, silent = false) => {
       const startedAt = Date.now()
+      // ACORA Phase 1: runtime dependency validation
+      // skill.dependencies declares which agent outputs must exist before this agent starts.
+      // Violations are logged as warnings (not aborts) so repair fallback can still proceed.
+      const agentSkillDeps = FORGE_AGENTS.find(a => a.id === agentId)?.skill.dependencies ?? []
+      const missingDeps = agentSkillDeps.filter(dep => !content[dep])
+      if (missingDeps.length > 0) {
+        log(`⚠ ACORA dep-check: ${agentId} started before [${missingDeps.join(', ')}] completed — output may be lower quality`, 'warn')
+      }
       setForgeActiveAgents(s => new Set([...s, agentId]))
+      // Live streaming: clear buffer and point streaming panel at this agent
+      streamingTextRef.current = ''
+      setStreamingAgentId(agentId)
+      setStreamingAgentText('')
       const agent = AGENTS.find(a => a.id === agentId) ?? FORGE_AGENTS.find(a => a.id === agentId)
       log(`FORGE · ${agent?.name ?? agentId}`)
       if (!silent) {
@@ -3906,7 +4187,7 @@ Generate the ${agentId.toUpperCase()} files now. Follow the output contract exac
 
   const runBuild = useCallback(async (forge: ForgeBuild): Promise<Record<string, string>> => {
     patchStep('build', { status: 'running', error: undefined })
-    log('BUILD ENGINE starting — 10 agents (incl. REPAIR) in strict sequence')
+    log('BUILD ENGINE starting — 10 agents (incl. REPAIR) · 2 parallel waves · ACORA Phase 8 PAR')
     // Section 2: BUILD narration — fires once at start, completes naturally while agents run (~40-90s)
     announce('BUILD has started. The pipeline is converting the FORGE contract into application files in dependency order, then running a final repair pass against any captured failures.', { rate: 1.02, tag: 'phase-build', minGapMs: 0 })
 
@@ -3942,10 +4223,17 @@ Generate the ${agentId.toUpperCase()} files now. Follow the output contract exac
     })
 
     // Helper: run a single agent with retry
-    const runAgent = async (agentId: string, contextSnapshot: Record<string, string>) => {
+    // inParallelWave=true suppresses streaming UI updates (multiple agents would race to own the panel)
+    const runAgent = async (agentId: string, contextSnapshot: Record<string, string>, inParallelWave = false) => {
       const startedAt = Date.now()
       const agent = BUILD_AGENTS.find(a => a.id === agentId)!
       setBuildActiveAgents(s => new Set([...s, agentId]))
+      // Live streaming: only point panel at this agent when running sequentially
+      if (!inParallelWave) {
+        streamingTextRef.current = ''
+        setStreamingAgentId(agentId)
+        setStreamingAgentText('')
+      }
       log(`BUILD · ${agent.name}`)
       announce(
         BUILD_VOICE_GUIDE[agentId]?.active
@@ -4081,30 +4369,76 @@ REPAIR SCOPE:
       return parsed
     }
 
-    // ACORA Phase 8 SEQ: Execution order is derived from each agent's skill.executionOrder field.
-    // Repair and docs run conditionally outside this loop — excluded here.
-    // To change ordering: update executionOrder in buildAgentData.ts — no code changes needed.
-    const BUILD_ORDER = BUILD_AGENTS
+    // ACORA Phase 8 SEQ+PAR: Execution order is derived from each agent's skill metadata.
+    // Agents with the same parallelGroup integer run via Promise.all (PAR).
+    // Agents with parallelGroup: null run sequentially (SEQ).
+    // Repair and docs run conditionally outside — excluded here.
+    // To change ordering/parallelism: update buildAgentData.ts — no code changes needed.
+    const buildMainAgents = BUILD_AGENTS
       .filter(a => a.id !== 'repair' && a.id !== 'docs')
       .sort((a, b) => a.skill.executionOrder - b.skill.executionOrder)
-      .map(a => a.id)
 
-    for (let i = 0; i < BUILD_ORDER.length; i++) {
-      const agentId = BUILD_ORDER[i]
-      try {
-        await runAgent(agentId, { ...allFiles })
-      } catch (err) {
-        const msg = (err as Error).message
-        if (msg === 'Pipeline cancelled') throw err
-        throw err
+    // Group into execution waves: agents sharing the same executionOrder run together.
+    // Sequential agents (parallelGroup: null) each form their own wave of size 1.
+    const buildWaves: string[][] = []
+    const seenOrders = new Set<number>()
+    for (const agent of buildMainAgents) {
+      const pg = agent.skill.parallelGroup
+      if (pg !== null) {
+        // Parallel: group all agents with same parallelGroup together
+        const existing = buildWaves.find(w =>
+          BUILD_AGENTS.find(a => a.id === w[0])?.skill.parallelGroup === pg
+        )
+        if (existing) { existing.push(agent.id) }
+        else { buildWaves.push([agent.id]) }
+      } else {
+        if (!seenOrders.has(agent.skill.executionOrder)) {
+          buildWaves.push([agent.id])
+          seenOrders.add(agent.skill.executionOrder)
+        } else {
+          buildWaves[buildWaves.length - 1].push(agent.id)
+        }
+      }
+    }
+
+    for (let w = 0; w < buildWaves.length; w++) {
+      const wave = buildWaves[w]
+      const isParallelWave = wave.length > 1
+      if (isParallelWave) {
+        const names = wave.map(id => BUILD_AGENTS.find(a => a.id === id)?.name ?? id)
+        log(`BUILD · parallel wave: ${names.join(' + ')}`)
+        announce(`${names.join(' and ')} are running in parallel to accelerate code generation.`, { tag: `build-parallel-${w}`, minGapMs: 0 })
+        // Show combined label in streaming panel instead of individual agent racing
+        setStreamingAgentId(`${wave.join('+')}`)
+        setStreamingAgentText('')
+        streamingTextRef.current = ''
+        // Capture shared context snapshot — all agents in this wave get same baseline
+        const waveCtx = { ...allFiles }
+        const waveResults = await Promise.all(
+          wave.map(id =>
+            withTimeout(runAgent(id, waveCtx, true), BUILD_AGENTS.find(a => a.id === id)!.skill.timeoutMs, id)
+          )
+        )
+        // Merge all parallel results into allFiles
+        for (const parsed of waveResults) Object.assign(allFiles, parsed)
+        log(`✓ BUILD parallel wave complete (${names.join(' · ')})`, 'ok')
+      } else {
+        const agentId = wave[0]
+        try {
+          await runAgent(agentId, { ...allFiles })
+        } catch (err) {
+          const msg = (err as Error).message
+          if (msg === 'Pipeline cancelled') throw err
+          throw err
+        }
       }
       // Update build stage milestones
-      if (agentId === 'shell')         setBuildStage(1)
-      if (agentId === 'api')           setBuildStage(2)
-      if (agentId === 'dashboard')     setBuildStage(3)
-      if (agentId === 'features')      setBuildStage(4)
-      // 1500ms breathing room between agents — prevents API burst
-      if (i < BUILD_ORDER.length - 1) await abortSleep(1500)
+      if (wave.includes('shell'))         setBuildStage(1)
+      if (wave.includes('api'))           setBuildStage(2)
+      if (wave.includes('dashboard'))     setBuildStage(3)
+      if (wave.includes('features'))      setBuildStage(4)
+      // 1500ms breathing room between waves — prevents API burst
+      if (w < buildWaves.length - 1) await abortSleep(1500)
     }
 
     // Fix 3: features-agent placeholder re-check before REPAIR
@@ -4590,7 +4924,7 @@ REPAIR SCOPE:
     announce('Pipeline launched. Twenty-three AI specialists are about to build your product from scratch — spec, code, and live deployment, fully autonomous. Voice guidance is available throughout. Say guide me, status, how long, repeat, or stop.')
     setPhase('running')
     setLogLines([])
-    /* streamingOutput panel removed */void 0
+    setStreamingAgentId(null); setStreamingAgentText(''); streamingTextRef.current = ''
     setForgeQaScore(null)
     setFinalElapsedSec(0)
     setSteps(INITIAL_STEPS.map(s => ({ ...s, status: 'pending' as StepStatus })))
@@ -4627,6 +4961,11 @@ REPAIR SCOPE:
       setDeployResult(result)
       const finalElapsed = Math.floor((Date.now() - pipelineStartRef.current) / 1000)
       setFinalElapsedSec(finalElapsed)
+      // ACORA Phase 6: snapshot per-agent cost ledger for the breakdown panel
+      setCostBreakdown(
+        Array.from(agentCostLedger.current.values())
+          .sort((a, b) => b.estimatedUsd - a.estimatedUsd)
+      )
       setPhase('done')
 
       // Celebration announcement — pipeline complete + closer demo hook
@@ -5011,6 +5350,9 @@ REPAIR SCOPE:
                 </p>
               </div>
             )}
+            {!briefTooShort && brief.trim().length > 0 && !isRunning && (
+              <BriefQualityMeter brief={brief} />
+            )}
 
             <input
               value={clientName}
@@ -5217,7 +5559,48 @@ REPAIR SCOPE:
                 ))}
               </div>
 
-              {/* Live streaming output — removed: provides no actionable value in UI */}
+              {/* ── Live streaming output panel ── */}
+              {phase === 'running' && streamingAgentId && (() => {
+                // Combined wave IDs look like "mock-data+shell" — handle both single and combined
+                const isCombined = streamingAgentId.includes('+')
+                const singleId = isCombined ? null : streamingAgentId
+                const isForge = singleId ? FORGE_AGENTS.some(a => a.id === singleId) : false
+                const agentInfo = singleId
+                  ? (isForge ? FORGE_AGENTS.find(a => a.id === singleId) : BUILD_AGENTS.find(a => a.id === singleId))
+                  : null
+                const agentLabel = isCombined
+                  ? streamingAgentId.split('+').map(id => BUILD_AGENTS.find(a => a.id === id)?.name ?? id).join(' + ')
+                  : (agentInfo?.name ?? streamingAgentId)
+                const phaseLabel = isForge ? 'FORGE' : 'BUILD'
+                const displayText = streamingAgentText.slice(-600)
+                if (displayText.length < 40) return null
+                return (
+                  <div className="rounded-xl border border-white/10 bg-black/40 overflow-hidden">
+                    <div className="flex items-center gap-2 px-4 py-2.5 border-b border-white/10 bg-white/[0.03]">
+                      <span className="w-1.5 h-1.5 rounded-full bg-[#c8f23c] animate-pulse flex-shrink-0" />
+                      <span className="text-[9px] font-black font-mono tracking-widest text-[#c8f23c] uppercase">
+                        {phaseLabel} · {agentLabel}
+                      </span>
+                      {isCombined && (
+                        <span className="text-[9px] font-mono text-zinc-600 bg-white/5 border border-white/10 rounded px-1.5">parallel</span>
+                      )}
+                      <span className="text-[9px] font-mono text-zinc-600 ml-auto">live output</span>
+                    </div>
+                    <div className="px-4 py-3 font-mono text-[10px] text-zinc-400 leading-relaxed whitespace-pre-wrap break-words max-h-40 overflow-hidden relative">
+                      {displayText}
+                      <div className="absolute bottom-0 left-0 right-0 h-8 bg-gradient-to-t from-black/80 to-transparent pointer-events-none" />
+                    </div>
+                  </div>
+                )
+              })()}
+
+              {/* ── FORGE output viewer — surfaced after FORGE completes ── */}
+              {(phase === 'running' || phase === 'done') && forgeDoneAgents.size >= 9 && forgeContentRef.current && Object.keys(forgeContentRef.current).length > 0 && (
+                <ForgeOutputViewer
+                  content={forgeContentRef.current}
+                  qaScore={forgeQaScore}
+                />
+              )}
 
               {/* Voice bar */}
               <PipelineVoiceBar
@@ -5271,6 +5654,10 @@ REPAIR SCOPE:
               >
                 ◈ Inspect {Object.keys(buildFilesRef.current).length} generated source files →
               </button>
+            )}
+            {/* ACORA Phase 6: per-agent cost breakdown */}
+            {costBreakdown.length > 0 && (
+              <PipelineCostCard entries={costBreakdown} totalUsd={totalCostUsd} totalElapsedSec={finalElapsedSec} />
             )}
           </>
         )}

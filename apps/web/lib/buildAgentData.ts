@@ -32,7 +32,9 @@ export const BUILD_AGENTS: BuildAgent[] = [
     role: 'TypeScript constants — no DB, 20+ realistic records',
     files: ['src/lib/data.ts','src/lib/types.ts'],
     skill: {
-      skillType: 'executor', executionMode: 'sequential', parallelGroup: null,
+      // ACORA PAR group B1: mock-data + shell share only the scaffold dependency.
+      // Neither consumes the other's output, so they run concurrently. ~90s saved.
+      skillType: 'executor', executionMode: 'parallel', parallelGroup: 1,
       executionOrder: 2, tokenBudget: 2000, timeoutMs: 90_000,
       trustLevel: 'trusted', failureBehavior: 'fallback', costCeilingUsd: 0.04,
       dependencies: ['scaffold'],
@@ -44,8 +46,9 @@ export const BUILD_AGENTS: BuildAgent[] = [
     role: 'error.tsx · not-found.tsx · loading.tsx',
     files: ['src/app/error.tsx','src/app/not-found.tsx','src/app/loading.tsx'],
     skill: {
-      skillType: 'executor', executionMode: 'sequential', parallelGroup: null,
-      executionOrder: 3, tokenBudget: 800, timeoutMs: 60_000,
+      // ACORA PAR group B1: shell only needs scaffold config — runs with mock-data.
+      skillType: 'executor', executionMode: 'parallel', parallelGroup: 1,
+      executionOrder: 2, tokenBudget: 800, timeoutMs: 60_000,
       trustLevel: 'trusted', failureBehavior: 'degrade', costCeilingUsd: 0.02,
       dependencies: ['scaffold'],
       retryPolicy: { maxAttempts: 3, backoffMs: 4000 },
@@ -68,8 +71,10 @@ export const BUILD_AGENTS: BuildAgent[] = [
     role: 'Route handlers · health · data · search — mock JSON',
     files: ['src/app/api/health/route.ts','src/app/api/data/route.ts','src/app/api/search/route.ts'],
     skill: {
+      // Order 6: runs after landing+interactions (order 5) complete, before dashboard (order 8).
+      // This ensures dashboard sees both api routes and ui component context.
       skillType: 'executor', executionMode: 'sequential', parallelGroup: null,
-      executionOrder: 5, tokenBudget: 1200, timeoutMs: 90_000,
+      executionOrder: 6, tokenBudget: 1200, timeoutMs: 90_000,
       trustLevel: 'trusted', failureBehavior: 'degrade', costCeilingUsd: 0.03,
       dependencies: ['mock-data'],
       retryPolicy: { maxAttempts: 3, backoffMs: 4000 },
@@ -80,8 +85,10 @@ export const BUILD_AGENTS: BuildAgent[] = [
     role: 'Hero · features · pricing · CTA — full marketing homepage',
     files: ['src/app/page.tsx'],
     skill: {
-      skillType: 'executor', executionMode: 'sequential', parallelGroup: null,
-      executionOrder: 6, tokenBudget: 1500, timeoutMs: 120_000,
+      // ACORA PAR group B2: landing + interactions both depend only on ui-core.
+      // They generate independent file trees — no import crossing. ~120s saved.
+      skillType: 'executor', executionMode: 'parallel', parallelGroup: 2,
+      executionOrder: 5, tokenBudget: 1500, timeoutMs: 120_000,
       trustLevel: 'trusted', failureBehavior: 'degrade', costCeilingUsd: 0.04,
       dependencies: ['ui-core'],
       retryPolicy: { maxAttempts: 3, backoffMs: 4000 },
@@ -92,8 +99,9 @@ export const BUILD_AGENTS: BuildAgent[] = [
     role: 'Forms · modals · toasts · command palette — client-side',
     files: ['src/hooks/useApp.ts','src/components/modals.tsx','src/components/forms.tsx'],
     skill: {
-      skillType: 'executor', executionMode: 'sequential', parallelGroup: null,
-      executionOrder: 7, tokenBudget: 1500, timeoutMs: 120_000,
+      // ACORA PAR group B2: runs alongside landing — shares ui-core context snapshot.
+      skillType: 'executor', executionMode: 'parallel', parallelGroup: 2,
+      executionOrder: 5, tokenBudget: 1500, timeoutMs: 120_000,
       trustLevel: 'trusted', failureBehavior: 'fallback', costCeilingUsd: 0.04,
       dependencies: ['ui-core'],
       retryPolicy: { maxAttempts: 3, backoffMs: 4000 },

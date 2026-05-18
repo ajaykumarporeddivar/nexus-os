@@ -25,7 +25,8 @@
     { "path": "/api/cron/proposal-deadline-monitor",    "schedule": "0 7 * * *"  },
     { "path": "/api/cron/proposal-digest",              "schedule": "0 9 * * 1"  },
     { "path": "/api/cron/proposal-dlq-retry",           "schedule": "0 4 * * *"  },
-    { "path": "/api/cron/proposal-retention",           "schedule": "0 1 * * *"  }
+    { "path": "/api/cron/proposal-retention",           "schedule": "0 1 * * *"  },
+    { "path": "/api/cron/chasebot-overdue",             "schedule": "30 2 * * *" }
   ],
   "functions": {
     "app/api/cron/lead-dlq-retry/route.ts":             { "maxDuration": 60 },
@@ -38,7 +39,10 @@
     "app/api/cron/proposal-deadline-monitor/route.ts":  { "maxDuration": 60 },
     "app/api/cron/proposal-digest/route.ts":            { "maxDuration": 30 },
     "app/api/cron/proposal-dlq-retry/route.ts":         { "maxDuration": 60 },
-    "app/api/cron/proposal-retention/route.ts":         { "maxDuration": 30 }
+    "app/api/cron/proposal-retention/route.ts":         { "maxDuration": 30 },
+    "app/api/cron/chasebot-overdue/route.ts":           { "maxDuration": 60 },
+    "app/api/chasebot/chase/route.ts":                  { "maxDuration": 60 },
+    "app/api/chasebot/invoices/route.ts":               { "maxDuration": 30 }
   },
   "headers": [
     {
