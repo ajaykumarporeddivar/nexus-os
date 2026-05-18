@@ -14,7 +14,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { useRouter } from 'next/navigation'
+import ShellPageWrapper from '@/components/ShellPageWrapper'
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -384,15 +384,12 @@ export default function LeadsPage() {
   const ichsProxy      = leads.length > 0 ? Math.round((scoredWithRationale / leads.length) * 100) : 0
 
   return (
+    <ShellPageWrapper currentPage="leads">
     <div className="max-w-7xl mx-auto px-6 py-10 space-y-6" role="main" aria-label="Lead Management">
 
       {/* Header */}
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div className="flex items-start gap-3">
-          <button onClick={() => router.push('/shell')}
-            className="text-ink3 hover:text-ink transition-colors text-sm mt-1 flex-shrink-0">
-            ← Back
-          </button>
           <div>
             <p className="text-[10px] text-ink3 uppercase tracking-widest font-mono mb-1">Lead Pipeline</p>
             <h1 className="text-3xl font-bold text-ink" style={{ fontFamily: 'var(--ff-d)' }}>Lead Management</h1>
@@ -640,5 +637,6 @@ export default function LeadsPage() {
           onSaved={() => { setOverride(null); loadLeads(page, statusFilter) }} />
       )}
     </div>
+    </ShellPageWrapper>
   )
 }

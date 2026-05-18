@@ -12,7 +12,7 @@
  */
 
 import { useState, useEffect, useCallback } from 'react'
-import { useRouter } from 'next/navigation'
+import ShellPageWrapper from '@/components/ShellPageWrapper'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -79,7 +79,7 @@ const CAN_APPROVE = ['review', 'approved']
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export default function ProposalsPage() {
-  const router = useRouter()
+
   const [proposals,   setProposals]   = useState<Proposal[]>([])
   const [stats,       setStats]       = useState<Stats | null>(null)
   const [loading,     setLoading]     = useState(true)
@@ -245,6 +245,7 @@ export default function ProposalsPage() {
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
+    <ShellPageWrapper currentPage="proposals">
     <div className="max-w-7xl mx-auto px-6 py-10 space-y-6">
 
       {/* Header */}
@@ -594,5 +595,6 @@ export default function ProposalsPage() {
         </div>
       )}
     </div>
+    </ShellPageWrapper>
   )
 }
