@@ -56,6 +56,11 @@ export default function ShellPageWrapper({ currentPage, children }: Props) {
     }
   }, [])
 
+  const cycleTheme = useCallback(() => {
+    const next = theme === 'light' ? 'dark' : theme === 'dark' ? 'system' : 'light'
+    applyTheme(next)
+  }, [theme, applyTheme])
+
   const toggleCollapse = useCallback(() => {
     setCollapsed(c => {
       localStorage.setItem('nexus-sidebar-collapsed', String(!c))
@@ -80,7 +85,7 @@ export default function ShellPageWrapper({ currentPage, children }: Props) {
             onToggleCollapse={toggleCollapse}
             apiConnected={apiConnected}
             theme={theme}
-            onThemeToggle={applyTheme}
+            onThemeToggle={cycleTheme}
           />
           <main className="flex-1 overflow-y-auto min-w-0">
             {children}
