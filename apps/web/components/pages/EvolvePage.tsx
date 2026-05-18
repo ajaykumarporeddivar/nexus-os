@@ -50,7 +50,7 @@ function PhaseRow({ label, phase, active, done, err }: {
     <div className={`flex items-center gap-2.5 text-[11px] font-mono transition-all ${
       err     ? 'text-red-500'   :
       done    ? 'text-green-600' :
-      isActive ? 'text-[#c8f23c] animate-pulse' :
+      isActive ? 'text-acid animate-pulse' :
                  'text-ink3/50'
     }`}>
       <span className="w-4 text-center flex-shrink-0">
@@ -71,13 +71,13 @@ function VersionPill({
       onClick={onClick}
       className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-[10px] font-black font-mono transition-all flex-shrink-0 ${
         isCurrent
-          ? 'border-[#c8f23c]/60 bg-[#c8f23c]/10 text-ink shadow-[0_0_10px_2px_rgba(200,242,60,0.15)]'
+          ? 'border-acid/60 bg-acid/10 text-ink shadow-[0_0_10px_2px_rgba(200,242,60,0.15)]'
           : 'border-border text-ink3 hover:border-ink/20 hover:text-ink'
       }`}
     >
       v{v.version}
       {v.deployUrl && (
-        <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${isCurrent ? 'bg-[#c8f23c]' : 'bg-border2'}`} />
+        <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${isCurrent ? 'bg-acid' : 'bg-border2'}`} />
       )}
     </button>
   )
@@ -540,7 +540,7 @@ export default function EvolvePage() {
                     disabled={isEvolving}
                     placeholder={`What should change in v${(latestVersion?.version ?? 0) + 1}?\n\nExamples:\n• "Add a dark mode toggle in the header"\n• "The dashboard KPI cards need real-time updates every 30s"\n• "Replace the hero image with a short explainer video embed"\n• "Add CSV export to the data table on /dashboard/reports"`}
                     rows={6}
-                    className="w-full px-3 py-2.5 rounded-xl text-sm border border-border bg-paper2 outline-none focus:border-[#c8f23c] resize-none text-ink placeholder:text-ink3/60 transition-colors disabled:opacity-50"
+                    className="w-full px-3 py-2.5 rounded-xl text-sm border border-border bg-paper2 outline-none focus:border-acid resize-none text-ink placeholder:text-ink3/60 transition-colors disabled:opacity-50"
                   />
 
                   {/* Evolution step progress */}

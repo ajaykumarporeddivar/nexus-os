@@ -20,8 +20,8 @@ export default function KeysPage() {
   // Agency+ only — show upsell for free/starter
   if (sessionPlan !== 'agency' && sessionPlan !== 'enterprise') {
     return (
-      <div className="p-6 max-w-2xl mx-auto">
-        <div className="rounded-xl border border-border bg-paper p-10 text-center space-y-5">
+      <div className="max-w-7xl mx-auto px-6 py-10">
+        <div className="rounded-2xl border border-border bg-paper p-10 text-center space-y-5 max-w-lg mx-auto">
           <p className="text-3xl">🔑</p>
           <h1 className="text-xl font-bold text-ink">API Key Management</h1>
           <p className="text-sm text-ink3 max-w-sm mx-auto">
@@ -182,11 +182,12 @@ export default function KeysPage() {
   })
 
   return (
-    <div className="p-6 max-w-2xl mx-auto space-y-8" role="main" aria-label="API Key Management">
+    <div className="max-w-7xl mx-auto px-6 py-10 space-y-8" role="main" aria-label="API Key Management">
 
       {/* Header */}
       <div>
-        <h1 className="text-xl font-bold text-ink">API Key Management</h1>
+        <p className="text-[10px] text-ink3 uppercase tracking-widest font-mono mb-1">Configure</p>
+        <h1 className="text-3xl font-bold text-ink" style={{ fontFamily: 'var(--ff-d)' }}>API Key Management</h1>
         <p className="text-sm text-ink3 mt-1">
           Save your Anthropic API key to skip usage quotas and bill directly to your account.
           Keys are AES-256-GCM encrypted at rest.

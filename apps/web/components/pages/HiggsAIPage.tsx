@@ -116,7 +116,7 @@ function ModelCard({
       onClick={onClick}
       className={`w-full text-left p-3 rounded-xl border transition-all ${
         selected
-          ? 'border-[#c8f23c]/60 bg-[#c8f23c]/5 shadow-[0_0_12px_2px_rgba(200,242,60,0.12)]'
+          ? 'border-acid/60 bg-acid/5 shadow-[0_0_12px_2px_rgba(200,242,60,0.12)]'
           : 'border-border bg-paper2 hover:border-ink/20 hover:bg-paper'
       }`}
     >
@@ -126,7 +126,7 @@ function ModelCard({
         </p>
         <span className={`text-[8px] font-black font-mono px-1.5 py-0.5 rounded border flex-shrink-0 ${
           selected
-            ? 'border-[#c8f23c]/50 text-[#c8f23c] bg-[#c8f23c]/10'
+            ? 'border-acid/50 text-acid bg-acid/10'
             : 'border-border text-ink3'
         }`}>
           {model.tag}
@@ -315,7 +315,7 @@ export default function HiggsAIPage() {
         <div>
           <div className="flex items-center gap-2">
             <p className="text-[9px] font-black font-mono tracking-[0.18em] text-ink3 uppercase">Higgs AI</p>
-            <span className="text-[8px] font-black font-mono px-1.5 py-0.5 rounded border border-[#c8f23c]/50 text-[#c8f23c] bg-[#c8f23c]/10">NEW</span>
+            <span className="text-[8px] font-black font-mono px-1.5 py-0.5 rounded border border-acid/50 text-acid bg-acid/10">NEW</span>
           </div>
           <h1 className="text-xl font-black tracking-tight text-ink">AI Image Agent</h1>
         </div>
@@ -346,7 +346,7 @@ export default function HiggsAIPage() {
             value={apiKeyInput}
             onChange={e => setApiKeyInput(e.target.value)}
             placeholder="hf_live_xxxxxxxxxxxxxxxxxxxx"
-            className="flex-1 px-3 py-1.5 rounded-lg border border-border bg-paper text-xs font-mono outline-none focus:border-[#c8f23c] text-ink placeholder:text-ink3"
+            className="flex-1 px-3 py-1.5 rounded-lg border border-border bg-paper text-xs font-mono outline-none focus:border-acid text-ink placeholder:text-ink3"
           />
           <p className="text-[9px] text-ink3 flex-shrink-0">
             Get yours at{' '}
@@ -373,7 +373,7 @@ export default function HiggsAIPage() {
                   <button
                     key={p.label}
                     onClick={() => applyPreset(p)}
-                    className="text-left text-[10px] px-2.5 py-1.5 rounded-lg border border-[#c8f23c]/30 bg-[#c8f23c]/5 text-ink2 hover:bg-[#c8f23c]/10 hover:border-[#c8f23c]/60 transition-colors font-medium"
+                    className="text-left text-[10px] px-2.5 py-1.5 rounded-lg border border-acid/30 bg-acid/5 text-ink2 hover:bg-acid/10 hover:border-acid/60 transition-colors font-medium"
                   >
                     ✦ {p.label}
                   </button>
@@ -386,7 +386,7 @@ export default function HiggsAIPage() {
               onChange={e => setPrompt(e.target.value)}
               placeholder="Describe the image you want to generate…"
               rows={6}
-              className="w-full px-3 py-2.5 rounded-xl border border-border bg-paper2 text-sm text-ink placeholder:text-ink3 outline-none focus:border-[#c8f23c] resize-none transition-colors leading-relaxed"
+              className="w-full px-3 py-2.5 rounded-xl border border-border bg-paper2 text-sm text-ink placeholder:text-ink3 outline-none focus:border-acid resize-none transition-colors leading-relaxed"
             />
             <div className="flex items-center justify-between">
               <span className={`text-[9px] font-mono ${prompt.length > 900 ? 'text-amber-500' : 'text-ink3/50'}`}>
@@ -428,7 +428,7 @@ export default function HiggsAIPage() {
                   onClick={() => setAspect(a.value)}
                   className={`py-1.5 rounded-lg border text-[10px] font-bold transition-all ${
                     aspect === a.value
-                      ? 'border-[#c8f23c]/60 bg-[#c8f23c]/10 text-ink'
+                      ? 'border-acid/60 bg-acid/10 text-ink'
                       : 'border-border bg-paper2 text-ink3 hover:border-ink/20 hover:text-ink'
                   }`}
                 >
@@ -454,7 +454,7 @@ export default function HiggsAIPage() {
                         locked
                           ? 'border-border bg-paper2 text-ink3/40 cursor-not-allowed'
                           : resolution === r
-                          ? 'border-[#c8f23c]/60 bg-[#c8f23c]/10 text-ink'
+                          ? 'border-acid/60 bg-acid/10 text-ink'
                           : 'border-border bg-paper2 text-ink3 hover:border-ink/20 hover:text-ink'
                       }`}
                     >
@@ -474,7 +474,7 @@ export default function HiggsAIPage() {
                     onClick={() => setCount(n)}
                     className={`flex-1 py-1.5 rounded-lg border text-[10px] font-bold transition-all ${
                       count === n
-                        ? 'border-[#c8f23c]/60 bg-[#c8f23c]/10 text-ink'
+                        ? 'border-acid/60 bg-acid/10 text-ink'
                         : 'border-border bg-paper2 text-ink3 hover:border-ink/20 hover:text-ink'
                     }`}
                   >
@@ -541,11 +541,11 @@ export default function HiggsAIPage() {
                 {Array.from({ length: count }).map((_, i) => (
                   <div
                     key={i}
-                    className="rounded-2xl border border-[#c8f23c]/20 bg-[#c8f23c]/3 animate-pulse"
+                    className="rounded-2xl border border-acid/20 bg-acid/3 animate-pulse"
                     style={{ aspectRatio: aspect.replace(':', '/') }}
                   >
                     <div className="w-full h-full flex flex-col items-center justify-center gap-3">
-                      <div className="w-8 h-8 rounded-full border-2 border-[#c8f23c]/40 border-t-[#c8f23c] animate-spin" />
+                      <div className="w-8 h-8 rounded-full border-2 border-acid/40 border-t-acid animate-spin" />
                       <p className="text-[10px] font-mono text-ink3 animate-pulse">
                         {MODELS.find(m => m.id === model)?.name} · {resolution.toUpperCase()}
                       </p>
@@ -583,7 +583,7 @@ export default function HiggsAIPage() {
           ) : !generating ? (
             /* Empty state */
             <div className="flex flex-col items-center justify-center h-full min-h-[400px] text-center space-y-4">
-              <div className="w-16 h-16 rounded-2xl border border-[#c8f23c]/30 bg-[#c8f23c]/5 flex items-center justify-center text-2xl">
+              <div className="w-16 h-16 rounded-2xl border border-acid/30 bg-acid/5 flex items-center justify-center text-2xl">
                 ✦
               </div>
               <div>
@@ -597,7 +597,7 @@ export default function HiggsAIPage() {
                   <button
                     key={p.label}
                     onClick={() => applyPreset(p)}
-                    className="text-[10px] font-bold px-3 py-1.5 rounded-full border border-[#c8f23c]/30 bg-[#c8f23c]/5 text-ink2 hover:bg-[#c8f23c]/10 hover:border-[#c8f23c]/60 transition-all"
+                    className="text-[10px] font-bold px-3 py-1.5 rounded-full border border-acid/30 bg-acid/5 text-ink2 hover:bg-acid/10 hover:border-acid/60 transition-all"
                   >
                     ✦ {p.label}
                   </button>

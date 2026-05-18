@@ -119,19 +119,19 @@ export default function OverviewPage({ onNavigate }: Props) {
   }, [session])
 
   return (
-    <div className="max-w-6xl mx-auto px-6 py-12 space-y-20" role="main" aria-label="Overview">
+    <div className="max-w-7xl mx-auto px-6 py-10 space-y-16" role="main" aria-label="Overview">
 
       {/* ─── Admin: missing env / health warnings ─── */}
       {healthWarnings.length > 0 && (
-        <section className="animate-fadein border border-red-400/50 bg-red-50/60 rounded-2xl px-6 py-4 space-y-1">
-          <p className="text-[10px] font-black font-mono tracking-widest text-red-600 uppercase">Production config warning</p>
-          <p className="text-xs text-red-700 font-medium">
+        <section className="animate-fadein border border-red-500/30 bg-red-500/10 rounded-2xl px-6 py-4 space-y-1">
+          <p className="text-[10px] font-black font-mono tracking-widest text-red-400 uppercase">Production config warning</p>
+          <p className="text-xs text-red-400 font-medium">
             The following services are offline — pipeline runs will fail until resolved:
           </p>
-          <ul className="list-disc list-inside text-xs text-red-700 space-y-0.5">
+          <ul className="list-disc list-inside text-xs text-red-400 space-y-0.5">
             {healthWarnings.map(w => <li key={w}>{w}</li>)}
           </ul>
-          <p className="text-[10px] text-red-500 mt-1">Set the missing env vars in your Vercel project dashboard → Settings → Environment Variables, then redeploy.</p>
+          <p className="text-[10px] text-red-400/70 mt-1">Set the missing env vars in your Vercel project dashboard → Settings → Environment Variables, then redeploy.</p>
         </section>
       )}
 

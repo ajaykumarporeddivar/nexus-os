@@ -121,46 +121,46 @@ function PhaseCard({ phase }: { phase: typeof PHASES[0] }) {
     : 'text-green-400 border-green-400/30 bg-green-400/5'
 
   return (
-    <div className="border border-white/10 rounded-2xl bg-[#090b0d] overflow-hidden">
+    <div className="border border-border rounded-2xl bg-paper overflow-hidden">
       <button
         onClick={() => setOpen(o => !o)}
-        className="w-full flex items-center gap-4 px-5 py-4 hover:bg-white/[0.02] transition-all text-left"
+        className="w-full flex items-center gap-4 px-5 py-4 hover:bg-paper2 transition-all text-left"
       >
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
-            <p className="text-sm font-black text-zinc-100">{phase.label}</p>
+            <p className="text-sm font-black text-ink">{phase.label}</p>
             <span className={`text-[9px] font-black font-mono px-2 py-0.5 rounded-full border ${statusColor}`}>
               {phase.status === 'gap' ? 'GAP' : phase.status === 'partial' ? 'PARTIAL' : 'DONE'}
             </span>
           </div>
           <div className="flex items-center gap-2 mt-1.5">
-            <div className="flex-1 h-1.5 rounded-full bg-white/10 overflow-hidden">
+            <div className="flex-1 h-1.5 rounded-full bg-border overflow-hidden">
               <div
-                className="h-full rounded-full bg-[#c8f23c] transition-all"
+                className="h-full rounded-full bg-acid transition-all"
                 style={{ width: `${pct}%` }}
               />
             </div>
-            <span className="text-[10px] font-mono text-zinc-500">{doneCount}/{total}</span>
+            <span className="text-[10px] font-mono text-ink3">{doneCount}/{total}</span>
           </div>
         </div>
-        <span className="text-zinc-500 text-sm flex-shrink-0">{open ? '▲' : '▼'}</span>
+        <span className="text-ink3 text-sm flex-shrink-0">{open ? '▲' : '▼'}</span>
       </button>
 
       {open && (
-        <div className="px-5 pb-5 space-y-3 border-t border-white/5">
+        <div className="px-5 pb-5 space-y-3 border-t border-border">
           <ul className="space-y-2 mt-3">
             {phase.items.map((item, i) => (
-              <li key={i} className={`flex items-start gap-2 text-xs ${item.done ? 'text-zinc-400' : 'text-zinc-300'}`}>
-                <span className={`flex-shrink-0 mt-px font-black ${item.done ? 'text-green-400' : 'text-zinc-600'}`}>
+              <li key={i} className={`flex items-start gap-2 text-xs ${item.done ? 'text-ink3' : 'text-ink2'}`}>
+                <span className={`flex-shrink-0 mt-px font-black ${item.done ? 'text-green-400' : 'text-ink3'}`}>
                   {item.done ? '✓' : '○'}
                 </span>
                 {item.text}
               </li>
             ))}
           </ul>
-          <div className="rounded-xl border border-[#c8f23c]/20 bg-[#c8f23c]/5 px-4 py-3">
-            <p className="text-[10px] font-black font-mono uppercase tracking-widest text-[#c8f23c] mb-1">Next action</p>
-            <p className="text-xs text-zinc-300">{phase.cta}</p>
+          <div className="rounded-xl border border-acid/20 bg-acid/5 px-4 py-3">
+            <p className="text-[10px] font-black font-mono uppercase tracking-widest text-acid mb-1">Next action</p>
+            <p className="text-xs text-ink2">{phase.cta}</p>
           </div>
         </div>
       )}
@@ -193,25 +193,25 @@ export default function GrowthPage() {
   const overallScore = Math.round(PHASES.reduce((s, p) => s + p.score, 0) / PHASES.length)
 
   return (
-    <div className="min-h-screen bg-[#050607] text-zinc-100 p-6 space-y-6 max-w-4xl mx-auto">
+    <div className="max-w-7xl mx-auto px-6 py-10 space-y-8" role="main" aria-label="Growth Engine">
 
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
-          <p className="text-[9px] font-black font-mono tracking-widest text-zinc-500 uppercase">Growth Engine</p>
-          <h1 className="text-2xl font-black text-white mt-0.5">Growth Dashboard</h1>
-          <p className="text-xs text-zinc-500 mt-1">5-phase framework. Build growth like engineering.</p>
+          <p className="text-[10px] text-ink3 uppercase tracking-widest font-mono mb-1">Growth Engine</p>
+          <h1 className="text-3xl font-bold text-ink" style={{ fontFamily: 'var(--ff-d)' }}>Growth Dashboard</h1>
+          <p className="text-sm text-ink3 mt-1">5-phase framework. Build growth like engineering.</p>
         </div>
-        <div className="text-right">
-          <p className="text-[9px] font-mono uppercase tracking-widest text-zinc-500">Overall</p>
-          <p className="text-3xl font-black text-[#c8f23c]">{overallScore}%</p>
+        <div className="text-right kpi-card px-5 py-3">
+          <p className="text-[10px] font-mono uppercase tracking-widest text-ink3 mb-1">Overall Score</p>
+          <p className="text-3xl font-bold text-acid" style={{ fontFamily: 'var(--ff-d)' }}>{overallScore}%</p>
         </div>
       </div>
 
       {/* Live stats strip */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-6">
         {loading ? (
-          <div className="col-span-full text-xs text-zinc-500 font-mono">Loading stats…</div>
+          <div className="col-span-full text-xs text-ink3 font-mono">Loading stats…</div>
         ) : stats ? [
           { label: 'Runs shared',    value: stats.sharedRuns },
           { label: 'Total views',    value: stats.totalViews },
@@ -220,27 +220,27 @@ export default function GrowthPage() {
           { label: 'Content items',  value: stats.contentItems },
           { label: 'Drips sent',     value: stats.dripsSent },
         ].map(s => (
-          <div key={s.label} className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 text-center">
-            <p className="text-[8px] font-mono uppercase tracking-widest text-zinc-500">{s.label}</p>
-            <p className="mt-1 text-lg font-black text-zinc-100">{s.value}</p>
+          <div key={s.label} className="kpi-card text-center">
+            <p className="text-[8px] font-mono uppercase tracking-widest text-ink3">{s.label}</p>
+            <p className="mt-1 text-xl font-bold text-ink" style={{ fontFamily: 'var(--ff-d)' }}>{s.value}</p>
           </div>
         )) : null}
       </div>
 
       {/* Referral code */}
       {stats?.referral.code && (
-        <div className="border border-[#c8f23c]/20 bg-[#c8f23c]/5 rounded-2xl px-5 py-4 space-y-2">
-          <p className="text-[9px] font-black font-mono uppercase tracking-widest text-[#c8f23c]">Your referral link</p>
+        <div className="border border-acid/20 bg-acid/5 rounded-2xl px-5 py-4 space-y-2">
+          <p className="text-[9px] font-black font-mono uppercase tracking-widest text-acid">Your referral link</p>
           <div className="flex items-center gap-2">
-            <span className="flex-1 font-mono text-xs text-zinc-300 truncate">{refUrl}</span>
+            <span className="flex-1 font-mono text-xs text-ink2 truncate">{refUrl}</span>
             <button
               onClick={copyRef}
               className={`flex-shrink-0 px-3 py-1.5 rounded-lg border text-[10px] font-bold transition-all ${
-                refCopied ? 'border-green-400/60 bg-green-400/10 text-green-400' : 'border-white/10 text-zinc-400 hover:text-zinc-200'
+                refCopied ? 'border-green-400/60 bg-green-400/10 text-green-400' : 'border-border text-ink3 hover:text-ink hover:border-ink/30'
               }`}
             >{refCopied ? '✓ Copied' : '⎘ Copy'}</button>
           </div>
-          <div className="flex gap-4 text-xs text-zinc-500">
+          <div className="flex gap-4 text-xs text-ink3">
             <span>{stats.referral.clicks} clicks</span>
             <span>{stats.referral.signups} signups</span>
             <span>{stats.referral.conversions} conversions</span>
@@ -250,24 +250,24 @@ export default function GrowthPage() {
 
       {/* Top runs */}
       {stats && stats.topRuns.length > 0 && (
-        <div className="border border-white/10 rounded-2xl bg-[#090b0d] p-5 space-y-3">
-          <p className="text-[9px] font-black font-mono uppercase tracking-widest text-zinc-500">Top performing runs (by views)</p>
-          <div className="space-y-2">
+        <div className="border border-border rounded-2xl bg-paper p-5 space-y-3">
+          <p className="text-[10px] font-mono uppercase tracking-widest text-ink3 font-black">Top performing runs (by views)</p>
+          <div className="space-y-2 divide-y divide-border">
             {stats.topRuns.map(run => (
-              <div key={run.slug} className="flex items-center gap-3">
+              <div key={run.slug} className="flex items-center gap-3 pt-2 first:pt-0">
                 <div className="flex-1 min-w-0">
-                  <p className="text-xs font-black text-zinc-200 truncate">{run.projectName}</p>
-                  <p className="text-[10px] text-zinc-500 font-mono">/s/{run.slug}</p>
+                  <p className="text-xs font-bold text-ink truncate">{run.projectName}</p>
+                  <p className="text-[10px] text-ink3 font-mono">/s/{run.slug}</p>
                 </div>
-                <span className="text-xs font-black text-zinc-400">{run.viewCount} views</span>
+                <span className="text-xs font-bold text-ink2">{run.viewCount} views</span>
                 {run.qaScore && (
-                  <span className="text-[10px] font-mono text-[#c8f23c]">{run.qaScore.toFixed(1)}/10</span>
+                  <span className="text-[10px] font-mono text-acid">{run.qaScore.toFixed(1)}/10</span>
                 )}
                 <a
                   href={`/s/${run.slug}`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-[10px] text-zinc-500 hover:text-zinc-200 transition-colors"
+                  className="text-[10px] text-ink3 hover:text-ink transition-colors"
                 >↗</a>
               </div>
             ))}
@@ -277,26 +277,26 @@ export default function GrowthPage() {
 
       {/* Phase cards */}
       <div className="space-y-3">
-        <p className="text-[9px] font-black font-mono uppercase tracking-widest text-zinc-500">5-Phase framework status</p>
+        <p className="text-[10px] font-mono uppercase tracking-widest text-ink3 font-black">5-Phase framework status</p>
         {PHASES.map(phase => (
           <PhaseCard key={phase.id} phase={phase} />
         ))}
       </div>
 
       {/* Quick links */}
-      <div className="border border-white/10 rounded-2xl bg-[#090b0d] p-5 space-y-3">
-        <p className="text-[9px] font-black font-mono uppercase tracking-widest text-zinc-500">Quick actions</p>
+      <div className="border border-border rounded-2xl bg-paper p-5 space-y-3">
+        <p className="text-[10px] font-mono uppercase tracking-widest text-ink3 font-black">Quick actions</p>
         <div className="flex flex-wrap gap-2">
-          <a href="/shell?page=pipeline" className="px-4 py-2 rounded-xl bg-[#c8f23c] text-black text-xs font-black hover:bg-[#d4f74a] transition-all">
+          <a href="/shell?page=pipeline" className="btn btn-primary text-xs px-4 py-2">
             Run pipeline ↗
           </a>
-          <a href="/shell?page=trending" className="px-4 py-2 rounded-xl border border-white/10 text-xs font-black text-zinc-300 hover:bg-white/5 transition-all">
+          <a href="/shell?page=trending" className="btn btn-ghost text-xs px-4 py-2">
             Browse ideas
           </a>
-          <a href="https://twitter.com/intent/tweet?text=Just%20built%20an%20app%20with%20NEXUS%20OS%20%E2%80%94%2023%20AI%20agents%2C%20brief%20to%20live%20app.%20Try%20it%3A%20https%3A%2F%2Fweb-xi-vert-58.vercel.app" target="_blank" rel="noopener noreferrer" className="px-4 py-2 rounded-xl border border-white/10 text-xs font-black text-zinc-300 hover:bg-white/5 transition-all">
+          <a href="https://twitter.com/intent/tweet?text=Just%20built%20an%20app%20with%20NEXUS%20OS%20%E2%80%94%2023%20AI%20agents%2C%20brief%20to%20live%20app.%20Try%20it%3A%20https%3A%2F%2Fweb-xi-vert-58.vercel.app" target="_blank" rel="noopener noreferrer" className="btn btn-ghost text-xs px-4 py-2">
             𝕏 Tweet now
           </a>
-          <a href="https://www.reddit.com/r/SaaS/submit" target="_blank" rel="noopener noreferrer" className="px-4 py-2 rounded-xl border border-white/10 text-xs font-black text-zinc-300 hover:bg-white/5 transition-all">
+          <a href="https://www.reddit.com/r/SaaS/submit" target="_blank" rel="noopener noreferrer" className="btn btn-ghost text-xs px-4 py-2">
             Post on Reddit
           </a>
         </div>

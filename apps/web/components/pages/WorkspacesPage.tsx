@@ -208,7 +208,7 @@ export default function WorkspacesPage() {
   })
 
   return (
-    <div className="max-w-3xl mx-auto px-6 py-10 space-y-6" role="main" aria-label="Workspaces">
+    <div className="max-w-5xl mx-auto px-6 py-10 space-y-6" role="main" aria-label="Workspaces">
       {wizardOpen && (
         <OnboardingWizard
           onComplete={handleWizardComplete}
