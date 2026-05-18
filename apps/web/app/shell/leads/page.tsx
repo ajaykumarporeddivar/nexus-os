@@ -14,6 +14,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import ShellPageWrapper from '@/components/ShellPageWrapper'
 
 // ── Types ────────────────────────────────────────────────────────────────────
