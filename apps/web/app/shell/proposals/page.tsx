@@ -61,19 +61,19 @@ const ACTIVE_STAGES  = ['intake', 'bid_decision', 'scoping', 'drafting', 'pricin
 const CLOSED_STAGES  = ['approved', 'delivered', 'no_bid', 'dlq']
 
 const STAGE_COLOR: Record<string, string> = {
-  intake:       'bg-gray-100 text-gray-700',
-  bid_decision: 'bg-blue-100 text-blue-700',
-  scoping:      'bg-indigo-100 text-indigo-700',
-  drafting:     'bg-yellow-100 text-yellow-700',
-  pricing:      'bg-orange-100 text-orange-700',
-  review:       'bg-purple-100 text-purple-700',
-  approved:     'bg-green-100 text-green-700',
-  delivered:    'bg-emerald-100 text-emerald-700',
-  no_bid:       'bg-slate-100 text-slate-500',
-  dlq:          'bg-red-100 text-red-700',
+  intake:       'bg-paper2 text-ink3',
+  bid_decision: 'bg-blue-500/15 text-blue-400',
+  scoping:      'bg-indigo-500/15 text-indigo-400',
+  drafting:     'bg-yellow-500/15 text-yellow-400',
+  pricing:      'bg-orange-500/15 text-orange-400',
+  review:       'bg-violet-500/15 text-violet-400',
+  approved:     'bg-emerald-500/15 text-emerald-400',
+  delivered:    'bg-green-500/15 text-green-400',
+  no_bid:       'bg-paper2 text-ink3',
+  dlq:          'bg-red-500/15 text-red-400',
 }
 
-const CAN_DRAFT = ['intake', 'bid_decision', 'scoping', 'drafting', 'pricing', 'review']
+const CAN_DRAFT   = ['intake', 'bid_decision', 'scoping', 'drafting', 'pricing', 'review']
 const CAN_APPROVE = ['review', 'approved']
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -88,9 +88,9 @@ export default function ProposalsPage() {
   const [error,       setError]       = useState<string | null>(null)
 
   // Modals
-  const [showIngest,   setShowIngest]   = useState(false)
-  const [detailId,     setDetailId]     = useState<string | null>(null)
-  const [detail,       setDetail]       = useState<Proposal | null>(null)
+  const [showIngest,    setShowIngest]    = useState(false)
+  const [detailId,      setDetailId]      = useState<string | null>(null)
+  const [detail,        setDetail]        = useState<Proposal | null>(null)
   const [detailLoading, setDetailLoading] = useState(false)
 
   // Actions
@@ -107,9 +107,9 @@ export default function ProposalsPage() {
   const [ingesting,   setIngesting]   = useState(false)
 
   // Win-loss form
-  const [wlId,        setWlId]        = useState<string | null>(null)
-  const [wlOutcome,   setWlOutcome]   = useState<'won' | 'lost' | 'no_decision'>('won')
-  const [wlReason,    setWlReason]    = useState('')
+  const [wlId,         setWlId]         = useState<string | null>(null)
+  const [wlOutcome,    setWlOutcome]    = useState<'won' | 'lost' | 'no_decision'>('won')
+  const [wlReason,     setWlReason]     = useState('')
   const [wlSubmitting, setWlSubmitting] = useState(false)
 
   // ── Data loading ───────────────────────────────────────────────────────────
@@ -129,7 +129,7 @@ export default function ProposalsPage() {
 
   const loadStats = useCallback(async () => {
     try {
-      const r = await fetch('/api/proposals/stats')          // P1 FIX
+      const r = await fetch('/api/proposals/stats')
       const j = await r.json()
       if (j.ok && j.stats) setStats(j.stats)
     } catch { /* non-fatal */ }
@@ -179,7 +179,6 @@ export default function ProposalsPage() {
       const j = await r.json()
       setDraftResult(j)
       if (!j.ok) {
-        // P11 FIX: show retry hint when review fails
         const hint = j.rule === 'revision_depth_halt'
           ? ' — Max revisions reached, escalated to human reviewer'
           : j.qualityScore != null && j.qualityScore < 7
@@ -246,32 +245,24 @@ export default function ProposalsPage() {
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
-    <div className="p-4 max-w-screen-2xl mx-auto">
+    <div className="max-w-7xl mx-auto px-6 py-10 space-y-6">
 
       {/* Header */}
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-3">
-          <button
-            onClick={() => router.push('/shell')}
-            className="text-gray-400 hover:text-gray-700 transition-colors text-sm flex items-center gap-1"
-            title="Back to shell"
-          >
-            ← Back
-          </button>
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">Proposal Pipeline</h1>
-            <p className="text-xs text-gray-400 mt-0.5">13-SME governed · 10 GDSL rules · 5 AI agents</p>
-          </div>
+      <div className="flex items-start justify-between">
+        <div>
+          <p className="text-[10px] text-ink3 uppercase tracking-widest font-mono mb-1">Proposals</p>
+          <h1 className="text-3xl font-bold text-ink" style={{ fontFamily: 'var(--ff-d)' }}>Proposal Pipeline</h1>
+          <p className="text-sm text-ink3 mt-1">13-SME governed · 10 GDSL rules · 5 AI agents</p>
         </div>
-        <div className="flex gap-2">
-          <button onClick={exportCsv} className="px-3 py-2 border border-gray-300 rounded-lg text-sm hover:bg-gray-50">Export CSV</button>
-          <button onClick={() => setShowIngest(true)} className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700">+ Ingest RFP</button>
+        <div className="flex gap-2 mt-1">
+          <button onClick={exportCsv} className="btn btn-ghost text-sm">Export CSV</button>
+          <button onClick={() => setShowIngest(true)} className="btn btn-primary text-sm">+ Ingest RFP</button>
         </div>
       </div>
 
-      {/* Stats bar — P1 FIX: from /api/proposals/stats */}
+      {/* Stats bar */}
       {stats && (
-        <div className="grid grid-cols-4 sm:grid-cols-8 gap-2 mb-4">
+        <div className="grid grid-cols-4 sm:grid-cols-8 gap-2">
           {(
             [
               { label: 'Open',    value: String(stats.totalOpen),    red: false },
@@ -284,65 +275,82 @@ export default function ProposalsPage() {
               { label: 'LLM $',   value: `$${(stats.totalLlmCostUsd ?? 0).toFixed(3)}`, red: false },
             ] as { label: string; value: string; red: boolean }[]
           ).map(s => (
-            <div key={s.label} className="bg-white border border-gray-200 rounded-lg p-2 text-center">
-              <div className={`text-lg font-bold ${s.red ? 'text-red-600' : 'text-gray-800'}`}>{s.value}</div>
-              <div className="text-xs text-gray-400">{s.label}</div>
+            <div key={s.label} className="kpi-card text-center">
+              <div className={`text-xl font-bold ${s.red ? 'text-red-400' : 'text-ink'}`} style={{ fontFamily: 'var(--ff-d)' }}>{s.value}</div>
+              <div className="text-xs text-ink3">{s.label}</div>
             </div>
           ))}
         </div>
       )}
 
       {/* Filters */}
-      <div className="flex gap-2 mb-4">
-        <input className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm flex-1 max-w-xs" placeholder="Search…" value={q} onChange={e => setQ(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') load() }} />
-        <select className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm" value={stageFilter} onChange={e => { setStageFilter(e.target.value); }}>
+      <div className="flex gap-2">
+        <input
+          className="border border-border bg-paper2 rounded-lg px-3 py-1.5 text-sm flex-1 max-w-xs text-ink placeholder:text-ink3 focus:outline-none focus:border-acid"
+          placeholder="Search…"
+          value={q}
+          onChange={e => setQ(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') load() }}
+        />
+        <select
+          className="border border-border bg-paper2 rounded-lg px-3 py-1.5 text-sm text-ink focus:outline-none focus:border-acid"
+          value={stageFilter}
+          onChange={e => setStageFilter(e.target.value)}
+        >
           <option value="">All stages</option>
           {ALL_STAGES.map(s => <option key={s} value={s}>{s}</option>)}
         </select>
-        <button onClick={() => { load(); loadStats() }} className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm hover:bg-gray-50">Refresh</button>
+        <button onClick={() => { load(); loadStats() }} className="btn btn-ghost text-sm">Refresh</button>
       </div>
 
-      {/* Error / Draft result */}
-      {error && <div className="mb-3 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">{error} <button className="ml-2 text-red-500 font-bold" onClick={() => setError(null)}>×</button></div>}
-      {(draftResult?.ok as boolean) && (
-        <div className="mb-3 p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-800">
-          Draft complete — Quality {String(draftResult!.qualityScore)}/10 · Stage → <strong>{String(draftResult!.stage)}</strong> · ₹{Number(draftResult!.pricingTotalInr).toLocaleString('en-IN')}
-          {((draftResult!.hallucinationFlags as string[])?.length ?? 0) > 0 && <span className="ml-2 text-amber-700">⚠ {(draftResult!.hallucinationFlags as string[]).length} hallucination flag(s)</span>}
-          {Boolean(draftResult!.needsEscalation) && <span className="ml-2 text-red-600 font-medium">⚠ Depth 2 — human review recommended</span>}
+      {/* Error */}
+      {error && (
+        <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-lg text-sm text-red-400 flex items-center justify-between">
+          <span>{error}</span>
+          <button className="ml-2 font-bold hover:text-red-300" onClick={() => setError(null)}>×</button>
         </div>
       )}
 
-      {/* P10 FIX: Full 10-stage kanban */}
+      {/* Draft result */}
+      {(draftResult?.ok as boolean) && (
+        <div className="p-3 bg-blue-500/10 border border-blue-500/30 rounded-lg text-sm text-blue-300">
+          Draft complete — Quality {String(draftResult!.qualityScore)}/10 · Stage → <strong>{String(draftResult!.stage)}</strong> · ₹{Number(draftResult!.pricingTotalInr).toLocaleString('en-IN')}
+          {((draftResult!.hallucinationFlags as string[])?.length ?? 0) > 0 && <span className="ml-2 text-amber-400">⚠ {(draftResult!.hallucinationFlags as string[]).length} hallucination flag(s)</span>}
+          {Boolean(draftResult!.needsEscalation) && <span className="ml-2 text-red-400 font-medium">⚠ Depth 2 — human review recommended</span>}
+        </div>
+      )}
+
+      {/* Kanban */}
       {loading ? (
-        <div className="text-center text-gray-400 py-12">Loading pipeline…</div>
+        <div className="text-center text-ink3 py-12">Loading pipeline…</div>
       ) : (
         <>
-          {/* Active stages — full 6-column board */}
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-4">
+          {/* Active stages — 6-column board */}
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
             {ACTIVE_STAGES.map(stage => (
-              <div key={stage} className="bg-gray-50 rounded-xl p-2.5 min-h-24">
+              <div key={stage} className="bg-paper2 border border-border rounded-xl p-2.5 min-h-24">
                 <div className="flex items-center justify-between mb-2">
                   <span className={`text-xs font-semibold px-1.5 py-0.5 rounded-full ${STAGE_COLOR[stage]}`}>{stage}</span>
-                  <span className="text-xs text-gray-400">{grouped[stage]?.length ?? 0}</span>
+                  <span className="text-xs text-ink3">{grouped[stage]?.length ?? 0}</span>
                 </div>
                 <div className="space-y-2">
                   {(grouped[stage] ?? []).map(p => (
                     <div
                       key={p.id}
-                      className="bg-white border border-gray-200 rounded-lg p-2 text-xs shadow-sm cursor-pointer hover:border-blue-300"
+                      className="bg-paper border border-border rounded-lg p-2 text-xs cursor-pointer hover:border-acid/40 transition-colors"
                       onClick={() => setDetailId(p.id)}
                     >
-                      <div className="font-medium text-gray-800 truncate" title={p.rfpTitle}>{p.rfpTitle}</div>
-                      <div className="text-gray-400 truncate">{p.clientName ?? '—'}</div>
-                      {p.bidFitScore != null && <div className="text-gray-600">Fit {p.bidFitScore} {p.winProbabilityPct != null ? `· Win ${p.winProbabilityPct}%` : ''}</div>}
+                      <div className="font-medium text-ink truncate" title={p.rfpTitle}>{p.rfpTitle}</div>
+                      <div className="text-ink3 truncate">{p.clientName ?? '—'}</div>
+                      {p.bidFitScore != null && <div className="text-ink2">Fit {p.bidFitScore}{p.winProbabilityPct != null ? ` · Win ${p.winProbabilityPct}%` : ''}</div>}
                       {p.qualityScoreAtSubmission != null && (
-                        <div className={p.qualityScoreAtSubmission >= 7 ? 'text-green-600' : 'text-amber-600'}>
+                        <div className={p.qualityScoreAtSubmission >= 7 ? 'text-emerald-400' : 'text-amber-400'}>
                           Q {p.qualityScoreAtSubmission}/10
                         </div>
                       )}
-                      {p.pricingTotalInr && <div className="text-green-700">₹{Number(p.pricingTotalInr).toLocaleString('en-IN')}</div>}
-                      {p.revisionDepth > 0 && <div className={p.revisionDepth >= 2 ? 'text-red-500' : 'text-amber-500'}>Rev {p.revisionDepth}/3</div>}
-                      {p.deadline && <div className="text-gray-400">{new Date(p.deadline).toLocaleDateString('en-IN')}</div>}
+                      {p.pricingTotalInr && <div className="text-emerald-400">₹{Number(p.pricingTotalInr).toLocaleString('en-IN')}</div>}
+                      {p.revisionDepth > 0 && <div className={p.revisionDepth >= 2 ? 'text-red-400' : 'text-amber-400'}>Rev {p.revisionDepth}/3</div>}
+                      {p.deadline && <div className="text-ink3">{new Date(p.deadline).toLocaleDateString('en-IN')}</div>}
 
                       {/* Action buttons */}
                       <div className="mt-1.5 flex gap-1">
@@ -350,15 +358,15 @@ export default function ProposalsPage() {
                           <button
                             onClick={e => { e.stopPropagation(); handleDraft(p.id) }}
                             disabled={draftingId === p.id}
-                            className="flex-1 py-0.5 bg-blue-600 text-white rounded text-xs font-medium hover:bg-blue-700 disabled:opacity-50"
+                            className="flex-1 py-0.5 bg-acid text-paper rounded text-xs font-medium hover:opacity-90 disabled:opacity-50"
                           >
                             {draftingId === p.id ? '…' : 'Draft'}
                           </button>
                         )}
                         {CAN_APPROVE.includes(p.stage) && (
                           <>
-                            <button onClick={e => { e.stopPropagation(); handleApprove(p.id, 'approve', p.stage === 'approved') }} disabled={approvingId === p.id} className="flex-1 py-0.5 bg-green-600 text-white rounded text-xs font-medium hover:bg-green-700 disabled:opacity-50">✓</button>
-                            <button onClick={e => { e.stopPropagation(); handleApprove(p.id, 'reject') }} disabled={approvingId === p.id} className="py-0.5 px-1.5 bg-red-100 text-red-700 rounded text-xs hover:bg-red-200 disabled:opacity-50">✗</button>
+                            <button onClick={e => { e.stopPropagation(); handleApprove(p.id, 'approve', p.stage === 'approved') }} disabled={approvingId === p.id} className="flex-1 py-0.5 bg-emerald-500/20 text-emerald-400 rounded text-xs font-medium hover:bg-emerald-500/30 disabled:opacity-50">✓</button>
+                            <button onClick={e => { e.stopPropagation(); handleApprove(p.id, 'reject') }} disabled={approvingId === p.id} className="py-0.5 px-1.5 bg-red-500/15 text-red-400 rounded text-xs hover:bg-red-500/25 disabled:opacity-50">✗</button>
                           </>
                         )}
                       </div>
@@ -372,17 +380,17 @@ export default function ProposalsPage() {
           {/* Closed stages — compact row */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             {CLOSED_STAGES.map(stage => (
-              <div key={stage} className="bg-gray-50 rounded-xl p-2.5">
+              <div key={stage} className="bg-paper2 border border-border rounded-xl p-2.5">
                 <div className="flex items-center justify-between mb-1.5">
                   <span className={`text-xs font-semibold px-1.5 py-0.5 rounded-full ${STAGE_COLOR[stage]}`}>{stage}</span>
-                  <span className="text-xs text-gray-400">{grouped[stage]?.length ?? 0}</span>
+                  <span className="text-xs text-ink3">{grouped[stage]?.length ?? 0}</span>
                 </div>
                 <div className="space-y-1 max-h-32 overflow-y-auto">
                   {(grouped[stage] ?? []).map(p => (
                     <div key={p.id} className="flex items-center gap-1 cursor-pointer" onClick={() => setDetailId(p.id)}>
-                      <div className="text-xs text-gray-600 truncate flex-1">{p.rfpTitle}</div>
+                      <div className="text-xs text-ink2 truncate flex-1">{p.rfpTitle}</div>
                       {stage === 'approved' && (
-                        <button onClick={e => { e.stopPropagation(); setWlId(p.id) }} className="text-xs px-1 py-0.5 bg-emerald-100 text-emerald-700 rounded whitespace-nowrap">Record</button>
+                        <button onClick={e => { e.stopPropagation(); setWlId(p.id) }} className="text-xs px-1 py-0.5 bg-emerald-500/15 text-emerald-400 rounded whitespace-nowrap hover:bg-emerald-500/25">Record</button>
                       )}
                     </div>
                   ))}
@@ -393,122 +401,118 @@ export default function ProposalsPage() {
         </>
       )}
 
-      {/* ── Detail Drawer (P16 FIX) ─────────────────────────────────────────── */}
+      {/* ── Detail Drawer ─────────────────────────────────────────────────────── */}
       {detailId && (
-        <div className="fixed inset-0 bg-black/40 z-40 flex justify-end" onClick={() => setDetailId(null)}>
-          <div className="bg-white w-full max-w-2xl h-full overflow-y-auto shadow-2xl" onClick={e => e.stopPropagation()}>
-            <div className="p-5">
-              <div className="flex items-start justify-between mb-4">
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-40 flex justify-end" onClick={() => setDetailId(null)}>
+          <div className="bg-paper border-l border-border w-full max-w-2xl h-full overflow-y-auto shadow-2xl" onClick={e => e.stopPropagation()}>
+            <div className="p-6">
+              <div className="flex items-start justify-between mb-5">
                 <div>
-                  <h2 className="text-lg font-bold text-gray-900">{detailProposal?.rfpTitle ?? 'Loading…'}</h2>
-                  <p className="text-sm text-gray-500">{detailProposal?.clientName ?? '—'} · {detailProposal?.rfpRef ?? detailId}</p>
+                  <h2 className="text-lg font-bold text-ink" style={{ fontFamily: 'var(--ff-d)' }}>{detailProposal?.rfpTitle ?? 'Loading…'}</h2>
+                  <p className="text-sm text-ink3">{detailProposal?.clientName ?? '—'} · {detailProposal?.rfpRef ?? detailId}</p>
                 </div>
-                <button onClick={() => setDetailId(null)} className="text-gray-400 hover:text-gray-700 text-xl font-bold">×</button>
+                <button onClick={() => setDetailId(null)} className="text-ink3 hover:text-ink text-xl font-bold leading-none">×</button>
               </div>
 
-              {detailLoading && <div className="text-gray-400 text-sm">Loading detail…</div>}
+              {detailLoading && <div className="text-ink3 text-sm">Loading detail…</div>}
 
               {detailProposal && (
                 <div className="space-y-5">
                   {/* Stage + key metrics */}
                   <div className="grid grid-cols-3 gap-3 text-sm">
-                    <div className="bg-gray-50 rounded-lg p-3">
-                      <div className="text-xs text-gray-400">Stage</div>
-                      <span className={`text-xs font-semibold px-1.5 py-0.5 rounded-full ${STAGE_COLOR[detailProposal.stage]}`}>{detailProposal.stage}</span>
-                    </div>
-                    <div className="bg-gray-50 rounded-lg p-3">
-                      <div className="text-xs text-gray-400">Bid fit / Win %</div>
-                      <div className="font-semibold">{detailProposal.bidFitScore ?? '—'} / {detailProposal.winProbabilityPct ?? '—'}%</div>
-                    </div>
-                    <div className="bg-gray-50 rounded-lg p-3">
-                      <div className="text-xs text-gray-400">Quality score</div>
-                      <div className={`font-semibold ${(detailProposal.qualityScoreAtSubmission ?? 0) >= 7 ? 'text-green-600' : 'text-amber-600'}`}>
-                        {detailProposal.qualityScoreAtSubmission ?? '—'}/10
+                    {[
+                      { label: 'Stage', content: <span className={`text-xs font-semibold px-1.5 py-0.5 rounded-full ${STAGE_COLOR[detailProposal.stage]}`}>{detailProposal.stage}</span> },
+                      { label: 'Bid fit / Win %', content: <span className="font-semibold text-ink">{detailProposal.bidFitScore ?? '—'} / {detailProposal.winProbabilityPct ?? '—'}%</span> },
+                      { label: 'Quality score', content: <span className={`font-semibold ${(detailProposal.qualityScoreAtSubmission ?? 0) >= 7 ? 'text-emerald-400' : 'text-amber-400'}`}>{detailProposal.qualityScoreAtSubmission ?? '—'}/10</span> },
+                      { label: 'Total price', content: <span className="font-semibold text-ink">{detailProposal.pricingTotalInr ? `₹${Number(detailProposal.pricingTotalInr).toLocaleString('en-IN')}` : '—'}</span> },
+                      { label: 'Revision depth', content: <span className={`font-semibold ${detailProposal.revisionDepth >= 2 ? 'text-red-400' : 'text-ink'}`}>{detailProposal.revisionDepth}/3</span> },
+                      { label: 'Approval', content: <span className="font-semibold text-ink">{detailProposal.approvalStatus}</span> },
+                    ].map(({ label, content }) => (
+                      <div key={label} className="bg-paper2 border border-border rounded-lg p-3">
+                        <div className="text-xs text-ink3 mb-1">{label}</div>
+                        {content}
                       </div>
-                    </div>
-                    <div className="bg-gray-50 rounded-lg p-3">
-                      <div className="text-xs text-gray-400">Total price</div>
-                      <div className="font-semibold">{detailProposal.pricingTotalInr ? `₹${Number(detailProposal.pricingTotalInr).toLocaleString('en-IN')}` : '—'}</div>
-                    </div>
-                    <div className="bg-gray-50 rounded-lg p-3">
-                      <div className="text-xs text-gray-400">Revision depth</div>
-                      <div className={`font-semibold ${detailProposal.revisionDepth >= 2 ? 'text-red-600' : ''}`}>{detailProposal.revisionDepth}/3</div>
-                    </div>
-                    <div className="bg-gray-50 rounded-lg p-3">
-                      <div className="text-xs text-gray-400">Approval</div>
-                      <div className="font-semibold">{detailProposal.approvalStatus}</div>
-                    </div>
+                    ))}
                   </div>
 
                   {/* Pricing breakdown */}
                   {detailProposal.pricingModel && Array.isArray(detailProposal.pricingModel) && detailProposal.pricingModel.length > 0 && (
                     <div>
-                      <h3 className="text-sm font-semibold text-gray-700 mb-2">Pricing Breakdown</h3>
-                      <table className="w-full text-xs border-collapse">
-                        <thead><tr className="bg-gray-50"><th className="text-left p-1.5 font-medium">Item</th><th className="text-right p-1.5 font-medium">Qty</th><th className="text-right p-1.5 font-medium">Rate (₹)</th><th className="text-right p-1.5 font-medium">Total</th></tr></thead>
-                        <tbody>
-                          {detailProposal.pricingModel.map((l, i) => (
-                            <tr key={i} className="border-t border-gray-100">
-                              <td className="p-1.5">{l.item}</td>
-                              <td className="p-1.5 text-right">{l.qty}</td>
-                              <td className="p-1.5 text-right">{l.rateInr?.toLocaleString('en-IN')}</td>
-                              <td className="p-1.5 text-right font-medium">{(l.qty * l.rateInr).toLocaleString('en-IN')}</td>
+                      <h3 className="text-sm font-semibold text-ink mb-2">Pricing Breakdown</h3>
+                      <div className="border border-border rounded-xl overflow-hidden">
+                        <table className="w-full text-xs">
+                          <thead>
+                            <tr className="bg-paper2 border-b border-border">
+                              <th className="text-left p-2 text-[10px] uppercase tracking-widest text-ink3 font-mono">Item</th>
+                              <th className="text-right p-2 text-[10px] uppercase tracking-widest text-ink3 font-mono">Qty</th>
+                              <th className="text-right p-2 text-[10px] uppercase tracking-widest text-ink3 font-mono">Rate (₹)</th>
+                              <th className="text-right p-2 text-[10px] uppercase tracking-widest text-ink3 font-mono">Total</th>
                             </tr>
-                          ))}
-                        </tbody>
-                      </table>
+                          </thead>
+                          <tbody>
+                            {detailProposal.pricingModel.map((l, i) => (
+                              <tr key={i} className="border-t border-border hover:bg-paper2/50">
+                                <td className="p-2 text-ink2">{l.item}</td>
+                                <td className="p-2 text-right text-ink2">{l.qty}</td>
+                                <td className="p-2 text-right text-ink2">{l.rateInr?.toLocaleString('en-IN')}</td>
+                                <td className="p-2 text-right font-medium text-ink">{(l.qty * l.rateInr).toLocaleString('en-IN')}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
                     </div>
                   )}
 
                   {/* Hallucination flags */}
                   {detailProposal.hallucinationFlags && detailProposal.hallucinationFlags.length > 0 && (
-                    <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
-                      <div className="text-xs font-semibold text-amber-800 mb-1">⚠ Hallucination Flags ({detailProposal.hallucinationFlags.length})</div>
-                      {detailProposal.hallucinationFlags.map((f, i) => <div key={i} className="text-xs text-amber-700">• {f}</div>)}
+                    <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg">
+                      <div className="text-xs font-semibold text-amber-400 mb-1">⚠ Hallucination Flags ({detailProposal.hallucinationFlags.length})</div>
+                      {detailProposal.hallucinationFlags.map((f, i) => <div key={i} className="text-xs text-amber-300">• {f}</div>)}
                     </div>
                   )}
 
                   {/* Revision history */}
                   {detailProposal.revisions && detailProposal.revisions.length > 0 && (
                     <div>
-                      <h3 className="text-sm font-semibold text-gray-700 mb-2">Revision History</h3>
+                      <h3 className="text-sm font-semibold text-ink mb-2">Revision History</h3>
                       <div className="space-y-1">
                         {detailProposal.revisions.map(r => (
-                          <div key={r.version} className="text-xs p-2 bg-gray-50 rounded flex gap-3">
-                            <span className="font-medium text-gray-600">v{r.version}</span>
-                            <span className="text-gray-500 flex-1">{r.reviewNotes ?? 'No review notes'}</span>
-                            <span className="text-gray-400">{new Date(r.createdAt).toLocaleDateString('en-IN')}</span>
+                          <div key={r.version} className="text-xs p-2 bg-paper2 border border-border rounded-lg flex gap-3">
+                            <span className="font-medium text-ink2">v{r.version}</span>
+                            <span className="text-ink3 flex-1">{r.reviewNotes ?? 'No review notes'}</span>
+                            <span className="text-ink3">{new Date(r.createdAt).toLocaleDateString('en-IN')}</span>
                           </div>
                         ))}
                       </div>
                     </div>
                   )}
 
-                  {/* Draft preview (truncated) */}
+                  {/* Draft preview */}
                   {detailProposal.proposalDraft && (
                     <div>
-                      <h3 className="text-sm font-semibold text-gray-700 mb-2">Draft Preview</h3>
-                      <pre className="text-xs bg-gray-50 p-3 rounded-lg overflow-auto max-h-64 whitespace-pre-wrap font-sans">{detailProposal.proposalDraft.slice(0, 2000)}{detailProposal.proposalDraft.length > 2000 ? '\n\n[truncated…]' : ''}</pre>
+                      <h3 className="text-sm font-semibold text-ink mb-2">Draft Preview</h3>
+                      <pre className="text-xs bg-paper2 border border-border p-3 rounded-lg overflow-auto max-h-64 whitespace-pre-wrap font-sans text-ink2">{detailProposal.proposalDraft.slice(0, 2000)}{detailProposal.proposalDraft.length > 2000 ? '\n\n[truncated…]' : ''}</pre>
                     </div>
                   )}
 
                   {/* Action buttons */}
-                  <div className="flex gap-2 flex-wrap pt-2 border-t border-gray-100">
+                  <div className="flex gap-2 flex-wrap pt-4 border-t border-border">
                     {CAN_DRAFT.includes(detailProposal.stage) && (
-                      <button onClick={() => handleDraft(detailProposal.id)} disabled={draftingId === detailProposal.id} className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50">
-                        {draftingId === detailProposal.id ? 'Running AI Draft…' : '🤖 Run AI Draft'}
+                      <button onClick={() => handleDraft(detailProposal.id)} disabled={draftingId === detailProposal.id} className="btn btn-primary text-sm disabled:opacity-50">
+                        {draftingId === detailProposal.id ? 'Running AI Draft…' : 'Run AI Draft'}
                       </button>
                     )}
                     {detailProposal.stage === 'review' && (
                       <>
-                        <button onClick={() => handleApprove(detailProposal.id, 'approve')} disabled={approvingId === detailProposal.id} className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 disabled:opacity-50">✓ Approve</button>
-                        <button onClick={() => handleApprove(detailProposal.id, 'reject')} disabled={approvingId === detailProposal.id} className="px-4 py-2 bg-red-100 text-red-700 rounded-lg text-sm hover:bg-red-200 disabled:opacity-50">✗ Reject (re-draft)</button>
+                        <button onClick={() => handleApprove(detailProposal.id, 'approve')} disabled={approvingId === detailProposal.id} className="px-4 py-2 bg-emerald-500/20 text-emerald-400 rounded-lg text-sm font-medium hover:bg-emerald-500/30 disabled:opacity-50">✓ Approve</button>
+                        <button onClick={() => handleApprove(detailProposal.id, 'reject')} disabled={approvingId === detailProposal.id} className="px-4 py-2 bg-red-500/15 text-red-400 rounded-lg text-sm hover:bg-red-500/25 disabled:opacity-50">✗ Reject (re-draft)</button>
                       </>
                     )}
                     {detailProposal.stage === 'approved' && (
                       <>
-                        <button onClick={() => handleApprove(detailProposal.id, 'approve', true)} disabled={approvingId === detailProposal.id} className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 disabled:opacity-50">✓ 2nd Approval</button>
-                        <button onClick={() => setWlId(detailProposal.id)} className="px-4 py-2 bg-emerald-100 text-emerald-700 rounded-lg text-sm hover:bg-emerald-200">Record Win/Loss</button>
+                        <button onClick={() => handleApprove(detailProposal.id, 'approve', true)} disabled={approvingId === detailProposal.id} className="px-4 py-2 bg-emerald-500/20 text-emerald-400 rounded-lg text-sm font-medium hover:bg-emerald-500/30 disabled:opacity-50">✓ 2nd Approval</button>
+                        <button onClick={() => setWlId(detailProposal.id)} className="px-4 py-2 bg-paper2 border border-border text-ink2 rounded-lg text-sm hover:bg-paper hover:text-ink">Record Win/Loss</button>
                       </>
                     )}
                   </div>
@@ -519,66 +523,72 @@ export default function ProposalsPage() {
         </div>
       )}
 
-      {/* ── Win/Loss Modal ─────────────────────────────────────────────────── */}
+      {/* ── Win/Loss Modal ─────────────────────────────────────────────────────── */}
       {wlId && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6">
-            <h2 className="text-lg font-bold mb-4">Record Win/Loss</h2>
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-paper border border-border rounded-2xl shadow-2xl w-full max-w-sm p-6">
+            <h2 className="text-lg font-bold text-ink mb-4" style={{ fontFamily: 'var(--ff-d)' }}>Record Win/Loss</h2>
             <div className="space-y-3">
               <div>
-                <label className="text-xs font-medium text-gray-600">Outcome</label>
+                <label className="text-xs font-medium text-ink3">Outcome</label>
                 <div className="flex gap-2 mt-1">
                   {(['won', 'lost', 'no_decision'] as const).map(o => (
-                    <button key={o} onClick={() => setWlOutcome(o)} className={`flex-1 py-1.5 rounded-lg text-sm font-medium border ${wlOutcome === o ? 'bg-blue-600 text-white border-blue-600' : 'border-gray-300 text-gray-600'}`}>{o}</button>
+                    <button
+                      key={o}
+                      onClick={() => setWlOutcome(o)}
+                      className={`flex-1 py-1.5 rounded-lg text-sm font-medium border transition-all ${wlOutcome === o ? 'bg-acid text-paper border-acid' : 'border-border text-ink2 hover:border-acid/40'}`}
+                    >
+                      {o}
+                    </button>
                   ))}
                 </div>
               </div>
               {wlOutcome === 'lost' && (
                 <div>
-                  <label className="text-xs font-medium text-gray-600">Loss reason</label>
-                  <input className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" value={wlReason} onChange={e => setWlReason(e.target.value)} placeholder="Why did we lose?" />
+                  <label className="text-xs font-medium text-ink3">Loss reason</label>
+                  <input className="mt-1 w-full border border-border bg-paper2 rounded-lg px-3 py-2 text-sm text-ink placeholder:text-ink3 focus:outline-none focus:border-acid" value={wlReason} onChange={e => setWlReason(e.target.value)} placeholder="Why did we lose?" />
                 </div>
               )}
             </div>
             <div className="flex gap-3 mt-5">
-              <button onClick={handleWinLoss} disabled={wlSubmitting} className="flex-1 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50">{wlSubmitting ? 'Saving…' : 'Save'}</button>
-              <button onClick={() => setWlId(null)} className="px-4 py-2 border border-gray-300 rounded-lg text-sm">Cancel</button>
+              <button onClick={handleWinLoss} disabled={wlSubmitting} className="btn btn-primary flex-1 disabled:opacity-50">{wlSubmitting ? 'Saving…' : 'Save'}</button>
+              <button onClick={() => setWlId(null)} className="btn btn-ghost px-4">Cancel</button>
             </div>
           </div>
         </div>
       )}
 
-      {/* ── Ingest Modal ───────────────────────────────────────────────────── */}
+      {/* ── Ingest Modal ───────────────────────────────────────────────────────── */}
       {showIngest && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6">
-            <h2 className="text-lg font-bold mb-4">Ingest New RFP</h2>
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-paper border border-border rounded-2xl shadow-2xl w-full max-w-lg p-6">
+            <h2 className="text-lg font-bold text-ink mb-4" style={{ fontFamily: 'var(--ff-d)' }}>Ingest New RFP</h2>
             <div className="space-y-3">
               <div>
-                <label className="text-xs font-medium text-gray-600">RFP Reference (optional)</label>
-                <input className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" value={rfpRef} onChange={e => setRfpRef(e.target.value)} placeholder="RFP-2024-001" />
+                <label className="text-xs font-medium text-ink3">RFP Reference (optional)</label>
+                <input className="mt-1 w-full border border-border bg-paper2 rounded-lg px-3 py-2 text-sm text-ink placeholder:text-ink3 focus:outline-none focus:border-acid" value={rfpRef} onChange={e => setRfpRef(e.target.value)} placeholder="RFP-2024-001" />
               </div>
               <div>
-                <label className="text-xs font-medium text-gray-600">Client Email (optional)</label>
-                <input className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" value={clientEmail} onChange={e => setClientEmail(e.target.value)} placeholder="client@company.com" />
+                <label className="text-xs font-medium text-ink3">Client Email (optional)</label>
+                <input className="mt-1 w-full border border-border bg-paper2 rounded-lg px-3 py-2 text-sm text-ink placeholder:text-ink3 focus:outline-none focus:border-acid" value={clientEmail} onChange={e => setClientEmail(e.target.value)} placeholder="client@company.com" />
               </div>
               <div>
-                <label className="text-xs font-medium text-gray-600">RFP Text *</label>
-                <textarea className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm h-36 resize-none" value={rfpText} onChange={e => setRfpText(e.target.value)} placeholder="Paste the full RFP text…" />
+                <label className="text-xs font-medium text-ink3">RFP Text *</label>
+                <textarea className="mt-1 w-full border border-border bg-paper2 rounded-lg px-3 py-2 text-sm text-ink placeholder:text-ink3 focus:outline-none focus:border-acid h-36 resize-none" value={rfpText} onChange={e => setRfpText(e.target.value)} placeholder="Paste the full RFP text…" />
               </div>
-              <label className="flex items-center gap-2 text-sm cursor-pointer">
-                <input type="checkbox" checked={ndaActive} onChange={e => setNdaActive(e.target.checked)} />
+              <label className="flex items-center gap-2 text-sm cursor-pointer text-ink2">
+                <input type="checkbox" checked={ndaActive} onChange={e => setNdaActive(e.target.checked)} className="accent-acid" />
                 NDA required
               </label>
-              <label className="flex items-center gap-2 text-sm cursor-pointer">
-                <input type="checkbox" checked={consent} onChange={e => setConsent(e.target.checked)} />
+              <label className="flex items-center gap-2 text-sm cursor-pointer text-ink2">
+                <input type="checkbox" checked={consent} onChange={e => setConsent(e.target.checked)} className="accent-acid" />
                 DPDP consent confirmed for any PII in this RFP
               </label>
             </div>
-            {error && <div className="mt-3 text-sm text-red-600">{error}</div>}
+            {error && <div className="mt-3 text-sm text-red-400">{error}</div>}
             <div className="flex gap-3 mt-5">
-              <button onClick={handleIngest} disabled={ingesting} className="flex-1 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50">{ingesting ? 'Ingesting…' : 'Ingest RFP'}</button>
-              <button onClick={() => { setShowIngest(false); setError(null) }} className="px-4 py-2 border border-gray-300 rounded-lg text-sm">Cancel</button>
+              <button onClick={handleIngest} disabled={ingesting} className="btn btn-primary flex-1 disabled:opacity-50">{ingesting ? 'Ingesting…' : 'Ingest RFP'}</button>
+              <button onClick={() => { setShowIngest(false); setError(null) }} className="btn btn-ghost px-4">Cancel</button>
             </div>
           </div>
         </div>
