@@ -11,11 +11,13 @@ import crypto from 'crypto'
 export function verifyRazorpayWebhookSignature(
   rawBody: string,
   signature: string,
-  secret: string,
+  secret?: string,
 ): boolean {
   try {
+    const key = secret ?? process.env.RAZORPAY_WEBHOOK_SECRET ?? ''
+    if (!key) return false
     const expected = crypto
-      .createHmac('sha256', secret)
+      .createHmac('sha256', key)
       .update(rawBody)
       .digest('hex')
     return crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(signature))
