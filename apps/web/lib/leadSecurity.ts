@@ -10,9 +10,10 @@ import crypto from 'crypto'
  */
 export function verifyRazorpayWebhookSignature(
   rawBody: string,
-  signature: string,
+  signature: string | null,
   secret?: string,
 ): boolean {
+  if (!signature) return false
   try {
     const key = secret ?? process.env.RAZORPAY_WEBHOOK_SECRET ?? ''
     if (!key) return false
