@@ -28,7 +28,7 @@ export interface LeadInput {
   name:         string | null
   source:       string
   utmSource:    string | null
-  firmographic?: Record<string, unknown>
+  firmographic?: unknown
 }
 
 /** ICP definition — tune per-segment. */
