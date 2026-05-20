@@ -149,8 +149,8 @@ export const BUILD_AGENTS: BuildAgent[] = [
     files: ['README.md','src/lib/README-components.md'],
     skill: {
       skillType: 'transformer', executionMode: 'sequential', parallelGroup: null,
-      executionOrder: 11, tokenBudget: 1000, timeoutMs: 90_000,
-      trustLevel: 'trusted', failureBehavior: 'skip', costCeilingUsd: 0.02,
+      executionOrder: 11, tokenBudget: 2000, timeoutMs: 120_000,
+      trustLevel: 'trusted', failureBehavior: 'skip', costCeilingUsd: 0.04,
       dependencies: ['repair'],
       retryPolicy: { maxAttempts: 3, backoffMs: 4000 },
     },
