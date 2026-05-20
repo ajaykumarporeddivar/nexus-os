@@ -63,10 +63,11 @@ interface BuildErrorManifestEntry {
 }
 
 interface AgentRunMeta {
-  score:      number | null
-  tokens:     number
-  durationMs: number
-  finishedAt: string
+  score:            number | null
+  tokens:           number
+  durationMs:       number
+  finishedAt:       string
+  repairIteration?: number   // set on QA when it passed after coherence repair (1 or 2)
 }
 
 // G3: plan run limits (mirrors server-side quota.ts — used for UI only)
@@ -1178,6 +1179,11 @@ function AgentGrid({
                   <span className="rounded border border-emerald-400/25 bg-emerald-400/10 px-1 py-0.5 text-emerald-200">
                     {meta?.score !== null && meta?.score !== undefined ? `${meta.score.toFixed(1)}/10` : 'score --'}
                   </span>
+                  {meta?.repairIteration != null && (
+                    <span className="rounded border border-amber-400/40 bg-amber-400/10 px-1 py-0.5 text-amber-300">
+                      repair #{meta.repairIteration}
+                    </span>
+                  )}
                   <span className="rounded border border-white/10 bg-black/20 px-1 py-0.5 text-zinc-300">
                     {meta ? `${meta.tokens.toLocaleString()} tok` : 'tokens --'}
                   </span>
@@ -3953,6 +3959,19 @@ export default function PipelinePage() {
         qaScore = extractQAScore(revisedQA.content)
         setForgeQaScore(qaScore)
         setForgeActiveAgents(new Set())
+
+        // Update QA agent card to reflect the revised score + which repair iteration passed
+        setForgeAgentMeta(meta => ({
+          ...meta,
+          qa: {
+            ...meta['qa'],
+            score:           qaScore,
+            tokens:          (meta['qa']?.tokens ?? 0) + revisedQA.tokens,
+            finishedAt:      new Date().toISOString(),
+            durationMs:      meta['qa']?.durationMs ?? 0,
+            repairIteration: rev + 1,
+          },
+        }))
 
         log(`✓ Revised QA score: ${qaScore ?? '?'}/10`, qaScore !== null && qaScore >= 7 ? 'ok' : 'warn')
         announce(
