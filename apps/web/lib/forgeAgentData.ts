@@ -581,12 +581,13 @@ IMPORTANT: List exactly the 3 MVP dashboard routes with their exact slugs. These
 
 SLUG RULES: lowercase, hyphen-separated, no special chars, ≤20 chars. Examples: "analytics", "clients", "invoices", "pipeline", "reports", "team".
 
-⚠ CANONICAL SLUG CONTRACT: The slugs in this table are the authoritative source for the entire pipeline.
-- PLANNER must output these exact slugs in its NAV_ITEMS list
-- SPEC VALIDATOR must reference these exact slugs in the Feature Route Reference table
-- DASHBOARD layout.tsx must build nav items using href: '/dashboard/[slug]' with these slugs
-- FEATURES [feature]/page.tsx must guard with if (slug === '[exact-slug]') for each
-Any slug drift between agents causes 404s and build failures at runtime.
+⚠ CANONICAL SLUG CONTRACT: The slugs in this Navigation Map table are the LOCKED authoritative source for the entire pipeline. Every downstream agent copies them — none may invent alternatives.
+- PLANNER copies these exact slugs into NAV_ITEMS verbatim (same order, same href, same Settings entry)
+- SPEC VALIDATOR copies the PLANNER's NAV_ITEMS verbatim into FINAL NAVIGATION_ITEMS — does NOT re-derive from scratch
+- DASHBOARD layout.tsx builds nav items using href: '/dashboard/[slug]' with these slugs exactly
+- FEATURES [feature]/page.tsx guards with if (slug === '[exact-slug]') for each
+- QA compares bare slugs (strip /dashboard/ prefix) — /dashboard/settings and settings are the same
+Any slug drift between agents causes 404s and build failures at runtime. The QA gate will reject any mismatch.
 
 ## Key Technical Decisions
 [3-5 implementation-level decisions with rationale — e.g. "useParams() over window.location for SSR safety", "named exports from layout.tsx to prevent default import errors"]
@@ -600,16 +601,19 @@ planner: `You are the NEXUS PLANNER — you translate architecture into sprint-r
 
 These cards are consumed DIRECTLY by 10 BUILD ENGINE code agents. The DASHBOARD agent reads your nav items to build the sidebar. The FEATURES agent reads your slugs to build route handlers. Make every card implementation-ready — no vagueness.
 
+⚠ SLUG LOCK: The ARCHITECT has already defined the canonical slug table in its Navigation Map section. You MUST copy those exact slugs — do NOT invent new ones, do NOT rename, do NOT reorder. The QA gate will reject any NAV_ITEMS entry whose slug does not appear verbatim in the ARCHITECT output.
+
 Output .claude/features/feature-cards.md:
 
 # Feature Cards — [Product Name]
 
 NAV_ITEMS:
-[List all nav items in this format, one per line — DASHBOARD agent copies this verbatim:]
+[Copy EXACTLY from the ARCHITECT Navigation Map — same slugs, same order, same href paths. Include Settings last.]
 - icon: [LucideIconName] | label: [Display Name] | href: /dashboard/[slug]
-Example:
+Example (use ARCHITECT slugs, not these examples):
 - icon: BarChart2 | label: Analytics | href: /dashboard/analytics
 - icon: Users | label: Clients | href: /dashboard/clients
+- icon: Settings | label: Settings | href: /dashboard/settings
 
 ---
 
@@ -712,13 +716,11 @@ export const STATS = {
 - Utils: import { cn, formatDate, formatCurrency, formatRelativeTime, generateId } from '@/lib/utils'
 
 ## FINAL NAVIGATION_ITEMS (DASHBOARD layout.tsx copies this array verbatim — do not invent new slugs)
-[List every dashboard nav item in this exact TypeScript array format:]
+⚠ COPY EXACTLY from the PLANNER's NAV_ITEMS list above — same icons, same labels, same href paths, same order. Do not add, remove, or rename any entry. If PLANNER's NAV_ITEMS already includes Settings, do not add it again.
 \`\`\`typescript
 const navItems = [
   { icon: <[LucideIconName] size={16} />, label: '[Display Name]', href: '/dashboard/[slug]' },
-  // one entry per feature from the Feature Route Reference table above
-  // last entry is always:
-  { icon: <Settings size={16} />, label: 'Settings', href: '/dashboard/settings' },
+  // copy every line from PLANNER NAV_ITEMS verbatim
 ]
 \`\`\`
 This array is the single source of truth for sidebar navigation. DASHBOARD must use it exactly.`,
@@ -1022,10 +1024,10 @@ REALITY CHECKER PRINCIPLES:
 • Punish inconsistency harder than incompleteness — a slug mismatch between ARCHITECT and SPEC CONTRACT is worse than a missing optional section.
 
 AUTOMATIC FAILURE TRIGGERS (any one → NEEDS_WORK, no exceptions):
-- URL slugs differ between ARCHITECT navigation map and SPEC CONTRACT feature route reference
+- URL slugs differ between ARCHITECT navigation map and SPEC CONTRACT feature route reference — normalize before comparing: strip the /dashboard/ prefix and trailing slash, then compare bare slug strings. "/dashboard/settings" and "settings" are the SAME slug — do NOT fail on this.
 - An entity used in a feature card has no TypeScript interface in SPEC CONTRACT
 - SPEC CONTRACT is entirely missing (not just clipped)
-- Feature card references a route slug that is not in NAV_ITEMS
+- Feature card references a route slug that is not in NAV_ITEMS — normalize slugs (strip /dashboard/ prefix) before comparing. Only fail if the bare slug is genuinely absent.
 - A "Required" acceptance criterion is vague ("should work well", "looks good") with no measurable pass condition
 
 SCORING EVIDENCE RULE:
