@@ -268,6 +268,21 @@ export function buildRepairMessage(forge: { projectName: string; brief: string }
   ]
   const missing = CRITICAL.filter(f => !accumulated[f])
 
+  // Detect truncated JSX files — unbalanced open/close tags or missing closing brace
+  function isTruncatedJsx(content: string): boolean {
+    // Count JSX open vs close tags (rough heuristic — catches most truncations)
+    const opens  = (content.match(/<[A-Z][A-Za-z]*[\s/>]/g) ?? []).length
+    const closes = (content.match(/<\/[A-Z][A-Za-z]*/g) ?? []).length
+    const selfClose = (content.match(/<[A-Z][A-Za-z]*[^>]*\/>/g) ?? []).length
+    // Trim whitespace from end and check it ends with a closing brace/paren
+    const trimmed = content.trimEnd()
+    const endsCorrectly = /[\}\)]$/.test(trimmed)
+    return (opens - selfClose - closes > 1) || !endsCorrectly
+  }
+  const truncatedTsx = Object.entries(accumulated)
+    .filter(([file, content]) => file.endsWith('.tsx') && content && isTruncatedJsx(content))
+    .map(([file]) => file)
+
   // Extract key file content — give REPAIR maximum context
   const snippet = (key: string, maxLen = 1200) =>
     accumulated[key] ? accumulated[key].slice(0, maxLen) : '(MISSING — generate this file)'
@@ -280,6 +295,9 @@ ${filePaths.join('\n')}
 
 MISSING CRITICAL FILES (${missing.length}):
 ${missing.length > 0 ? missing.join('\n') : 'None — all critical files present'}
+
+TRUNCATED / MALFORMED TSX FILES (${truncatedTsx.length}) — BLOCKING, fix first:
+${truncatedTsx.length > 0 ? truncatedTsx.join('\n') : 'None detected'}
 
 === CONTEXT: KEY FILE CONTENT ===
 
@@ -317,8 +335,9 @@ src/app/dashboard/page.tsx (first 800 chars):
 ${snippet('src/app/dashboard/page.tsx', 800)}
 
 === YOUR TASKS (in priority order) ===
-1. Apply ALL 6 known build-failure patterns from your system prompt before anything else
-2. Generate EVERY file listed in MISSING CRITICAL FILES — complete implementations, no stubs
+1. Regenerate EVERY file in TRUNCATED / MALFORMED TSX FILES — short complete implementation, all JSX tags balanced
+2. Apply ALL known build-failure patterns from your system prompt (especially Pattern 10 — truncated JSX)
+3. Generate EVERY file listed in MISSING CRITICAL FILES — complete implementations, no stubs
 3. Ensure src/lib/utils.ts exports: cn, formatCurrency, formatDate, formatRelativeTime, formatDateTime, truncate, capitalize, slugify, generateId, clamp, formatNumber, groupBy, sortBy
 4. Ensure src/hooks/useApp.ts starts with 'use client' and exports: useLocalStorage, useFilter, useModal, useDemoToast
 5. Generate src/app/dashboard/settings/page.tsx only if it is listed in MISSING CRITICAL FILES or ERROR MANIFEST
@@ -1659,6 +1678,24 @@ PATTERN 9 — dashboard/layout.tsx double pt-9 offset
   Root cause: root layout.tsx wraps {children} in pt-9, AND dashboard/layout.tsx has pt-9 on its outer div
   Fix: Remove pt-9 from the outer div in src/app/dashboard/layout.tsx — root layout provides the offset.
   Correct dashboard layout outer div: <div className="flex min-h-screen bg-zinc-50">
+
+PATTERN 10 — Truncated JSX files (Unexpected token / Unexpected eof)
+  Symptom: Vercel build fails with "Unexpected token 'div'. Expected jsx identifier" OR "Unexpected eof"
+  Root cause: An AI-generated .tsx file was cut off mid-render due to token budget exhaustion.
+    The file ends abruptly before its closing </div> or closing function brace.
+  Detection: Scan EVERY generated .tsx file in the context. A truncated file:
+    - Has unbalanced JSX tags (more opening than closing)
+    - Ends without a closing brace for the exported function
+    - Has JSX appearing after an unclosed expression like {someVar.map(x => (
+  Fix: Regenerate the truncated file from scratch — SHORT version only.
+    The replacement MUST:
+    - Be under 120 lines
+    - Close every JSX tag opened
+    - End with a proper closing brace and no trailing syntax
+    - Include 'use client' if it uses any hooks or event handlers
+  Priority files to check (commonly truncated): src/app/dashboard/page.tsx,
+    src/app/dashboard/[feature]/page.tsx, src/components/interactions.tsx,
+    src/components/ui.tsx, src/app/page.tsx
 
 ═══════════════════════════════════════════════════════
 STANDARD TASKS
