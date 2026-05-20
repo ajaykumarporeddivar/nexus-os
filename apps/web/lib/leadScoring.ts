@@ -36,6 +36,8 @@ export const ICP = {
   segments:    ['agency', 'saas', 'ecommerce', 'consulting'],
   minRevenue:  50_000,
   targetRoles: ['founder', 'cto', 'ceo', 'head of product', 'vp engineering'],
+  hotScore:    75,   // icpScore threshold for hot_queue routing
+  nurtureScore: 45,  // icpScore threshold for nurture routing
 }
 
 /** Guard against runaway daily scoring spend. Throws if budget exceeded. */
