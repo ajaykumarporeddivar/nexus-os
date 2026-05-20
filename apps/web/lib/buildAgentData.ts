@@ -35,7 +35,7 @@ export const BUILD_AGENTS: BuildAgent[] = [
       // ACORA PAR group B1: mock-data + shell share only the scaffold dependency.
       // Neither consumes the other's output, so they run concurrently. ~90s saved.
       skillType: 'executor', executionMode: 'parallel', parallelGroup: 1,
-      executionOrder: 2, tokenBudget: 2000, timeoutMs: 90_000,
+      executionOrder: 2, tokenBudget: 2000, timeoutMs: 150_000,
       trustLevel: 'trusted', failureBehavior: 'fallback', costCeilingUsd: 0.04,
       dependencies: ['scaffold'],
       retryPolicy: { maxAttempts: 3, backoffMs: 4000 },
@@ -608,40 +608,33 @@ Analyze the FORGE spec deeply. Generate 2 files with rich, realistic, domain-spe
 Return only the contract payload. The response must contain BOTH required FILE blocks and no prose outside them.
 OUTPUT BUDGET:
 - The route caps every BUILD response at 8000 output tokens.
-- Keep the combined src/lib/data.ts + src/lib/types.ts payload under 7200 tokens so both files and both closing >>> markers are emitted.
-- Output data.ts FIRST (it is the highest-value file — types.ts is short and comes second).
-- Prefer dense but complete arrays over commentary, and use 10 records per primary entity. Do not exceed 12 records unless the FORGE spec explicitly requires it.
+- Keep the combined src/lib/data.ts + src/lib/types.ts payload under 6000 tokens so both files and both closing >>> markers are always emitted without truncation.
+- Output data.ts FIRST (highest-value file — types.ts is short and comes second).
+- Prefer concise but complete arrays. Use exactly 6 records per primary entity — no more.
 
 FILE: src/lib/data.ts
 - Import all types from './types'
 - DEMO_USER: realistic user (not "John Doe" — use a specific name like "Sarah Chen" or "Marcus Webb")
-- MOCK_[ENTITY] arrays: exactly 10 records each, highly realistic:
+- MOCK_[ENTITY] arrays: exactly 6 records each, highly realistic:
   • Real-sounding names (mix of demographics)
   • Realistic dollar amounts ($1,234.56 not $100)
   • Dates within last 12 months (2024-2025 era)
   • Domain-specific status values that make sense
   • Varied data — not all "active", not all the same amount
-- STATS object: 4-6 KPI metrics with realistic numbers and trend indicators:
+- STATS object: 4 KPI metrics with realistic numbers and trend indicators:
   export const STATS = {
     totalRevenue: '$284,520',
     revenueGrowth: '+18.4%',
     activeUsers: 1847,
     userGrowth: '+12.1%',
-    // ... domain-specific metrics
   }
-- CHART_DATA: weekly data arrays for charts (12 data points, realistic variation):
+- CHART_DATA: weekly data arrays for charts (8 data points):
   export const CHART_DATA = {
-    weekly: [42, 58, 51, 73, 88, 65, 79, 94, 71, 103, 89, 112],
-    labels: ['Jan W1', 'Jan W2', ...12 labels],
-    revenue: [18200, 22400, 19800, 31200, ...12 values],
+    weekly: [42, 58, 51, 73, 88, 65, 79, 94],
+    labels: ['Jan W1', 'Jan W2', ...8 labels],
+    revenue: [18200, 22400, 19800, 31200, 28500, 33100, 29800, 35600],
   }
-- SPARKLINE_DATA: 7-day trend arrays for each KPI StatCard:
-  export const SPARKLINE_DATA = {
-    revenue:    [78, 82, 79, 91, 88, 94, 103],
-    users:      [142, 158, 151, 173, 188, 165, 179],
-    // ... one per KPI
-  }
-- RECENT_ACTIVITY: 12 items — realistic actions with user names, timestamps:
+- RECENT_ACTIVITY: 6 items — realistic actions with user names, timestamps:
   export const RECENT_ACTIVITY = [
     { id: '1', action: 'Created new contract', user: 'Sarah Chen', avatar: 'SC', time: '2 minutes ago', type: 'create' as const },
     ...
