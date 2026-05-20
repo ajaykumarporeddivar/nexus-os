@@ -1697,6 +1697,28 @@ PATTERN 10 — Truncated JSX files (Unexpected token / Unexpected eof)
     src/app/dashboard/[feature]/page.tsx, src/components/interactions.tsx,
     src/components/ui.tsx, src/app/page.tsx
 
+PATTERN 11 — Uninitialized const declarations
+  Symptom: Vercel build fails with "'const' declarations must be initialized"
+  Root cause: AI generated a bare `const x;` declaration without `= value`.
+    TypeScript/ESNext requires every `const` to have an initializer.
+  Detection: Grep all .ts/.tsx files for `^\s*const\s+\w+\s*;` — no = sign.
+  Fix: Add a sensible default initializer based on the variable's type context:
+    - string → = ''
+    - number → = 0
+    - boolean → = false
+    - array → = []
+    - object → = {}
+    - React state that's null by design → = null
+  Also check: `const [x] = useState()` missing initial value → add `useState<T>(defaultValue)`
+
+PATTERN 12 — JSX.Element instead of React.JSX.Element
+  Symptom: TypeScript error "Cannot find namespace 'JSX'" on any function return type
+  Root cause: React 19 / Next.js 15 removed the global JSX namespace. Bare JSX.Element is invalid.
+  Detection: Find all ): JSX.Element in .tsx files
+  Fix: Replace every ): JSX.Element with ): React.JSX.Element
+    AND ensure `import React from 'react'` is at the top of the file if not already present.
+    Alternatively remove the return type annotation entirely — TypeScript infers it correctly.
+
 ═══════════════════════════════════════════════════════
 STANDARD TASKS
 ═══════════════════════════════════════════════════════
