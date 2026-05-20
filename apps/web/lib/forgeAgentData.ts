@@ -608,12 +608,13 @@ Output .claude/features/feature-cards.md:
 # Feature Cards — [Product Name]
 
 NAV_ITEMS:
-[Copy EXACTLY from the ARCHITECT Navigation Map — same slugs, same order, same href paths. Include Settings last.]
+[Copy EXACTLY from the ARCHITECT Navigation Map — same slugs, same order, same href paths. Settings MUST always be the last entry.]
 - icon: [LucideIconName] | label: [Display Name] | href: /dashboard/[slug]
-Example (use ARCHITECT slugs, not these examples):
-- icon: BarChart2 | label: Analytics | href: /dashboard/analytics
-- icon: Users | label: Clients | href: /dashboard/clients
+- icon: [LucideIconName] | label: [Display Name] | href: /dashboard/[slug]
+- icon: [LucideIconName] | label: [Display Name] | href: /dashboard/[slug]
 - icon: Settings | label: Settings | href: /dashboard/settings
+
+⚠ The Settings line above is MANDATORY. Every NAV_ITEMS block must end with it. The SPEC CONTRACT will copy this list verbatim — if Settings is absent here, QA will fail on slug mismatch.
 
 ---
 

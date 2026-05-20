@@ -746,6 +746,19 @@ export function BarChart({ values = [20, 48, 32, 64, 44, 72] }: { values?: numbe
   )
 }
 
+export function LineChart({ data = [20, 35, 28, 50, 42, 60, 55], labels = [] as string[], color = '#18181b' }: { data?: number[]; labels?: string[]; color?: string }) {
+  const max = Math.max(...data, 1)
+  const points = data.map((v, i) => \`\${(i / Math.max(data.length - 1, 1)) * 100},\${56 - (v / max) * 52}\`).join(' ')
+  return (
+    <svg viewBox="0 0 100 60" className="h-32 w-full" role="img" aria-label="Line chart">
+      <polyline points={points} fill="none" stroke={color} strokeWidth="2.5" strokeLinejoin="round" />
+      {data.map((v, i) => (
+        <circle key={i} cx={(i / Math.max(data.length - 1, 1)) * 100} cy={56 - (v / max) * 52} r="2" fill={color} />
+      ))}
+    </svg>
+  )
+}
+
 export function DonutChart({ value = 72 }: { value?: number }) {
   return (
     <div className="grid h-28 w-28 place-items-center rounded-full border-[14px] border-zinc-900 bg-white text-xl font-bold text-zinc-950">
