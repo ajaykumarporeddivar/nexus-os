@@ -6,9 +6,12 @@
 export const DAILY_SCORING_BUDGET_USD = 2.00
 
 export interface ScoreRationaleItem {
-  dimension: string
-  score:     number
-  reason:    string
+  dimension:  string
+  score:      number
+  reason:     string
+  direction?: 'positive' | 'negative' | 'neutral'
+  factor?:    string
+  weight:     number
 }
 
 export interface IcpScoreResult {
@@ -16,6 +19,7 @@ export interface IcpScoreResult {
   confidence: number        // 0–1
   rationale:  ScoreRationaleItem[]
   costUsd:    number
+  method?:    string        // scoring method identifier
 }
 
 export interface RoutingResult {
@@ -58,8 +62,8 @@ export async function llmScore(input: LeadInput): Promise<IcpScoreResult> {
     score:      baseScore,
     confidence: 0.5,
     rationale:  [
-      { dimension: 'email_domain', score: isFreeEmail ? 10 : 40, reason: isFreeEmail ? 'Free email provider' : 'Business domain' },
-      { dimension: 'utm_source',   score: input.utmSource ? 20 : 10, reason: input.utmSource ? `Attributed: ${input.utmSource}` : 'Direct / unknown source' },
+      { dimension: 'email_domain', score: isFreeEmail ? 10 : 40, reason: isFreeEmail ? 'Free email provider' : 'Business domain', direction: isFreeEmail ? 'negative' : 'positive', factor: 'Email domain', weight: 0.5 },
+      { dimension: 'utm_source',   score: input.utmSource ? 20 : 10, reason: input.utmSource ? `Attributed: ${input.utmSource}` : 'Direct / unknown source', direction: input.utmSource ? 'positive' : 'neutral', factor: 'Attribution', weight: 0.5 },
     ],
     costUsd: 0,
   }
