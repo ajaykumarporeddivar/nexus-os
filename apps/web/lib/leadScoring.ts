@@ -26,7 +26,9 @@ export interface RoutingResult {
 export interface LeadInput {
   email:        string
   name:         string | null
-  source:       string
+  company?:     string | null
+  role?:        string | null
+  source:       string | null
   utmSource:    string | null
   firmographic?: unknown
 }
