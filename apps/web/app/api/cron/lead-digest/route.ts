@@ -1,10 +1,10 @@
 /**
  * GET /api/cron/lead-digest
- * Cron: weekly Monday 9am — "0 9 * * 1"
+ * Cron: daily 9 AM — "0 9 * * *"
  *
- * SME-12 / SME-13: Weekly lead ops intelligence digest
- * Sends to founder with: funnel snapshot, ROI proxy, cost report,
- * ICP drift signal, assumption decay warnings
+ * SME-12 / SME-13: Daily lead ops intelligence digest
+ * Sends to founder with: yesterday's leads by tier, platform breakdown,
+ * follow-up queue depth, ROI proxy, cost report, ICP drift warnings.
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { verifyCronRequest } from '@/lib/cronAuth'
@@ -28,36 +28,57 @@ export async function GET(req: NextRequest) {
   if (!r) return NextResponse.json({ ok: false, error: 'RESEND_API_KEY not set' })
 
   const now      = new Date()
-  const day7ago  = new Date(now.getTime() - 7  * 24 * 60 * 60 * 1000)
+  const day1ago  = new Date(now.getTime() -  1 * 24 * 60 * 60 * 1000)
+  const day7ago  = new Date(now.getTime() -  7 * 24 * 60 * 60 * 1000)
   const day30ago = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
 
   const [
     totalLeads,
+    newLast24h,
     newLast7,
     statusCounts,
     hotLeads,
+    costDay,
     costWeek,
     conversionLast30,
     dlqCount,
     avgScore,
+    platformCounts,
+    followUpQueue,
+    pendingOnboarding,
+    pendingRetainer,
   ] = await Promise.all([
     prisma.lead.count(),
+    prisma.lead.count({ where: { createdAt: { gte: day1ago } } }),
     prisma.lead.count({ where: { createdAt: { gte: day7ago } } }),
     prisma.lead.groupBy({ by: ['status'], _count: { status: true } }),
     prisma.lead.count({ where: { icpScore: { gte: ICP.hotScore } } }),
+    prisma.lead.aggregate({ _sum: { scoringCostUsd: true }, where: { scoredAt: { gte: day1ago } } }),
     prisma.lead.aggregate({ _sum: { scoringCostUsd: true }, where: { scoredAt: { gte: day7ago } } }),
     prisma.lead.count({ where: { status: 'converted', updatedAt: { gte: day30ago } } }),
     prisma.lead.count({ where: { status: 'dlq' } }),
     prisma.lead.aggregate({ _avg: { icpScore: true }, where: { icpScore: { gt: 0 } } }),
+    prisma.lead.groupBy({ by: ['platform' as never], _count: true, where: { createdAt: { gte: day7ago } } }),
+    prisma.lead.count({ where: { status: { in: ['in_outreach', 'routed'] }, consentCaptured: true, nextTouchAt: { lte: now }, touchCount: { lt: 5 } } }),
+    prisma.lead.count({ where: { status: 'converted', onboardingFormSentAt: null } }),
+    prisma.lead.count({ where: { deliveredAt: { lte: new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000) }, retainerPitchedAt: null } }),
   ])
 
   const statusMap: Record<string, number> = {}
   for (const s of statusCounts) statusMap[s.status] = s._count.status
 
-  const routed      = statusMap['routed']    ?? 0
+  const routed       = statusMap['routed']       ?? 0
   const disqualified = statusMap['disqualified'] ?? 0
-  const costWeekUsd = costWeek._sum.scoringCostUsd ?? 0
-  const avgIcpScore = avgScore._avg.icpScore ?? 0
+  const costDayUsd   = costDay._sum.scoringCostUsd  ?? 0
+  const costWeekUsd  = costWeek._sum.scoringCostUsd ?? 0
+  const avgIcpScore  = avgScore._avg.icpScore       ?? 0
+
+  // Platform breakdown (last 7 days)
+  const platformRows = (platformCounts as { platform: string | null; _count: number }[])
+    .sort((a, b) => b._count - a._count)
+    .slice(0, 5)
+    .map(p => metricRow(p.platform ?? 'unknown', p._count))
+    .join('')
 
   // SME-13: ROI proxy (qualified leads / cost)
   const costPerHotLead = hotLeads > 0 ? costWeekUsd / hotLeads : 0
@@ -89,7 +110,7 @@ export async function GET(req: NextRequest) {
   await r.emails.send({
     from:    FROM(),
     to:      FOUNDER_EMAIL(),
-    subject: `${brand.name} · Weekly Lead Digest — ${newLast7} new · ${hotLeads} hot · $${costWeekUsd.toFixed(3)} spent`,
+    subject: `${brand.name} · Daily Lead Digest — ${newLast24h} new today · ${hotLeads} hot total · followups: ${followUpQueue}`,
     html: `<!DOCTYPE html>
 <html><head><meta charset="utf-8"><style>
   body{font-family:-apple-system,sans-serif;background:#0a0a0a;color:#e5e5e5;margin:0;padding:32px 16px}
@@ -98,25 +119,37 @@ export async function GET(req: NextRequest) {
   .btn{display:inline-block;background:#c8ff00;color:#000;font-weight:700;font-size:13px;padding:11px 22px;border-radius:8px;text-decoration:none;margin-top:20px}
 </style></head>
 <body><div class="card">
-  <div style="font-size:11px;color:#555;margin-bottom:16px;letter-spacing:.1em">${brand.name} · WEEKLY LEAD DIGEST · ${now.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}</div>
+  <div style="font-size:11px;color:#555;margin-bottom:16px;letter-spacing:.1em">${brand.name} · DAILY LEAD DIGEST · ${now.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}</div>
   <h1 style="font-size:20px;font-weight:700;margin:0 0 20px">Lead Pipeline Intelligence</h1>
 
   ${warningsHtml}
 
-  <div style="font-size:11px;color:#555;margin-bottom:8px;text-transform:uppercase;letter-spacing:.08em">Funnel · Last 7 days</div>
+  <div style="font-size:11px;color:#555;margin-bottom:8px;text-transform:uppercase;letter-spacing:.08em">Today's Activity</div>
   <table>
-    ${metricRow('New leads', newLast7, '#c8ff00')}
-    ${metricRow('Hot (ICP ≥ 70)', hotLeads, '#4ade80')}
+    ${metricRow('New leads (24h)', newLast24h, '#c8ff00')}
+    ${metricRow('Hot (ICP ≥ 75)', hotLeads, '#4ade80')}
+    ${metricRow('Follow-up touches due', followUpQueue, followUpQueue > 0 ? '#facc15' : '#888')}
+    ${metricRow('Awaiting onboarding form', pendingOnboarding, pendingOnboarding > 0 ? '#facc15' : '#888')}
+    ${metricRow('Retainer pitch due', pendingRetainer, pendingRetainer > 0 ? '#818cf8' : '#888')}
+  </table>
+
+  <div style="font-size:11px;color:#555;margin:20px 0 8px;text-transform:uppercase;letter-spacing:.08em">Funnel · Last 7 days</div>
+  <table>
+    ${metricRow('New leads', newLast7)}
     ${metricRow('Routed', routed)}
     ${metricRow('Disqualified', disqualified)}
     ${metricRow('Converted (30d)', conversionLast30, '#818cf8')}
     ${metricRow('DLQ (pending retry)', dlqCount, dlqCount > 0 ? '#f87171' : '#888')}
   </table>
 
+  <div style="font-size:11px;color:#555;margin:20px 0 8px;text-transform:uppercase;letter-spacing:.08em">Platform Breakdown · Last 7 days</div>
+  <table>${platformRows || metricRow('No platform data yet', '–')}</table>
+
   <div style="font-size:11px;color:#555;margin:20px 0 8px;text-transform:uppercase;letter-spacing:.08em">Intelligence · Quality & Cost</div>
   <table>
     ${metricRow('Avg ICP score', `${avgIcpScore.toFixed(1)}/100`, avgIcpScore >= 60 ? '#4ade80' : '#facc15')}
     ${metricRow('Disqualification rate', `${(disqualRate * 100).toFixed(0)}%`, disqualRate > 0.4 ? '#f87171' : '#888')}
+    ${metricRow('Scoring cost (today)', `$${costDayUsd.toFixed(4)}`)}
     ${metricRow('Scoring cost (7d)', `$${costWeekUsd.toFixed(4)}`)}
     ${metricRow('Cost per hot lead', hotLeads > 0 ? `$${costPerHotLead.toFixed(4)}` : '–')}
     ${metricRow('Total leads in DB', totalLeads)}
@@ -135,11 +168,13 @@ export async function GET(req: NextRequest) {
 </div></body></html>`,
   })
 
-  console.log(`[lead-digest] sent to ${FOUNDER_EMAIL()}: ${newLast7} new, ${hotLeads} hot, $${costWeekUsd.toFixed(4)} cost`)
+  console.log(`[lead-digest] sent to ${FOUNDER_EMAIL()}: ${newLast24h} new today, ${hotLeads} hot, followups=${followUpQueue}, $${costDayUsd.toFixed(4)} cost today`)
   return NextResponse.json({
     ok: true,
     sentTo: FOUNDER_EMAIL(),
-    newLast7, hotLeads, conversionLast30, costWeekUsd,
+    newLast24h, newLast7, hotLeads, conversionLast30,
+    followUpQueue, pendingOnboarding, pendingRetainer,
+    costDayUsd, costWeekUsd,
     avgIcpScore: parseFloat(avgIcpScore.toFixed(1)),
     dlqCount,
     disqualRate: parseFloat((disqualRate * 100).toFixed(1)),

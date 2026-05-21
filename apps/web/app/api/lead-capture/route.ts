@@ -25,6 +25,8 @@ export async function POST(req: NextRequest) {
       utmMedium?: string
       utmCampaign?: string
       utmContent?: string
+      platform?: string      // instagram|whatsapp|upwork|linkedin|direct
+      messageText?: string   // raw enquiry message from the form
     }
 
     const email = (body.email ?? '').trim().toLowerCase()
@@ -96,16 +98,20 @@ export async function POST(req: NextRequest) {
       where:  { id: existingLead?.id ?? 'new' },
       create: {
         email,
-        name:            body.name     ?? null,
+        name:            body.name        ?? null,
         source:          'landing_page',
-        utmSource:       utmSource     ?? null,
-        utmMedium:       utmMedium     ?? null,
-        utmCampaign:     utmCampaign   ?? null,
-        utmContent:      utmContent    ?? null,
+        platform:        body.platform    ?? null,
+        messageText:     body.messageText ?? null,
+        utmSource:       utmSource        ?? null,
+        utmMedium:       utmMedium        ?? null,
+        utmCampaign:     utmCampaign      ?? null,
+        utmContent:      utmContent       ?? null,
         consentCaptured: true,   // landing form = explicit consent (DPDP)
         consentAt:       new Date(),
         consentSource:   'landing_form',
         status:          'new',
+        // Schedule Day 3 follow-up touch immediately
+        nextTouchAt:     new Date(Date.now() + 3 * 24 * 60 * 60 * 1000),
         pipelineRunId:   `lp_${crypto.randomUUID()}`,  // G7: auto-generate for ROI attribution
       },
       update: {
@@ -116,7 +122,14 @@ export async function POST(req: NextRequest) {
 
     // Async AI scoring (non-blocking)
     if (isNew) {
-      scoreNewLead(lead.id, { email, name: body.name ?? null, source: 'landing_page', utmSource: utmSource ?? null }).catch(console.error)
+      scoreNewLead(lead.id, {
+        email,
+        name:        body.name        ?? null,
+        source:      'landing_page',
+        platform:    body.platform    ?? null,
+        messageText: body.messageText ?? null,
+        utmSource:   utmSource        ?? null,
+      }).catch(console.error)
     }
 
     return NextResponse.json({ ok: true, isNew })
@@ -126,7 +139,7 @@ export async function POST(req: NextRequest) {
   }
 }
 
-async function scoreNewLead(leadId: string, input: { email: string; name: string | null; source: string; utmSource: string | null }) {
+async function scoreNewLead(leadId: string, input: { email: string; name: string | null; source: string; platform: string | null; messageText: string | null; utmSource: string | null }) {
   try {
     await checkScoringBudget()
     const freshFirmo = await enrichLead(input.email)
@@ -161,6 +174,9 @@ async function scoreNewLead(leadId: string, input: { email: string; name: string
       routingDecision: routing.decision,
       rationale:       result.rationale as ScoreRationaleItem[],
       source:          input.source,
+      platform:        input.platform,
+      messageText:     input.messageText,
+      firmographic:    freshFirmo as Record<string, unknown>,
       consentCaptured: lead.consentCaptured,
       pipelineRunId:   lead.pipelineRunId,
     }

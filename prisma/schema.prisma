@@ -16,6 +16,7 @@ enum LeadStatus {
   routed
   in_outreach
   converted
+  retainer_active
   disqualified
   dlq
 }
@@ -80,6 +81,20 @@ model Lead {
   scoringCostUsd Float?
   enrichCostUsd  Float?
 
+  // Multi-touch follow-up sequence (10x pipeline upgrade)
+  touchCount           Int       @default(0)    // how many follow-up touches sent
+  lastTouchAt          DateTime?               // timestamp of last outreach touch
+  nextTouchAt          DateTime?               // when next touch should fire
+  messageText          String?   @db.Text      // original enquiry message (for AI classification)
+  platform             String?                 // inbound channel: instagram|whatsapp|upwork|linkedin|direct
+  referredBy           String?                 // email of referrer (15% commission tracking)
+
+  // Post-conversion lifecycle
+  onboardingFormSentAt DateTime?               // when client onboarding questionnaire was sent
+  retainerPitchedAt    DateTime?               // when monthly retainer was pitched
+  warrantyExpiresAt    DateTime?               // 30-day bug-fix warranty expiry
+  deliveredAt          DateTime?               // when project was delivered (triggers warranty clock)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -90,6 +105,9 @@ model Lead {
   @@index([icpScore])
   @@index([createdAt])
   @@index([userId])
+  @@index([nextTouchAt])
+  @@index([platform])
+  @@index([deliveredAt])
 }
 
 model User {
