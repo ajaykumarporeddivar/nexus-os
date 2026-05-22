@@ -46,6 +46,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" suppressHydrationWarning>
       <body>
+        {/* Skip navigation for keyboard users (WCAG 2.4.1) */}
+        <a href="#main-content" className="skip-link">Skip to main content</a>
         {/* Global screen-reader live region — updated by shell on page navigation */}
         <div
           id="global-sr-announce"

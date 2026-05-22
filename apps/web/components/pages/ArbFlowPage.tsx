@@ -10,10 +10,11 @@
  *
  * All calls go to /api/arbflow/* serverless routes.
  * Falls back to simulated mock data when API keys are missing.
+ *
+ * Design: token-only, no hardcoded hex. All colours via CSS custom properties.
  */
 
 import { useState } from 'react'
-import { useSession } from 'next-auth/react'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -45,31 +46,61 @@ interface ContentResult {
   cta: string
 }
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
+// ─── Token helpers ────────────────────────────────────────────────────────────
 
-function scoreColor(score: number) {
-  if (score >= 75) return '#9ef500'
-  if (score >= 50) return '#facc15'
-  return '#f87171'
+/** Returns CSS var name for score colour — green / amber / rose */
+function scoreVar(score: number) {
+  if (score >= 75) return 'var(--green)'
+  if (score >= 50) return 'var(--amber)'
+  return 'var(--rose)'
 }
 
 function statusBadge(status: NicheResult['status']) {
   const map = {
-    validated: { bg: '#0a1f00', border: '#9ef500', text: '#9ef500', label: 'VALIDATED' },
-    borderline: { bg: '#1a1400', border: '#facc15', text: '#facc15', label: 'BORDERLINE' },
-    rejected:   { bg: '#1a0500', border: '#f87171', text: '#f87171', label: 'REJECTED'  },
+    validated: { bg: 'color-mix(in srgb,var(--green) 12%,transparent)', border: 'color-mix(in srgb,var(--green) 40%,transparent)', text: 'var(--green)', label: 'VALIDATED'  },
+    borderline: { bg: 'color-mix(in srgb,var(--amber) 12%,transparent)', border: 'color-mix(in srgb,var(--amber) 40%,transparent)', text: 'var(--amber)', label: 'BORDERLINE' },
+    rejected:   { bg: 'color-mix(in srgb,var(--rose)  12%,transparent)', border: 'color-mix(in srgb,var(--rose)  40%,transparent)', text: 'var(--rose)',  label: 'REJECTED'   },
   }
   const s = map[status]
   return (
     <span style={{
       background: s.bg, border: `1px solid ${s.border}`, color: s.text,
-      fontSize: 10, fontWeight: 700, letterSpacing: '0.08em',
-      padding: '2px 8px', borderRadius: 4,
+      fontSize: 'var(--text-xs)', fontWeight: 700, letterSpacing: '0.08em',
+      padding: '2px 8px', borderRadius: 'var(--radius-sm)',
+      fontFamily: 'var(--ff-m)',
     }}>{s.label}</span>
   )
 }
 
-// ─── Mock fallbacks (used when no API key) ───────────────────────────────────
+// ─── Shared input / button styles ─────────────────────────────────────────────
+
+const inputStyle: React.CSSProperties = {
+  flex: 1,
+  background: 'var(--paper)',
+  border: '1px solid var(--border)',
+  borderRadius: 'var(--radius-md)',
+  color: 'var(--ink)',
+  fontSize: 'var(--text-sm)',
+  padding: '10px 14px',
+  outline: 'none',
+  fontFamily: 'var(--ff-d)',
+  minHeight: 'var(--touch-min)',
+}
+
+function PrimaryBtn({ onClick, disabled, children }: { onClick: () => void; disabled?: boolean; children: React.ReactNode }) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      className="btn btn-primary"
+      style={{ whiteSpace: 'nowrap' }}
+    >
+      {children}
+    </button>
+  )
+}
+
+// ─── Mock fallbacks ───────────────────────────────────────────────────────────
 
 function mockNicheResult(idea: string): NicheResult {
   const hash = idea.length * 7 + idea.charCodeAt(0)
@@ -129,26 +160,21 @@ function mockContentPosts(offer: string): ContentResult[] {
 // ─── Sub-components ──────────────────────────────────────────────────────────
 
 function NicheTool() {
-  const [idea, setIdea] = useState('')
+  const [idea, setIdea]       = useState('')
   const [loading, setLoading] = useState(false)
-  const [result, setResult] = useState<NicheResult | null>(null)
+  const [result, setResult]   = useState<NicheResult | null>(null)
 
   async function validate() {
     if (!idea.trim()) return
     setLoading(true)
     setResult(null)
     try {
-      const res = await fetch('/api/arbflow/validate-niche', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const res  = await fetch('/api/arbflow/validate-niche', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ idea }),
       })
       const data = await res.json()
-      if (res.ok && data.ok) {
-        setResult(data as NicheResult)
-      } else {
-        setResult(mockNicheResult(idea))
-      }
+      setResult(res.ok && data.ok ? (data as NicheResult) : mockNicheResult(idea))
     } catch {
       setResult(mockNicheResult(idea))
     }
@@ -157,7 +183,7 @@ function NicheTool() {
 
   return (
     <div>
-      <p style={{ color: '#888', fontSize: 13, marginBottom: 20 }}>
+      <p style={{ color: 'var(--ink3)', fontSize: 'var(--text-sm)', marginBottom: 20 }}>
         Enter a niche or business idea. AI scores market viability, competition, and monetisation potential (0–100).
       </p>
       <div style={{ display: 'flex', gap: 10, marginBottom: 24 }}>
@@ -166,71 +192,60 @@ function NicheTool() {
           onChange={e => setIdea(e.target.value)}
           onKeyDown={e => e.key === 'Enter' && validate()}
           placeholder="e.g. AI automation for boutique law firms"
-          style={{
-            flex: 1, background: '#111', border: '1px solid #222', borderRadius: 8,
-            color: '#e5e5e5', fontSize: 14, padding: '10px 14px', outline: 'none',
-          }}
+          style={inputStyle}
+          aria-label="Niche idea"
         />
-        <button
-          onClick={validate}
-          disabled={loading || !idea.trim()}
-          style={{
-            background: loading ? '#222' : '#9ef500', color: '#000', fontWeight: 700,
-            fontSize: 13, padding: '10px 20px', border: 'none', borderRadius: 8,
-            cursor: loading ? 'not-allowed' : 'pointer', whiteSpace: 'nowrap',
-          }}
-        >
+        <PrimaryBtn onClick={validate} disabled={loading || !idea.trim()}>
           {loading ? 'Scoring…' : 'Validate Niche →'}
-        </button>
+        </PrimaryBtn>
       </div>
 
       {result && (
-        <div style={{ background: '#111', border: '1px solid #222', borderRadius: 12, padding: 24 }}>
-          {/* Score ring */}
+        <div className="card animate-fadein">
           <div style={{ display: 'flex', alignItems: 'center', gap: 20, marginBottom: 20 }}>
-            <div style={{ position: 'relative', width: 72, height: 72, flexShrink: 0 }}>
-              <svg width="72" height="72" viewBox="0 0 72 72">
-                <circle cx="36" cy="36" r="30" fill="none" stroke="#1a1a1a" strokeWidth="6" />
-                <circle
-                  cx="36" cy="36" r="30" fill="none"
-                  stroke={scoreColor(result.score)} strokeWidth="6"
+            <div style={{ position: 'relative', width: 72, height: 72, flexShrink: 0 }} aria-label={`Score: ${result.score}`}>
+              <svg width="72" height="72" viewBox="0 0 72 72" aria-hidden="true">
+                <circle cx="36" cy="36" r="30" fill="none" stroke="var(--border)" strokeWidth="6" />
+                <circle cx="36" cy="36" r="30" fill="none" stroke={scoreVar(result.score)} strokeWidth="6"
                   strokeDasharray={`${(result.score / 100) * 188.5} 188.5`}
-                  strokeLinecap="round" transform="rotate(-90 36 36)"
-                />
+                  strokeLinecap="round" transform="rotate(-90 36 36)" />
               </svg>
               <div style={{
                 position: 'absolute', inset: 0, display: 'flex', alignItems: 'center',
                 justifyContent: 'center', fontSize: 18, fontWeight: 700,
-                color: scoreColor(result.score),
+                color: scoreVar(result.score),
               }}>
                 {result.score}
               </div>
             </div>
             <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-                {statusBadge(result.status)}
-              </div>
-              <p style={{ color: '#e5e5e5', fontSize: 14, margin: 0 }}>{result.summary}</p>
+              <div style={{ marginBottom: 6 }}>{statusBadge(result.status)}</div>
+              <p style={{ color: 'var(--ink)', fontSize: 'var(--text-sm)', margin: 0 }}>{result.summary}</p>
             </div>
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
             <div>
-              <div style={{ fontSize: 11, color: '#555', letterSpacing: '0.08em', marginBottom: 8 }}>STRENGTHS</div>
+              <div className="sec-label" style={{ marginBottom: 8 }}>Strengths</div>
               {result.strengths.map((s, i) => (
-                <div key={i} style={{ fontSize: 13, color: '#9ef500', marginBottom: 4 }}>✓ {s}</div>
+                <div key={i} style={{ fontSize: 'var(--text-sm)', color: 'var(--green)', marginBottom: 4 }}>✓ {s}</div>
               ))}
             </div>
             <div>
-              <div style={{ fontSize: 11, color: '#555', letterSpacing: '0.08em', marginBottom: 8 }}>RISKS</div>
+              <div className="sec-label" style={{ marginBottom: 8 }}>Risks</div>
               {result.risks.map((r, i) => (
-                <div key={i} style={{ fontSize: 13, color: '#f87171', marginBottom: 4 }}>⚠ {r}</div>
+                <div key={i} style={{ fontSize: 'var(--text-sm)', color: 'var(--rose)', marginBottom: 4 }}>⚠ {r}</div>
               ))}
             </div>
           </div>
 
-          <div style={{ background: '#0a0a0a', borderRadius: 8, padding: 14, fontSize: 13, color: '#ccc' }}>
-            <span style={{ color: '#9ef500', fontWeight: 600 }}>Recommendation: </span>
+          <div style={{
+            background: 'color-mix(in srgb,var(--acid) 8%,transparent)',
+            border: '1px solid color-mix(in srgb,var(--acid) 20%,transparent)',
+            borderRadius: 'var(--radius-md)', padding: 14,
+            fontSize: 'var(--text-sm)', color: 'var(--ink2)',
+          }}>
+            <span style={{ color: 'var(--acid)', fontWeight: 600 }}>Recommendation: </span>
             {result.recommendation}
           </div>
         </div>
@@ -240,26 +255,21 @@ function NicheTool() {
 }
 
 function OfferTool() {
-  const [niche, setNiche] = useState('')
+  const [niche, setNiche]     = useState('')
   const [loading, setLoading] = useState(false)
-  const [result, setResult] = useState<OfferResult | null>(null)
+  const [result, setResult]   = useState<OfferResult | null>(null)
 
   async function build() {
     if (!niche.trim()) return
     setLoading(true)
     setResult(null)
     try {
-      const res = await fetch('/api/arbflow/build-offer', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const res  = await fetch('/api/arbflow/build-offer', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ niche }),
       })
       const data = await res.json()
-      if (res.ok && data.ok) {
-        setResult(data as OfferResult)
-      } else {
-        setResult(mockOfferResult(niche))
-      }
+      setResult(res.ok && data.ok ? (data as OfferResult) : mockOfferResult(niche))
     } catch {
       setResult(mockOfferResult(niche))
     }
@@ -268,7 +278,7 @@ function OfferTool() {
 
   return (
     <div>
-      <p style={{ color: '#888', fontSize: 13, marginBottom: 20 }}>
+      <p style={{ color: 'var(--ink3)', fontSize: 'var(--text-sm)', marginBottom: 20 }}>
         Describe your niche or validated idea. AI generates a premium digital offer with positioning, deliverables, and pricing.
       </p>
       <div style={{ display: 'flex', gap: 10, marginBottom: 24 }}>
@@ -277,61 +287,55 @@ function OfferTool() {
           onChange={e => setNiche(e.target.value)}
           onKeyDown={e => e.key === 'Enter' && build()}
           placeholder="e.g. productivity systems for freelance designers"
-          style={{
-            flex: 1, background: '#111', border: '1px solid #222', borderRadius: 8,
-            color: '#e5e5e5', fontSize: 14, padding: '10px 14px', outline: 'none',
-          }}
+          style={inputStyle}
+          aria-label="Niche description"
         />
-        <button
-          onClick={build}
-          disabled={loading || !niche.trim()}
-          style={{
-            background: loading ? '#222' : '#9ef500', color: '#000', fontWeight: 700,
-            fontSize: 13, padding: '10px 20px', border: 'none', borderRadius: 8,
-            cursor: loading ? 'not-allowed' : 'pointer', whiteSpace: 'nowrap',
-          }}
-        >
+        <PrimaryBtn onClick={build} disabled={loading || !niche.trim()}>
           {loading ? 'Building…' : 'Build Offer →'}
-        </button>
+        </PrimaryBtn>
       </div>
 
       {result && (
-        <div style={{ background: '#111', border: '1px solid #222', borderRadius: 12, padding: 24 }}>
+        <div className="card animate-fadein">
           <div style={{ marginBottom: 20 }}>
-            <div style={{ fontSize: 11, color: '#555', letterSpacing: '0.08em', marginBottom: 4 }}>OFFER TITLE</div>
-            <div style={{ fontSize: 20, fontWeight: 700, color: '#e5e5e5' }}>{result.title}</div>
+            <div className="sec-label" style={{ marginBottom: 4 }}>Offer Title</div>
+            <div style={{ fontSize: 'var(--text-xl)', fontWeight: 700, color: 'var(--ink)' }}>{result.title}</div>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16, marginBottom: 20 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 20 }}>
             {[
-              { label: 'FORMAT', value: result.format },
-              { label: 'PRICE RANGE', value: result.price },
-              { label: 'TARGET BUYER', value: result.targetBuyer },
+              { label: 'Format',       value: result.format      },
+              { label: 'Price Range',  value: result.price       },
+              { label: 'Target Buyer', value: result.targetBuyer },
             ].map(({ label, value }) => (
-              <div key={label} style={{ background: '#0a0a0a', borderRadius: 8, padding: 12 }}>
-                <div style={{ fontSize: 10, color: '#555', letterSpacing: '0.08em', marginBottom: 4 }}>{label}</div>
-                <div style={{ fontSize: 13, color: '#e5e5e5' }}>{value}</div>
+              <div key={label} className="panel">
+                <div className="sec-label" style={{ marginBottom: 4 }}>{label}</div>
+                <div style={{ fontSize: 'var(--text-sm)', color: 'var(--ink)' }}>{value}</div>
               </div>
             ))}
           </div>
 
           <div style={{ marginBottom: 16 }}>
-            <div style={{ fontSize: 11, color: '#555', letterSpacing: '0.08em', marginBottom: 8 }}>DELIVERABLES</div>
+            <div className="sec-label" style={{ marginBottom: 8 }}>Deliverables</div>
             {result.deliverables.map((d, i) => (
-              <div key={i} style={{ fontSize: 13, color: '#ccc', marginBottom: 6 }}>
-                <span style={{ color: '#9ef500', marginRight: 8 }}>◆</span>{d}
+              <div key={i} style={{ fontSize: 'var(--text-sm)', color: 'var(--ink2)', marginBottom: 6 }}>
+                <span style={{ color: 'var(--acid)', marginRight: 8 }}>◆</span>{d}
               </div>
             ))}
           </div>
 
-          <div style={{ background: '#0a1500', border: '1px solid #1a3000', borderRadius: 8, padding: 14, marginBottom: 12 }}>
-            <div style={{ fontSize: 11, color: '#555', letterSpacing: '0.08em', marginBottom: 4 }}>UNIQUE SELLING POINT</div>
-            <div style={{ fontSize: 13, color: '#ccc' }}>{result.usp}</div>
+          <div style={{
+            background: 'color-mix(in srgb,var(--acid) 6%,transparent)',
+            border: '1px solid color-mix(in srgb,var(--acid) 18%,transparent)',
+            borderRadius: 'var(--radius-md)', padding: 14, marginBottom: 12,
+          }}>
+            <div className="sec-label" style={{ marginBottom: 4 }}>Unique Selling Point</div>
+            <div style={{ fontSize: 'var(--text-sm)', color: 'var(--ink2)' }}>{result.usp}</div>
           </div>
 
-          <div style={{ background: '#0a0a0a', borderRadius: 8, padding: 14 }}>
-            <div style={{ fontSize: 11, color: '#555', letterSpacing: '0.08em', marginBottom: 4 }}>CALL TO ACTION</div>
-            <div style={{ fontSize: 13, color: '#9ef500' }}>{result.cta}</div>
+          <div className="panel">
+            <div className="sec-label" style={{ marginBottom: 4 }}>Call to Action</div>
+            <div style={{ fontSize: 'var(--text-sm)', color: 'var(--acid)' }}>{result.cta}</div>
           </div>
         </div>
       )}
@@ -340,26 +344,21 @@ function OfferTool() {
 }
 
 function ContentTool() {
-  const [offer, setOffer] = useState('')
+  const [offer, setOffer]     = useState('')
   const [loading, setLoading] = useState(false)
-  const [posts, setPosts] = useState<ContentResult[]>([])
+  const [posts, setPosts]     = useState<ContentResult[]>([])
 
   async function generate() {
     if (!offer.trim()) return
     setLoading(true)
     setPosts([])
     try {
-      const res = await fetch('/api/arbflow/content-engine', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const res  = await fetch('/api/arbflow/content-engine', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ offer }),
       })
       const data = await res.json()
-      if (res.ok && data.ok) {
-        setPosts((data.posts ?? []) as ContentResult[])
-      } else {
-        setPosts(mockContentPosts(offer))
-      }
+      setPosts(res.ok && data.ok ? (data.posts ?? []) : mockContentPosts(offer))
     } catch {
       setPosts(mockContentPosts(offer))
     }
@@ -368,7 +367,7 @@ function ContentTool() {
 
   return (
     <div>
-      <p style={{ color: '#888', fontSize: 13, marginBottom: 20 }}>
+      <p style={{ color: 'var(--ink3)', fontSize: 'var(--text-sm)', marginBottom: 20 }}>
         Paste your offer or niche. AI generates ready-to-post hooks and captions for Instagram, LinkedIn, and X.
       </p>
       <div style={{ display: 'flex', gap: 10, marginBottom: 24 }}>
@@ -377,55 +376,53 @@ function ContentTool() {
           onChange={e => setOffer(e.target.value)}
           onKeyDown={e => e.key === 'Enter' && generate()}
           placeholder="e.g. The Freelance Designer Productivity System — $297"
-          style={{
-            flex: 1, background: '#111', border: '1px solid #222', borderRadius: 8,
-            color: '#e5e5e5', fontSize: 14, padding: '10px 14px', outline: 'none',
-          }}
+          style={inputStyle}
+          aria-label="Offer description"
         />
-        <button
-          onClick={generate}
-          disabled={loading || !offer.trim()}
-          style={{
-            background: loading ? '#222' : '#9ef500', color: '#000', fontWeight: 700,
-            fontSize: 13, padding: '10px 20px', border: 'none', borderRadius: 8,
-            cursor: loading ? 'not-allowed' : 'pointer', whiteSpace: 'nowrap',
-          }}
-        >
+        <PrimaryBtn onClick={generate} disabled={loading || !offer.trim()}>
           {loading ? 'Generating…' : 'Generate Content →'}
-        </button>
+        </PrimaryBtn>
       </div>
 
       {posts.length > 0 && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           {posts.map((post, i) => (
-            <div key={i} style={{ background: '#111', border: '1px solid #222', borderRadius: 12, padding: 20 }}>
-              <div style={{
-                fontSize: 10, color: '#9ef500', fontWeight: 700, letterSpacing: '0.1em',
-                marginBottom: 12, textTransform: 'uppercase',
-              }}>
-                {post.platform}
-              </div>
-              <div style={{ fontSize: 14, fontWeight: 700, color: '#e5e5e5', marginBottom: 10 }}>
-                {post.hook}
-              </div>
-              <div style={{ fontSize: 13, color: '#999', whiteSpace: 'pre-line', marginBottom: 12, lineHeight: 1.6 }}>
-                {post.body}
-              </div>
-              <div style={{ fontSize: 13, color: '#facc15' }}>{post.cta}</div>
-              <button
-                onClick={() => navigator.clipboard.writeText(`${post.hook}\n\n${post.body}\n\n${post.cta}`)}
-                style={{
-                  marginTop: 12, background: 'transparent', border: '1px solid #333',
-                  color: '#666', fontSize: 11, padding: '5px 12px', borderRadius: 6,
-                  cursor: 'pointer',
-                }}
-              >
-                Copy
-              </button>
-            </div>
+            <PostCard key={i} post={post} />
           ))}
         </div>
       )}
+    </div>
+  )
+}
+
+function PostCard({ post }: { post: ContentResult }) {
+  const [copied, setCopied] = useState(false)
+
+  function copy() {
+    navigator.clipboard.writeText(`${post.hook}\n\n${post.body}\n\n${post.cta}`)
+      .then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000) })
+  }
+
+  return (
+    <div className="card animate-fadein">
+      <div style={{ fontSize: 'var(--text-xs)', color: 'var(--acid)', fontWeight: 700, letterSpacing: '0.1em', marginBottom: 12, fontFamily: 'var(--ff-m)', textTransform: 'uppercase' }}>
+        {post.platform}
+      </div>
+      <div style={{ fontSize: 'var(--text-md)', fontWeight: 700, color: 'var(--ink)', marginBottom: 10 }}>
+        {post.hook}
+      </div>
+      <div style={{ fontSize: 'var(--text-sm)', color: 'var(--ink3)', whiteSpace: 'pre-line', marginBottom: 12, lineHeight: 1.7 }}>
+        {post.body}
+      </div>
+      <div style={{ fontSize: 'var(--text-sm)', color: 'var(--amber)', marginBottom: 12 }}>{post.cta}</div>
+      <button
+        onClick={copy}
+        className="btn btn-ghost"
+        style={{ fontSize: 'var(--text-xs)', padding: '5px 12px', minHeight: 'auto' }}
+        aria-label={`Copy ${post.platform} post`}
+      >
+        {copied ? '✓ Copied' : 'Copy'}
+      </button>
     </div>
   )
 }
@@ -436,7 +433,7 @@ type StepStatus = 'idle' | 'running' | 'done' | 'error'
 
 interface PipelineState {
   idea:    string
-  step:    0 | 1 | 2 | 3   // 0=not started, 1=niche, 2=offer, 3=content
+  step:    0 | 1 | 2 | 3
   status:  StepStatus
   niche:   NicheResult  | null
   offer:   OfferResult  | null
@@ -445,36 +442,38 @@ interface PipelineState {
 }
 
 const STEPS = [
-  { n: 1, label: 'Validate Niche',  icon: '⊙', detail: 'Scoring market viability 0–100…'   },
-  { n: 2, label: 'Build Offer',     icon: '◻', detail: 'Designing premium digital offer…'   },
-  { n: 3, label: 'Generate Content',icon: '✦', detail: 'Writing hooks for 3 platforms…'     },
+  { n: 1, label: 'Validate Niche',   icon: '⊙', detail: 'Scoring market viability 0–100…' },
+  { n: 2, label: 'Build Offer',      icon: '◻', detail: 'Designing premium digital offer…' },
+  { n: 3, label: 'Generate Content', icon: '✦', detail: 'Writing hooks for 3 platforms…'   },
 ]
 
 function StepIndicator({ step, current, status }: { step: typeof STEPS[0]; current: number; status: StepStatus }) {
   const done    = current > step.n
   const running = current === step.n && status === 'running'
   const error   = current === step.n && status === 'error'
-  const color   = done ? '#9ef500' : running ? '#facc15' : error ? '#f87171' : '#333'
-  const textCol = done ? '#9ef500' : running ? '#facc15' : error ? '#f87171' : '#555'
+  const color   = done ? 'var(--green)' : running ? 'var(--amber)' : error ? 'var(--rose)' : 'var(--border2)'
+  const textCol = done ? 'var(--green)' : running ? 'var(--amber)' : error ? 'var(--rose)' : 'var(--ink3)'
+
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
       <div style={{
-        width: 28, height: 28, borderRadius: '50%', border: `2px solid ${color}`,
+        width: 28, height: 28, borderRadius: '50%',
+        border: `2px solid ${color}`,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         fontSize: 12, color, flexShrink: 0,
-        background: done ? '#0a1500' : 'transparent',
-      }}>
+        background: done ? 'color-mix(in srgb,var(--green) 10%,transparent)' : 'transparent',
+      }} aria-label={`Step ${step.n}: ${done ? 'done' : running ? 'running' : 'pending'}`}>
         {done ? '✓' : running ? '…' : step.n}
       </div>
       <div>
-        <div style={{ fontSize: 13, fontWeight: 600, color: textCol }}>{step.label}</div>
-        {running && <div style={{ fontSize: 11, color: '#facc15', marginTop: 2 }}>{step.detail}</div>}
+        <div style={{ fontSize: 'var(--text-sm)', fontWeight: 600, color: textCol }}>{step.label}</div>
+        {running && <div style={{ fontSize: 'var(--text-xs)', color: 'var(--amber)', marginTop: 2 }}>{step.detail}</div>}
       </div>
     </div>
   )
 }
 
-// ─── Full pipeline runner ─────────────────────────────────────────────────────
+// ─── Pipeline runner ──────────────────────────────────────────────────────────
 
 async function runStep<T>(url: string, body: Record<string, string>, fallback: T): Promise<T> {
   try {
@@ -490,98 +489,90 @@ async function runStep<T>(url: string, body: Record<string, string>, fallback: T
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 const TOOLS: { id: Tool; label: string; icon: string; tagline: string }[] = [
-  { id: 'niche',   label: 'Niche Validator',  icon: '⊙', tagline: 'Score any idea 0–100'      },
-  { id: 'offer',   label: 'Offer Builder',    icon: '◻', tagline: 'Turn niche → premium offer' },
-  { id: 'content', label: 'Content Engine',   icon: '✦', tagline: 'Generate platform hooks'    },
+  { id: 'niche',   label: 'Niche Validator', icon: '⊙', tagline: 'Score any idea 0–100'       },
+  { id: 'offer',   label: 'Offer Builder',   icon: '◻', tagline: 'Turn niche → premium offer'  },
+  { id: 'content', label: 'Content Engine',  icon: '✦', tagline: 'Generate platform hooks'     },
 ]
 
 type Mode = 'pipeline' | 'tools'
 
+const EMPTY_PS: PipelineState = { idea: '', step: 0, status: 'idle', niche: null, offer: null, posts: [], error: null }
+
 export default function ArbFlowPage() {
   const [mode, setMode]             = useState<Mode>('pipeline')
   const [activeTool, setActiveTool] = useState<Tool>('niche')
-
-  // ─── Full pipeline state ───────────────────────────────────────────────────
-  const [ps, setPs] = useState<PipelineState>({
-    idea: '', step: 0, status: 'idle',
-    niche: null, offer: null, posts: [], error: null,
-  })
+  const [ps, setPs]                 = useState<PipelineState>(EMPTY_PS)
 
   async function runFullPipeline() {
     const idea = ps.idea.trim()
     if (!idea) return
 
-    // Reset
     setPs(p => ({ ...p, step: 1, status: 'running', niche: null, offer: null, posts: [], error: null }))
 
-    // Step 1 — validate niche
-    const niche = await runStep<NicheResult>(
-      '/api/arbflow/validate-niche',
-      { idea },
-      mockNicheResult(idea),
-    )
+    const niche = await runStep<NicheResult>('/api/arbflow/validate-niche', { idea }, mockNicheResult(idea))
     setPs(p => ({ ...p, step: 2, niche }))
 
-    // Step 2 — build offer (use validated niche summary as niche input)
-    const nicheInput = niche.summary ?? idea
-    const offer = await runStep<OfferResult>(
-      '/api/arbflow/build-offer',
-      { niche: nicheInput },
-      mockOfferResult(idea),
-    )
+    const offer = await runStep<OfferResult>('/api/arbflow/build-offer', { niche: niche.summary ?? idea }, mockOfferResult(idea))
     setPs(p => ({ ...p, step: 3, offer }))
 
-    // Step 3 — content engine (use offer title + price)
     const offerStr = offer.title ? `${offer.title} — ${offer.price}` : idea
-    const contentData = await runStep<{ posts: ContentResult[] }>(
-      '/api/arbflow/content-engine',
-      { offer: offerStr },
-      { posts: mockContentPosts(offerStr) },
-    )
+    const contentData = await runStep<{ posts: ContentResult[] }>('/api/arbflow/content-engine', { offer: offerStr }, { posts: mockContentPosts(offerStr) })
     const posts = Array.isArray(contentData.posts) ? contentData.posts : mockContentPosts(offerStr)
 
-    setPs(p => ({ ...p, step: 3, status: 'done', posts }))
+    setPs(p => ({ ...p, status: 'done', posts }))
   }
 
   const running = ps.status === 'running'
   const done    = ps.status === 'done'
 
   return (
-    <div style={{ maxWidth: 760, margin: '0 auto', padding: '32px 24px' }}>
+    <main style={{ maxWidth: 760, margin: '0 auto', padding: '32px 24px' }} id="main-content">
+
       {/* Header */}
-      <div style={{ marginBottom: 28 }}>
-        <div style={{ fontSize: 11, color: '#555', letterSpacing: '0.1em', marginBottom: 8 }}>
-          NEXUS OS · ARBFLOW
-        </div>
-        <h1 style={{ fontSize: 26, fontWeight: 700, color: '#e5e5e5', margin: '0 0 8px' }}>
+      <header style={{ marginBottom: 28 }}>
+        <div className="sec-label" style={{ marginBottom: 8 }}>NEXUS OS · ARBFLOW</div>
+        <h1 style={{ fontSize: 'var(--text-2xl)', fontWeight: 700, color: 'var(--ink)', margin: '0 0 8px', fontFamily: 'var(--ff-d)' }}>
           AI Arbitrage Platform
         </h1>
-        <p style={{ color: '#666', fontSize: 14, margin: 0 }}>
+        <p style={{ color: 'var(--ink3)', fontSize: 'var(--text-sm)', margin: 0 }}>
           Validate a niche → build an offer → generate content. Three tools, one pipeline.
         </p>
-      </div>
+      </header>
 
       {/* Mode toggle */}
-      <div style={{ display: 'flex', gap: 6, marginBottom: 24 }}>
+      <div style={{ display: 'flex', gap: 6, marginBottom: 24 }} role="tablist" aria-label="View mode">
         {(['pipeline', 'tools'] as Mode[]).map(m => (
-          <button key={m} onClick={() => setMode(m)} style={{
-            padding: '7px 16px', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer',
-            border: `1px solid ${mode === m ? '#9ef500' : '#222'}`,
-            background: mode === m ? '#0a1500' : '#111',
-            color: mode === m ? '#9ef500' : '#555',
-          }}>
+          <button
+            key={m}
+            role="tab"
+            aria-selected={mode === m}
+            onClick={() => setMode(m)}
+            style={{
+              padding: '7px 16px',
+              borderRadius: 'var(--radius-md)',
+              fontSize: 'var(--text-xs)',
+              fontWeight: 600,
+              cursor: 'pointer',
+              fontFamily: 'var(--ff-d)',
+              border: `1px solid ${mode === m ? 'var(--acid)' : 'var(--border)'}`,
+              background: mode === m ? 'color-mix(in srgb,var(--acid) 8%,transparent)' : 'var(--paper2)',
+              color: mode === m ? 'var(--acid)' : 'var(--ink3)',
+              transition: `background var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out)`,
+              minHeight: 'var(--touch-min)',
+            }}
+          >
             {m === 'pipeline' ? '▶  One-Click Pipeline' : '⊞  Individual Tools'}
           </button>
         ))}
       </div>
 
-      {/* ── ONE-CLICK PIPELINE MODE ─────────────────────────────────────────── */}
+      {/* ── ONE-CLICK PIPELINE MODE ───────────────────────────────────────────── */}
       {mode === 'pipeline' && (
-        <div>
+        <div role="tabpanel">
           {/* Input + launch */}
-          <div style={{ background: '#0d0d0d', border: '1px solid #1a1a1a', borderRadius: 12, padding: 24, marginBottom: 20 }}>
-            <div style={{ fontSize: 11, color: '#555', letterSpacing: '0.08em', marginBottom: 12 }}>
-              ENTER YOUR NICHE IDEA — PIPELINE DOES THE REST
+          <div className="card" style={{ marginBottom: 20 }}>
+            <div className="sec-label" style={{ marginBottom: 12 }}>
+              Enter your niche idea — pipeline does the rest
             </div>
             <div style={{ display: 'flex', gap: 10 }}>
               <input
@@ -590,21 +581,18 @@ export default function ArbFlowPage() {
                 onKeyDown={e => e.key === 'Enter' && !running && runFullPipeline()}
                 disabled={running}
                 placeholder="e.g. AI automation for boutique law firms"
-                style={{
-                  flex: 1, background: '#111', border: '1px solid #222', borderRadius: 8,
-                  color: '#e5e5e5', fontSize: 14, padding: '10px 14px', outline: 'none',
-                  opacity: running ? 0.5 : 1,
-                }}
+                style={{ ...inputStyle, opacity: running ? 0.5 : 1 }}
+                aria-label="Niche idea for pipeline"
               />
               <button
-                onClick={done ? () => setPs(p => ({ ...p, step: 0, status: 'idle', niche: null, offer: null, posts: [], error: null })) : runFullPipeline}
+                onClick={done ? () => setPs(EMPTY_PS) : runFullPipeline}
                 disabled={running || (!done && !ps.idea.trim())}
+                className="btn"
                 style={{
-                  background: running ? '#1a1a00' : done ? '#111' : '#9ef500',
-                  color: done ? '#9ef500' : '#000',
-                  border: done ? '1px solid #9ef500' : 'none',
-                  fontWeight: 700, fontSize: 13, padding: '10px 20px',
-                  borderRadius: 8, cursor: running ? 'not-allowed' : 'pointer', whiteSpace: 'nowrap',
+                  background: done ? 'transparent' : 'var(--acid)',
+                  color: done ? 'var(--acid)' : 'var(--n-950)',
+                  border: done ? '1px solid var(--acid)' : 'none',
+                  whiteSpace: 'nowrap',
                 }}
               >
                 {running ? 'Running…' : done ? '↺ Run Again' : 'Run Pipeline →'}
@@ -614,130 +602,127 @@ export default function ArbFlowPage() {
 
           {/* Step progress */}
           {ps.step > 0 && (
-            <div style={{
-              background: '#0d0d0d', border: '1px solid #1a1a1a', borderRadius: 12,
-              padding: '16px 24px', marginBottom: 20, display: 'flex', gap: 32, flexWrap: 'wrap',
-            }}>
+            <div className="card" style={{ marginBottom: 20, display: 'flex', gap: 32, flexWrap: 'wrap' }} aria-live="polite" aria-label="Pipeline progress">
               {STEPS.map((s, i) => (
-                <div key={s.n} style={{ display: 'flex', alignItems: 'center', gap: i < STEPS.length - 1 ? 0 : 0 }}>
+                <div key={s.n} style={{ display: 'flex', alignItems: 'center' }}>
                   <StepIndicator step={s} current={ps.step} status={ps.status} />
                   {i < STEPS.length - 1 && (
-                    <div style={{ width: 32, height: 1, background: ps.step > s.n ? '#9ef500' : '#222', margin: '0 8px' }} />
+                    <div style={{ width: 32, height: 1, background: ps.step > s.n ? 'var(--green)' : 'var(--border)', margin: '0 8px' }} />
                   )}
                 </div>
               ))}
             </div>
           )}
 
-          {/* Results — shown as cards as each step completes */}
+          {/* Niche result card */}
           {ps.niche && (
-            <div style={{ background: '#111', border: '1px solid #222', borderRadius: 12, padding: 20, marginBottom: 16 }}>
-              <div style={{ fontSize: 10, color: '#555', letterSpacing: '0.08em', marginBottom: 12 }}>STEP 1 · NICHE SCORE</div>
+            <div className="card animate-fadein" style={{ marginBottom: 16 }}>
+              <div className="sec-label" style={{ marginBottom: 12 }}>Step 1 · Niche Score</div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-                <div style={{ position: 'relative', width: 56, height: 56, flexShrink: 0 }}>
-                  <svg width="56" height="56" viewBox="0 0 56 56">
-                    <circle cx="28" cy="28" r="23" fill="none" stroke="#1a1a1a" strokeWidth="5" />
-                    <circle cx="28" cy="28" r="23" fill="none" stroke={scoreColor(ps.niche.score)} strokeWidth="5"
+                <div style={{ position: 'relative', width: 56, height: 56, flexShrink: 0 }} aria-label={`Score: ${ps.niche.score}`}>
+                  <svg width="56" height="56" viewBox="0 0 56 56" aria-hidden="true">
+                    <circle cx="28" cy="28" r="23" fill="none" stroke="var(--border)" strokeWidth="5" />
+                    <circle cx="28" cy="28" r="23" fill="none" stroke={scoreVar(ps.niche.score)} strokeWidth="5"
                       strokeDasharray={`${(ps.niche.score / 100) * 144.5} 144.5`}
                       strokeLinecap="round" transform="rotate(-90 28 28)" />
                   </svg>
-                  <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15, fontWeight: 700, color: scoreColor(ps.niche.score) }}>
+                  <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15, fontWeight: 700, color: scoreVar(ps.niche.score) }}>
                     {ps.niche.score}
                   </div>
                 </div>
                 <div style={{ flex: 1 }}>
                   <div style={{ marginBottom: 6 }}>{statusBadge(ps.niche.status)}</div>
-                  <p style={{ fontSize: 13, color: '#ccc', margin: 0 }}>{ps.niche.summary}</p>
+                  <p style={{ fontSize: 'var(--text-sm)', color: 'var(--ink2)', margin: 0 }}>{ps.niche.summary}</p>
                 </div>
               </div>
-              <div style={{ marginTop: 12, fontSize: 13, color: '#9ef500', background: '#0a1500', borderRadius: 8, padding: 10 }}>
+              <div style={{
+                marginTop: 12, fontSize: 'var(--text-sm)', color: 'var(--acid)',
+                background: 'color-mix(in srgb,var(--acid) 8%,transparent)',
+                border: '1px solid color-mix(in srgb,var(--acid) 20%,transparent)',
+                borderRadius: 'var(--radius-md)', padding: 10,
+              }}>
                 → {ps.niche.recommendation}
               </div>
             </div>
           )}
 
+          {/* Offer result card */}
           {ps.offer && (
-            <div style={{ background: '#111', border: '1px solid #222', borderRadius: 12, padding: 20, marginBottom: 16 }}>
-              <div style={{ fontSize: 10, color: '#555', letterSpacing: '0.08em', marginBottom: 12 }}>STEP 2 · OFFER</div>
-              <div style={{ fontSize: 18, fontWeight: 700, color: '#e5e5e5', marginBottom: 12 }}>{ps.offer.title}</div>
+            <div className="card animate-fadein" style={{ marginBottom: 16 }}>
+              <div className="sec-label" style={{ marginBottom: 12 }}>Step 2 · Offer</div>
+              <div style={{ fontSize: 'var(--text-xl)', fontWeight: 700, color: 'var(--ink)', marginBottom: 12 }}>{ps.offer.title}</div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12 }}>
                 {[
-                  { label: 'FORMAT',       value: ps.offer.format      },
-                  { label: 'PRICE',        value: ps.offer.price       },
-                  { label: 'TARGET BUYER', value: ps.offer.targetBuyer },
+                  { label: 'Format',       value: ps.offer.format      },
+                  { label: 'Price',        value: ps.offer.price       },
+                  { label: 'Target Buyer', value: ps.offer.targetBuyer },
                   { label: 'CTA',          value: ps.offer.cta         },
                 ].map(({ label, value }) => (
-                  <div key={label} style={{ background: '#0a0a0a', borderRadius: 8, padding: 10 }}>
-                    <div style={{ fontSize: 10, color: '#555', letterSpacing: '0.08em', marginBottom: 3 }}>{label}</div>
-                    <div style={{ fontSize: 12, color: '#e5e5e5' }}>{value}</div>
+                  <div key={label} className="panel">
+                    <div className="sec-label" style={{ marginBottom: 3 }}>{label}</div>
+                    <div style={{ fontSize: 'var(--text-sm)', color: 'var(--ink)' }}>{value}</div>
                   </div>
                 ))}
               </div>
-              <div style={{ fontSize: 11, color: '#555', marginBottom: 6 }}>DELIVERABLES</div>
+              <div className="sec-label" style={{ marginBottom: 6 }}>Deliverables</div>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                 {ps.offer.deliverables.map((d, i) => (
-                  <span key={i} style={{ fontSize: 12, color: '#ccc', background: '#161616', border: '1px solid #222', borderRadius: 6, padding: '3px 10px' }}>
-                    {d}
-                  </span>
+                  <span key={i} style={{
+                    fontSize: 'var(--text-xs)', color: 'var(--ink2)',
+                    background: 'var(--paper3)', border: '1px solid var(--border)',
+                    borderRadius: 'var(--radius-sm)', padding: '3px 10px',
+                  }}>{d}</span>
                 ))}
               </div>
             </div>
           )}
 
+          {/* Content result cards */}
           {ps.posts.length > 0 && (
-            <div style={{ background: '#111', border: '1px solid #222', borderRadius: 12, padding: 20 }}>
-              <div style={{ fontSize: 10, color: '#555', letterSpacing: '0.08em', marginBottom: 16 }}>STEP 3 · CONTENT</div>
+            <div className="card animate-fadein">
+              <div className="sec-label" style={{ marginBottom: 16 }}>Step 3 · Content</div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                {ps.posts.map((post, i) => (
-                  <div key={i} style={{ background: '#0a0a0a', borderRadius: 10, padding: 16 }}>
-                    <div style={{ fontSize: 10, color: '#9ef500', fontWeight: 700, letterSpacing: '0.1em', marginBottom: 8 }}>{post.platform}</div>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: '#e5e5e5', marginBottom: 8 }}>{post.hook}</div>
-                    <div style={{ fontSize: 12, color: '#888', whiteSpace: 'pre-line', marginBottom: 8, lineHeight: 1.6 }}>{post.body}</div>
-                    <div style={{ fontSize: 12, color: '#facc15', marginBottom: 10 }}>{post.cta}</div>
-                    <button
-                      onClick={() => navigator.clipboard.writeText(`${post.hook}\n\n${post.body}\n\n${post.cta}`)}
-                      style={{ background: 'transparent', border: '1px solid #222', color: '#555', fontSize: 11, padding: '4px 10px', borderRadius: 6, cursor: 'pointer' }}
-                    >
-                      Copy
-                    </button>
-                  </div>
-                ))}
+                {ps.posts.map((post, i) => <PostCard key={i} post={post} />)}
               </div>
             </div>
           )}
         </div>
       )}
 
-      {/* ── INDIVIDUAL TOOLS MODE ───────────────────────────────────────────── */}
+      {/* ── INDIVIDUAL TOOLS MODE ─────────────────────────────────────────────── */}
       {mode === 'tools' && (
-        <>
-          <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
+        <div role="tabpanel">
+          <div style={{ display: 'flex', gap: 8, marginBottom: 20 }} role="tablist" aria-label="Tool selector">
             {TOOLS.map(t => (
               <button
                 key={t.id}
+                role="tab"
+                aria-selected={activeTool === t.id}
                 onClick={() => setActiveTool(t.id)}
                 style={{
-                  flex: 1, background: activeTool === t.id ? '#0a1500' : '#111',
-                  border: `1px solid ${activeTool === t.id ? '#9ef500' : '#222'}`,
-                  borderRadius: 10, padding: '14px 12px', cursor: 'pointer',
-                  textAlign: 'left', transition: 'all 0.15s',
+                  flex: 1,
+                  background: activeTool === t.id ? 'color-mix(in srgb,var(--acid) 8%,transparent)' : 'var(--paper2)',
+                  border: `1px solid ${activeTool === t.id ? 'var(--acid)' : 'var(--border)'}`,
+                  borderRadius: 'var(--radius-lg)', padding: '14px 12px', cursor: 'pointer',
+                  textAlign: 'left',
+                  transition: `background var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out)`,
                 }}
               >
                 <div style={{ fontSize: 16, marginBottom: 4 }}>{t.icon}</div>
-                <div style={{ fontSize: 13, fontWeight: 600, color: activeTool === t.id ? '#9ef500' : '#e5e5e5' }}>
+                <div style={{ fontSize: 'var(--text-sm)', fontWeight: 600, color: activeTool === t.id ? 'var(--acid)' : 'var(--ink)' }}>
                   {t.label}
                 </div>
-                <div style={{ fontSize: 11, color: '#555', marginTop: 2 }}>{t.tagline}</div>
+                <div style={{ fontSize: 'var(--text-xs)', color: 'var(--ink3)', marginTop: 2 }}>{t.tagline}</div>
               </button>
             ))}
           </div>
-          <div style={{ background: '#0d0d0d', border: '1px solid #1a1a1a', borderRadius: 12, padding: 24 }}>
+          <div className="card">
             {activeTool === 'niche'   && <NicheTool />}
             {activeTool === 'offer'   && <OfferTool />}
             {activeTool === 'content' && <ContentTool />}
           </div>
-        </>
+        </div>
       )}
-    </div>
+    </main>
   )
 }
