@@ -12,7 +12,7 @@ const ALL_PAGES = [
   'runtime', 'dashboard', 'vault', 'agent-editor', 'audit',
   'trending', 'workspaces', 'pricing', 'deploy', 'build', 'pipeline', 'evolve',
   'higgs-ai', 'keys', 'admin', 'client-agents', 'image-prompts', 'video-prompts',
-  'leads', 'proposals', 'growth', 'chasebot',
+  'leads', 'proposals', 'growth', 'chasebot', 'arbflow',
 ] as const
 
 export type PageId = typeof ALL_PAGES[number]
