@@ -58,7 +58,7 @@ export async function GET(req: NextRequest) {
     prisma.lead.count({ where: { status: 'converted', updatedAt: { gte: day30ago } } }),
     prisma.lead.count({ where: { status: 'dlq' } }),
     prisma.lead.aggregate({ _avg: { icpScore: true }, where: { icpScore: { gt: 0 } } }),
-    prisma.lead.groupBy({ by: ['platform' as never], _count: true, where: { createdAt: { gte: day7ago } } }),
+    prisma.lead.groupBy({ by: ['platform'], _count: { platform: true }, where: { createdAt: { gte: day7ago } } }),
     prisma.lead.count({ where: { status: { in: ['in_outreach', 'routed'] }, consentCaptured: true, nextTouchAt: { lte: now }, touchCount: { lt: 5 } } }),
     prisma.lead.count({ where: { status: 'converted', onboardingFormSentAt: null } }),
     prisma.lead.count({ where: { deliveredAt: { lte: new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000) }, retainerPitchedAt: null } }),
@@ -74,10 +74,10 @@ export async function GET(req: NextRequest) {
   const avgIcpScore  = avgScore._avg.icpScore       ?? 0
 
   // Platform breakdown (last 7 days)
-  const platformRows = (platformCounts as { platform: string | null; _count: number }[])
-    .sort((a, b) => b._count - a._count)
+  const platformRows = (platformCounts as { platform: string | null; _count: { platform: number } }[])
+    .sort((a, b) => b._count.platform - a._count.platform)
     .slice(0, 5)
-    .map(p => metricRow(p.platform ?? 'unknown', p._count))
+    .map(p => metricRow(p.platform ?? 'unknown', p._count.platform))
     .join('')
 
   // SME-13: ROI proxy (qualified leads / cost)

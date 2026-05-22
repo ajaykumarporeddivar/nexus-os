@@ -176,7 +176,7 @@ async function scoreNewLead(leadId: string, input: { email: string; name: string
       source:          input.source,
       platform:        input.platform,
       messageText:     input.messageText,
-      firmographic:    freshFirmo as Record<string, unknown>,
+      firmographic:    freshFirmo as unknown as Record<string, unknown>,
       consentCaptured: lead.consentCaptured,
       pipelineRunId:   lead.pipelineRunId,
     }
