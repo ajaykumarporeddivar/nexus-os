@@ -74,8 +74,7 @@ function statusBadge(status: NicheResult['status']) {
 
 // ─── Shared input / button styles ─────────────────────────────────────────────
 
-/* Input styling handled via .input-base class in globals.css */
-const inputWrapStyle: React.CSSProperties = { flex: 1 }
+/* All inputs use .input-base.input-flex — defined in globals.css */
 
 function PrimaryBtn({ onClick, disabled, children }: { onClick: () => void; disabled?: boolean; children: React.ReactNode }) {
   return (
@@ -182,8 +181,7 @@ function NicheTool() {
           onChange={e => setIdea(e.target.value)}
           onKeyDown={e => e.key === 'Enter' && validate()}
           placeholder="e.g. AI automation for boutique law firms"
-          className="input-base"
-          style={inputWrapStyle}
+          className="input-base input-flex"
           aria-label="Niche idea"
         />
         <PrimaryBtn onClick={validate} disabled={loading || !idea.trim()}>
@@ -192,7 +190,7 @@ function NicheTool() {
       </div>
 
       {result && (
-        <div className="card animate-fadein">
+        <div className="card animate-fadein state-hover-ring">
           <div style={{ display: 'flex', alignItems: 'center', gap: 20, marginBottom: 20 }}>
             <div style={{ position: 'relative', width: 72, height: 72, flexShrink: 0 }} aria-label={`Score: ${result.score}`}>
               <svg width="72" height="72" viewBox="0 0 72 72" aria-hidden="true">
@@ -278,7 +276,7 @@ function OfferTool() {
           onChange={e => setNiche(e.target.value)}
           onKeyDown={e => e.key === 'Enter' && build()}
           placeholder="e.g. productivity systems for freelance designers"
-          style={inputStyle}
+          className="input-base input-flex"
           aria-label="Niche description"
         />
         <PrimaryBtn onClick={build} disabled={loading || !niche.trim()}>
@@ -287,7 +285,7 @@ function OfferTool() {
       </div>
 
       {result && (
-        <div className="card animate-fadein">
+        <div className="card animate-fadein state-hover-ring">
           <div style={{ marginBottom: 20 }}>
             <div className="sec-label" style={{ marginBottom: 4 }}>Offer Title</div>
             <div style={{ fontSize: 'var(--text-xl)', fontWeight: 700, color: 'var(--ink)' }}>{result.title}</div>
@@ -367,7 +365,7 @@ function ContentTool() {
           onChange={e => setOffer(e.target.value)}
           onKeyDown={e => e.key === 'Enter' && generate()}
           placeholder="e.g. The Freelance Designer Productivity System — $297"
-          style={inputStyle}
+          className="input-base input-flex"
           aria-label="Offer description"
         />
         <PrimaryBtn onClick={generate} disabled={loading || !offer.trim()}>
@@ -408,9 +406,10 @@ function PostCard({ post }: { post: ContentResult }) {
       <div style={{ fontSize: 'var(--text-sm)', color: 'var(--amber)', marginBottom: 12 }}>{post.cta}</div>
       <button
         onClick={copy}
-        className="btn btn-ghost"
+        className={`btn state-active ${copied ? 'btn-primary' : 'btn-ghost'}`}
         style={{ fontSize: 'var(--text-xs)', padding: '5px 12px', minHeight: 'auto' }}
         aria-label={`Copy ${post.platform} post`}
+        aria-live="polite"
       >
         {copied ? '✓ Copied' : 'Copy'}
       </button>
@@ -572,7 +571,7 @@ export default function ArbFlowPage() {
                 onKeyDown={e => e.key === 'Enter' && !running && runFullPipeline()}
                 disabled={running}
                 placeholder="e.g. AI automation for boutique law firms"
-                style={{ ...inputStyle, opacity: running ? 0.5 : 1 }}
+                className={`input-base input-flex${running ? ' state-disabled' : ''}`}
                 aria-label="Niche idea for pipeline"
               />
               <button
@@ -670,7 +669,7 @@ export default function ArbFlowPage() {
 
           {/* Content result cards */}
           {ps.posts.length > 0 && (
-            <div className="card animate-fadein">
+            <div className="card animate-fadein state-hover-ring">
               <div className="sec-label" style={{ marginBottom: 16 }}>Step 3 · Content</div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                 {ps.posts.map((post, i) => <PostCard key={i} post={post} />)}
@@ -690,6 +689,7 @@ export default function ArbFlowPage() {
                 role="tab"
                 aria-selected={activeTool === t.id}
                 onClick={() => setActiveTool(t.id)}
+                className="state-active state-hover-ring"
                 style={{
                   flex: 1,
                   background: activeTool === t.id ? 'color-mix(in srgb,var(--acid) 8%,transparent)' : 'var(--paper2)',

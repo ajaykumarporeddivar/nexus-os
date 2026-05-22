@@ -663,6 +663,8 @@ body {
     border-color var(--dur-fast) var(--ease-out),
     box-shadow   var(--dur-fast) var(--ease-out);
 }
+/* In a flex row alongside a button — overrides width:100% */
+.input-base.input-flex { flex: 1; width: auto; }
 .input-base::placeholder { color: var(--ink3); }
 .input-base:focus-visible {
   border-color: var(--acid);
