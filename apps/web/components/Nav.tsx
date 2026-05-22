@@ -105,6 +105,13 @@ const GROUPS: NavGroup[] = [
         description: 'Feedback → AI changes → redeploy',
         isNew: true,
       },
+      {
+        id: 'arbflow',
+        label: 'ArbFlow',
+        icon: '◈',
+        description: 'Niche validator · offer builder · content engine',
+        isNew: true,
+      },
     ],
   },
   {
