@@ -74,18 +74,8 @@ function statusBadge(status: NicheResult['status']) {
 
 // ─── Shared input / button styles ─────────────────────────────────────────────
 
-const inputStyle: React.CSSProperties = {
-  flex: 1,
-  background: 'var(--paper)',
-  border: '1px solid var(--border)',
-  borderRadius: 'var(--radius-md)',
-  color: 'var(--ink)',
-  fontSize: 'var(--text-sm)',
-  padding: '10px 14px',
-  outline: 'none',
-  fontFamily: 'var(--ff-d)',
-  minHeight: 'var(--touch-min)',
-}
+/* Input styling handled via .input-base class in globals.css */
+const inputWrapStyle: React.CSSProperties = { flex: 1 }
 
 function PrimaryBtn({ onClick, disabled, children }: { onClick: () => void; disabled?: boolean; children: React.ReactNode }) {
   return (
@@ -192,7 +182,8 @@ function NicheTool() {
           onChange={e => setIdea(e.target.value)}
           onKeyDown={e => e.key === 'Enter' && validate()}
           placeholder="e.g. AI automation for boutique law firms"
-          style={inputStyle}
+          className="input-base"
+          style={inputWrapStyle}
           aria-label="Niche idea"
         />
         <PrimaryBtn onClick={validate} disabled={loading || !idea.trim()}>

@@ -1,8 +1,35 @@
 import type { Metadata } from 'next'
 import { Suspense } from 'react'
+import { Bricolage_Grotesque, Instrument_Serif, Geist_Mono } from 'next/font/google'
 import './globals.css'
 import Providers from '@/components/Providers'
 import { ReferralTracker } from '@/components/ReferralTracker'
+
+const displayFont = Bricolage_Grotesque({
+  subsets: ['latin'],
+  axes: ['opsz', 'wght'],
+  weight: ['300', '400', '500', '600', '700', '800'],
+  variable: '--ff-d',
+  display: 'swap',
+  preload: true,
+})
+
+const serifFont = Instrument_Serif({
+  subsets: ['latin'],
+  weight: ['400'],
+  style: ['normal', 'italic'],
+  variable: '--ff-s',
+  display: 'swap',
+  preload: false,
+})
+
+const monoFont = Geist_Mono({
+  subsets: ['latin'],
+  weight: ['300', '400', '500', '600'],
+  variable: '--ff-m',
+  display: 'swap',
+  preload: false,
+})
 
 const brandName = process.env.NEXT_PUBLIC_BRAND_NAME ?? 'NEXUS OS'
 const brandTagline = process.env.NEXT_PUBLIC_BRAND_TAGLINE ?? 'AI Delivery Infrastructure for Digital Agencies'
@@ -44,7 +71,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="en" suppressHydrationWarning className={`${displayFont.variable} ${serifFont.variable} ${monoFont.variable}`}>
       <body>
         {/* Skip navigation for keyboard users (WCAG 2.4.1) */}
         <a href="#main-content" className="skip-link">Skip to main content</a>

@@ -324,7 +324,7 @@ function NavItem({
         title={locked ? `${item.label} — Agency+ plan required` : `${item.label}${item.description ? ` — ${item.description}` : ''}`}
         aria-label={locked ? `${item.label} — Agency+ plan required` : item.label}
         aria-current={isActive && !locked ? 'page' : undefined}
-        className={`relative w-full flex items-center justify-center py-2 rounded-lg transition-all group ${isActive && !locked ? activeCls : idleCls}`}
+        className={`relative w-full flex items-center justify-center py-2 rounded-lg transition-[background,color] duration-fast ease-out group ${isActive && !locked ? activeCls : idleCls}`}
       >
         <span className={`text-sm leading-none ${locked ? 'opacity-30' : ''}`}>
           {locked ? '🔒' : item.icon}
@@ -341,7 +341,7 @@ function NavItem({
       onClick={handleClick}
       aria-current={isActive && !locked ? 'page' : undefined}
       aria-label={locked ? `${item.label} — Agency+ plan required` : item.label}
-      className={`relative w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-all group ${isActive && !locked ? activeCls : idleCls}`}
+      className={`relative w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-[background,color] duration-fast ease-out group ${isActive && !locked ? activeCls : idleCls}`}
     >
       {isActive && !locked && (
         <span className="absolute left-0 top-1.5 bottom-1.5 w-0.5 rounded-full bg-current opacity-50" />
@@ -452,7 +452,7 @@ export default function Nav({
       className={`
         flex flex-col h-screen sticky top-0 flex-shrink-0
         border-r border-border bg-paper
-        transition-all duration-200 ease-in-out
+        transition-[width] duration-normal ease-out
         ${collapsed ? 'w-[52px]' : 'w-[220px]'}
       `}
     >
@@ -573,7 +573,7 @@ export default function Nav({
                 borderRadius: '4px',
                 height:       '100%',
                 width:        `${Math.min(100, (quota.used / quota.limit) * 100)}%`,
-                transition:   'width 0.5s ease',
+                transition:   'width var(--dur-slow) var(--ease-out)',
               }} />
             </div>
             {quota.used >= quota.limit && (
@@ -626,7 +626,7 @@ export default function Nav({
           <div className="mx-1 mt-2">
             <button
               onClick={() => handleNav('pricing')}
-              className="w-full text-left px-3 py-2.5 rounded-xl border border-border/60 hover:border-border hover:bg-paper2 transition-all group"
+              className="w-full text-left px-3 py-2.5 rounded-xl border border-border/60 hover:border-border hover:bg-paper2 transition-[background,border-color] duration-fast ease-out group"
             >
               <p className="text-[9px] font-bold font-mono text-ink3/60 uppercase tracking-widest mb-0.5 group-hover:text-ink3">
                 Unlock Agency+
@@ -655,7 +655,7 @@ export default function Nav({
               : 'No AI provider key detected - configure Anthropic, Gemini, or Groq'}
           >
             <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
-              apiConnected ? 'bg-green-500' : 'bg-amber-400 animate-pulse'
+              apiConnected ? 'bg-green sd-ok' : 'bg-amber sd-warn'
             }`} />
             {!collapsed && <span>API {apiConnected ? 'KEY SET' : 'OFF'}</span>}
           </div>
@@ -672,7 +672,7 @@ export default function Nav({
         {/* User profile */}
         <div className="relative px-2 py-2">
           {status === 'loading' ? (
-            <div className={`h-9 rounded-lg bg-paper2 animate-pulse ${collapsed ? 'w-9 mx-auto' : 'w-full'}`} />
+            <div className={`h-9 rounded-lg bg-paper2 animate-blink ${collapsed ? 'w-9 mx-auto' : 'w-full'}`} />
           ) : session ? (
             <>
               <button

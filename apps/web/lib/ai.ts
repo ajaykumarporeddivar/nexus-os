@@ -405,6 +405,29 @@ async function groqComplete(
       setCooldown(key, GROQ_COOLDOWN_MS)
       continue
     }
+    // 413 = payload too large — truncate messages by 40% and retry once
+    if (res.status === 413) {
+      console.warn(`[ai] Groq 413 on key …${key.slice(-6)} — truncating and retrying`)
+      const truncated = messages.map(m => ({
+        ...m,
+        content: typeof m.content === 'string' ? m.content.slice(0, Math.floor(m.content.length * 0.6)) : m.content,
+      }))
+      const retryRes = await fetch(GROQ_URL, {
+        method:  'POST',
+        headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+        body:    JSON.stringify({
+          model,
+          max_tokens: Math.min(cap, 4096),
+          messages:   [{ role: 'system', content: system.slice(0, Math.floor(system.length * 0.7)) }, ...truncated],
+        }),
+      })
+      if (retryRes.ok) {
+        const retryData = await retryRes.json()
+        return { text: retryData.choices?.[0]?.message?.content ?? '', key }
+      }
+      console.warn(`[ai] Groq 413 retry failed (${retryRes.status}) — skipping key`)
+      continue
+    }
     if (!res.ok) {
       const err = await res.text()
       throw new Error(`Groq error ${res.status}: ${err}`)
@@ -459,6 +482,42 @@ async function* groqStream(
       console.warn(`[ai] Groq stream key …${key.slice(-6)} rate-limited, trying next key`)
       setCooldown(key, GROQ_COOLDOWN_MS)
       continue
+    }
+    // 413 = request payload too large — truncate messages content by 40% and retry this key once
+    if (res.status === 413) {
+      console.warn(`[ai] Groq stream 413 on key …${key.slice(-6)} — payload too large, truncating messages and retrying`)
+      const truncated = messages.map(m => ({
+        ...m,
+        content: typeof m.content === 'string' ? m.content.slice(0, Math.floor(m.content.length * 0.6)) : m.content,
+      }))
+      const retryRes = await fetch(GROQ_URL, {
+        method:  'POST',
+        headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+        body:    JSON.stringify({
+          model,
+          max_tokens: Math.min(cap, 4096),
+          stream:     true,
+          messages:   [{ role: 'system', content: system.slice(0, Math.floor(system.length * 0.7)) }, ...truncated],
+        }),
+      })
+      if (!retryRes.ok) {
+        console.warn(`[ai] Groq stream 413 retry also failed (${retryRes.status}) — skipping key`)
+        continue
+      }
+      const retryReader = retryRes.body!.getReader()
+      const retryDec    = new TextDecoder()
+      while (true) {
+        const { done, value } = await retryReader.read()
+        if (done) break
+        for (const line of retryDec.decode(value).split('\n')) {
+          if (!line.startsWith('data: ') || line.includes('[DONE]')) continue
+          try {
+            const delta = JSON.parse(line.slice(6))?.choices?.[0]?.delta?.content
+            if (delta) yield delta
+          } catch { /* partial chunk */ }
+        }
+      }
+      return
     }
     if (!res.ok) throw new Error(`Groq stream error ${res.status}`)
 

@@ -6,7 +6,7 @@ import dynamic from 'next/dynamic'
 import Nav, { type PageId } from '@/components/Nav'
 import OverviewPage from '@/components/pages/OverviewPage'
 
-const PageLoader = () => <div className="flex-1 flex items-center justify-center text-ink3 text-sm animate-pulse">Loading…</div>
+const PageLoader = () => <div className="flex-1 flex items-center justify-center text-ink3 text-sm animate-blink">Loading…</div>
 
 const ReasoningEnginePage  = dynamic(() => import('@/components/pages/ReasoningEnginePage'),  { loading: PageLoader })
 const LiveRuntimePage       = dynamic(() => import('@/components/pages/LiveRuntimePage'),       { loading: PageLoader })
@@ -190,8 +190,8 @@ function ShellInner() {
           Skip to main content
         </a>
 
-        {/* Outer: full-height flex row */}
-        <div className="flex h-screen bg-paper overflow-hidden">
+        {/* Outer: full-height flex row — dvh for mobile browser chrome correctness */}
+        <div className="shell-layout">
 
           {/* Sidebar */}
           <Nav
@@ -204,8 +204,8 @@ function ShellInner() {
             onThemeToggle={onThemeToggle}
           />
 
-          {/* Main content scrollable area */}
-          <main id="main-content" className="flex-1 overflow-y-auto min-w-0 flex flex-col">
+          {/* Main content scrollable area — container context for child @container queries */}
+          <main id="main-content" className="shell-main">
             {/* Onboarding banner */}
             {!onboarded && (
               <div className="border-b border-acid/30 bg-acid/5 px-6 py-3 flex items-center gap-4 flex-wrap">
@@ -219,7 +219,7 @@ function ShellInner() {
                   <button
                     key={page}
                     onClick={() => onNavigate(page)}
-                    className={`text-xs px-3 py-1 rounded-full border transition-all ${currentPage === page ? 'bg-acid text-paper border-acid font-bold' : 'border-acid/30 text-ink3 hover:border-acid hover:text-acid'}`}
+                    className={`text-xs px-3 py-1 rounded-full border transition-[background,border-color,color] duration-fast ease-out ${currentPage === page ? 'bg-acid text-paper border-acid font-bold' : 'border-acid/30 text-ink3 hover:border-acid hover:text-acid'}`}
                   >
                     {label}
                   </button>
@@ -299,9 +299,9 @@ function ShellInner() {
             <button
               onClick={voiceNav.toggle}
               title={voiceNav.isListening ? 'Stop voice navigation' : 'Voice navigation (say "Go to Forge", "Open Dashboard"…)'}
-              className={`fixed bottom-16 right-5 z-40 w-9 h-9 rounded-full border shadow-sm transition-all flex items-center justify-center ${
+              className={`fixed bottom-16 right-5 z-40 w-9 h-9 rounded-full border shadow-sm transition-[background,border-color,box-shadow] duration-fast ease-out flex items-center justify-center ${
                 voiceNav.isListening
-                  ? 'bg-red-500 border-red-400 text-white shadow-[0_0_14px_3px_rgba(239,68,68,0.35)] animate-pulse'
+                  ? 'bg-rose border-rose text-white shadow-[0_0_14px_3px_color-mix(in_srgb,var(--rose)_35%,transparent)] animate-pulse-dot'
                   : 'bg-paper2 border-border text-ink3 hover:text-ink hover:border-acid/50'
               }`}
             >
@@ -316,7 +316,7 @@ function ShellInner() {
           {/* Floating keyboard hint */}
           <button
             onClick={() => setShowShortcuts(true)}
-            className="fixed bottom-5 right-5 z-40 w-8 h-8 rounded-full border border-border bg-paper2 text-ink3 hover:text-ink hover:border-acid/50 text-xs font-bold font-mono shadow-sm transition-all"
+            className="fixed bottom-5 right-5 z-40 w-8 h-8 rounded-full border border-border bg-paper2 text-ink3 hover:text-ink hover:border-acid/50 text-xs font-bold font-mono shadow-sm transition-[border-color,color] duration-fast ease-out"
             title="Keyboard shortcuts (?)"
           >
             ?

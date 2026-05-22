@@ -3990,6 +3990,19 @@ export default function PipelinePage() {
       .filter(([k]) => k !== 'qa')
       .map(([k, v]) => `[${k}]: ${v.slice(0, FORGE_QA_CTX_CAPS[k] ?? 2000)}`)
       .join('\n\n')
+    // testWriterOutputs: focused context — only what SPEC VALIDATOR actually needs.
+    // Sending all 7 agent outputs causes Groq 413 (payload too large) on the fallback path.
+    // Analyst has PROJECT_MANIFEST; Planner has NAV_ITEMS + feature cards; Architect has entity shapes.
+    const TEST_WRITER_CAPS: Record<string, number> = {
+      analyst:    3000,  // PROJECT_MANIFEST, user personas
+      architect:  2500,  // Entity shapes, API contracts
+      planner:    3000,  // Feature cards, NAV_ITEMS (most important for SPEC CONTRACT)
+      'db-opt':   1200,  // Schema, field names
+    }
+    const testWriterOutputs = () => Object.entries(content)
+      .filter(([k]) => k in TEST_WRITER_CAPS)
+      .map(([k, v]) => `[${k}]: ${v.slice(0, TEST_WRITER_CAPS[k])}`)
+      .join('\n\n')
     const extractCriticalQaGaps = (qaReport: string) => {
       const match = qaReport.match(/### Critical Gaps\s*([\s\S]*?)(?=\n### |\s*$)/i)
       return (match?.[1]?.trim() || qaReport.trim()).slice(0, 1200)
@@ -4058,11 +4071,13 @@ export default function PipelinePage() {
     await abortSleep(300)
 
     // Batch 2: test-writer needs planner output — runs after batch 1
+    // Uses testWriterOutputs() (focused: analyst + architect + planner + db-opt only) to
+    // avoid Groq 413 "payload too large" errors when falling back from Anthropic.
     log('FORGE · test-writer (needs planner output — sequential after batch 1)')
     await runForgeAgent(
       'test-writer',
       resolveSystem('test-writer', FORGE_AGENT_SYSTEMS['test-writer'] ?? 'You are the NEXUS TEST WRITER. Build the SPEC CONTRACT.'),
-      `${briefCtx}\n\nPrevious outputs:\n${prevOutputs()}`,
+      `${briefCtx}\n\nKey agent outputs:\n${testWriterOutputs()}`,
     )
     log('✓ FORGE specialist phase complete — all 5 agents done', 'ok')
     await abortSleep(200)
@@ -4119,7 +4134,7 @@ export default function PipelinePage() {
         await runForgeAgent(
           'test-writer',
           `${FORGE_AGENT_SYSTEMS['test-writer']}\n\nThis is a REVISION. Rebuild the SPEC CONTRACT so BUILD receives one authoritative, internally consistent contract.`,
-          `${briefCtx}\n\nQA gaps:\n${gapSection}\n\nRepaired upstream outputs:\n${prevOutputs()}`,
+          `${briefCtx}\n\nQA gaps:\n${gapSection}\n\nKey repaired outputs:\n${testWriterOutputs()}`,
         )
         await abortSleep(400)
 
