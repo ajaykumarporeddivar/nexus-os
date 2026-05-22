@@ -430,6 +430,63 @@ function ContentTool() {
   )
 }
 
+// ─── Pipeline step types ──────────────────────────────────────────────────────
+
+type StepStatus = 'idle' | 'running' | 'done' | 'error'
+
+interface PipelineState {
+  idea:    string
+  step:    0 | 1 | 2 | 3   // 0=not started, 1=niche, 2=offer, 3=content
+  status:  StepStatus
+  niche:   NicheResult  | null
+  offer:   OfferResult  | null
+  posts:   ContentResult[]
+  error:   string | null
+}
+
+const STEPS = [
+  { n: 1, label: 'Validate Niche',  icon: '⊙', detail: 'Scoring market viability 0–100…'   },
+  { n: 2, label: 'Build Offer',     icon: '◻', detail: 'Designing premium digital offer…'   },
+  { n: 3, label: 'Generate Content',icon: '✦', detail: 'Writing hooks for 3 platforms…'     },
+]
+
+function StepIndicator({ step, current, status }: { step: typeof STEPS[0]; current: number; status: StepStatus }) {
+  const done    = current > step.n
+  const running = current === step.n && status === 'running'
+  const error   = current === step.n && status === 'error'
+  const color   = done ? '#9ef500' : running ? '#facc15' : error ? '#f87171' : '#333'
+  const textCol = done ? '#9ef500' : running ? '#facc15' : error ? '#f87171' : '#555'
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+      <div style={{
+        width: 28, height: 28, borderRadius: '50%', border: `2px solid ${color}`,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        fontSize: 12, color, flexShrink: 0,
+        background: done ? '#0a1500' : 'transparent',
+      }}>
+        {done ? '✓' : running ? '…' : step.n}
+      </div>
+      <div>
+        <div style={{ fontSize: 13, fontWeight: 600, color: textCol }}>{step.label}</div>
+        {running && <div style={{ fontSize: 11, color: '#facc15', marginTop: 2 }}>{step.detail}</div>}
+      </div>
+    </div>
+  )
+}
+
+// ─── Full pipeline runner ─────────────────────────────────────────────────────
+
+async function runStep<T>(url: string, body: Record<string, string>, fallback: T): Promise<T> {
+  try {
+    const res  = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+    const data = await res.json()
+    if (res.ok && data.ok) return data as T
+    return fallback
+  } catch {
+    return fallback
+  }
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 const TOOLS: { id: Tool; label: string; icon: string; tagline: string }[] = [
@@ -438,13 +495,61 @@ const TOOLS: { id: Tool; label: string; icon: string; tagline: string }[] = [
   { id: 'content', label: 'Content Engine',   icon: '✦', tagline: 'Generate platform hooks'    },
 ]
 
+type Mode = 'pipeline' | 'tools'
+
 export default function ArbFlowPage() {
+  const [mode, setMode]             = useState<Mode>('pipeline')
   const [activeTool, setActiveTool] = useState<Tool>('niche')
+
+  // ─── Full pipeline state ───────────────────────────────────────────────────
+  const [ps, setPs] = useState<PipelineState>({
+    idea: '', step: 0, status: 'idle',
+    niche: null, offer: null, posts: [], error: null,
+  })
+
+  async function runFullPipeline() {
+    const idea = ps.idea.trim()
+    if (!idea) return
+
+    // Reset
+    setPs(p => ({ ...p, step: 1, status: 'running', niche: null, offer: null, posts: [], error: null }))
+
+    // Step 1 — validate niche
+    const niche = await runStep<NicheResult>(
+      '/api/arbflow/validate-niche',
+      { idea },
+      mockNicheResult(idea),
+    )
+    setPs(p => ({ ...p, step: 2, niche }))
+
+    // Step 2 — build offer (use validated niche summary as niche input)
+    const nicheInput = niche.summary ?? idea
+    const offer = await runStep<OfferResult>(
+      '/api/arbflow/build-offer',
+      { niche: nicheInput },
+      mockOfferResult(idea),
+    )
+    setPs(p => ({ ...p, step: 3, offer }))
+
+    // Step 3 — content engine (use offer title + price)
+    const offerStr = offer.title ? `${offer.title} — ${offer.price}` : idea
+    const contentData = await runStep<{ posts: ContentResult[] }>(
+      '/api/arbflow/content-engine',
+      { offer: offerStr },
+      { posts: mockContentPosts(offerStr) },
+    )
+    const posts = Array.isArray(contentData.posts) ? contentData.posts : mockContentPosts(offerStr)
+
+    setPs(p => ({ ...p, step: 3, status: 'done', posts }))
+  }
+
+  const running = ps.status === 'running'
+  const done    = ps.status === 'done'
 
   return (
     <div style={{ maxWidth: 760, margin: '0 auto', padding: '32px 24px' }}>
       {/* Header */}
-      <div style={{ marginBottom: 32 }}>
+      <div style={{ marginBottom: 28 }}>
         <div style={{ fontSize: 11, color: '#555', letterSpacing: '0.1em', marginBottom: 8 }}>
           NEXUS OS · ARBFLOW
         </div>
@@ -456,37 +561,183 @@ export default function ArbFlowPage() {
         </p>
       </div>
 
-      {/* Tool tabs */}
-      <div style={{ display: 'flex', gap: 8, marginBottom: 28 }}>
-        {TOOLS.map(t => (
-          <button
-            key={t.id}
-            onClick={() => setActiveTool(t.id)}
-            style={{
-              flex: 1, background: activeTool === t.id ? '#0a1500' : '#111',
-              border: `1px solid ${activeTool === t.id ? '#9ef500' : '#222'}`,
-              borderRadius: 10, padding: '14px 12px', cursor: 'pointer',
-              textAlign: 'left', transition: 'all 0.15s',
-            }}
-          >
-            <div style={{ fontSize: 16, marginBottom: 4 }}>{t.icon}</div>
-            <div style={{
-              fontSize: 13, fontWeight: 600,
-              color: activeTool === t.id ? '#9ef500' : '#e5e5e5',
-            }}>
-              {t.label}
-            </div>
-            <div style={{ fontSize: 11, color: '#555', marginTop: 2 }}>{t.tagline}</div>
+      {/* Mode toggle */}
+      <div style={{ display: 'flex', gap: 6, marginBottom: 24 }}>
+        {(['pipeline', 'tools'] as Mode[]).map(m => (
+          <button key={m} onClick={() => setMode(m)} style={{
+            padding: '7px 16px', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer',
+            border: `1px solid ${mode === m ? '#9ef500' : '#222'}`,
+            background: mode === m ? '#0a1500' : '#111',
+            color: mode === m ? '#9ef500' : '#555',
+          }}>
+            {m === 'pipeline' ? '▶  One-Click Pipeline' : '⊞  Individual Tools'}
           </button>
         ))}
       </div>
 
-      {/* Active tool */}
-      <div style={{ background: '#0d0d0d', border: '1px solid #1a1a1a', borderRadius: 12, padding: 24 }}>
-        {activeTool === 'niche'   && <NicheTool />}
-        {activeTool === 'offer'   && <OfferTool />}
-        {activeTool === 'content' && <ContentTool />}
-      </div>
+      {/* ── ONE-CLICK PIPELINE MODE ─────────────────────────────────────────── */}
+      {mode === 'pipeline' && (
+        <div>
+          {/* Input + launch */}
+          <div style={{ background: '#0d0d0d', border: '1px solid #1a1a1a', borderRadius: 12, padding: 24, marginBottom: 20 }}>
+            <div style={{ fontSize: 11, color: '#555', letterSpacing: '0.08em', marginBottom: 12 }}>
+              ENTER YOUR NICHE IDEA — PIPELINE DOES THE REST
+            </div>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <input
+                value={ps.idea}
+                onChange={e => setPs(p => ({ ...p, idea: e.target.value }))}
+                onKeyDown={e => e.key === 'Enter' && !running && runFullPipeline()}
+                disabled={running}
+                placeholder="e.g. AI automation for boutique law firms"
+                style={{
+                  flex: 1, background: '#111', border: '1px solid #222', borderRadius: 8,
+                  color: '#e5e5e5', fontSize: 14, padding: '10px 14px', outline: 'none',
+                  opacity: running ? 0.5 : 1,
+                }}
+              />
+              <button
+                onClick={done ? () => setPs(p => ({ ...p, step: 0, status: 'idle', niche: null, offer: null, posts: [], error: null })) : runFullPipeline}
+                disabled={running || (!done && !ps.idea.trim())}
+                style={{
+                  background: running ? '#1a1a00' : done ? '#111' : '#9ef500',
+                  color: done ? '#9ef500' : '#000',
+                  border: done ? '1px solid #9ef500' : 'none',
+                  fontWeight: 700, fontSize: 13, padding: '10px 20px',
+                  borderRadius: 8, cursor: running ? 'not-allowed' : 'pointer', whiteSpace: 'nowrap',
+                }}
+              >
+                {running ? 'Running…' : done ? '↺ Run Again' : 'Run Pipeline →'}
+              </button>
+            </div>
+          </div>
+
+          {/* Step progress */}
+          {ps.step > 0 && (
+            <div style={{
+              background: '#0d0d0d', border: '1px solid #1a1a1a', borderRadius: 12,
+              padding: '16px 24px', marginBottom: 20, display: 'flex', gap: 32, flexWrap: 'wrap',
+            }}>
+              {STEPS.map((s, i) => (
+                <div key={s.n} style={{ display: 'flex', alignItems: 'center', gap: i < STEPS.length - 1 ? 0 : 0 }}>
+                  <StepIndicator step={s} current={ps.step} status={ps.status} />
+                  {i < STEPS.length - 1 && (
+                    <div style={{ width: 32, height: 1, background: ps.step > s.n ? '#9ef500' : '#222', margin: '0 8px' }} />
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Results — shown as cards as each step completes */}
+          {ps.niche && (
+            <div style={{ background: '#111', border: '1px solid #222', borderRadius: 12, padding: 20, marginBottom: 16 }}>
+              <div style={{ fontSize: 10, color: '#555', letterSpacing: '0.08em', marginBottom: 12 }}>STEP 1 · NICHE SCORE</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                <div style={{ position: 'relative', width: 56, height: 56, flexShrink: 0 }}>
+                  <svg width="56" height="56" viewBox="0 0 56 56">
+                    <circle cx="28" cy="28" r="23" fill="none" stroke="#1a1a1a" strokeWidth="5" />
+                    <circle cx="28" cy="28" r="23" fill="none" stroke={scoreColor(ps.niche.score)} strokeWidth="5"
+                      strokeDasharray={`${(ps.niche.score / 100) * 144.5} 144.5`}
+                      strokeLinecap="round" transform="rotate(-90 28 28)" />
+                  </svg>
+                  <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15, fontWeight: 700, color: scoreColor(ps.niche.score) }}>
+                    {ps.niche.score}
+                  </div>
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ marginBottom: 6 }}>{statusBadge(ps.niche.status)}</div>
+                  <p style={{ fontSize: 13, color: '#ccc', margin: 0 }}>{ps.niche.summary}</p>
+                </div>
+              </div>
+              <div style={{ marginTop: 12, fontSize: 13, color: '#9ef500', background: '#0a1500', borderRadius: 8, padding: 10 }}>
+                → {ps.niche.recommendation}
+              </div>
+            </div>
+          )}
+
+          {ps.offer && (
+            <div style={{ background: '#111', border: '1px solid #222', borderRadius: 12, padding: 20, marginBottom: 16 }}>
+              <div style={{ fontSize: 10, color: '#555', letterSpacing: '0.08em', marginBottom: 12 }}>STEP 2 · OFFER</div>
+              <div style={{ fontSize: 18, fontWeight: 700, color: '#e5e5e5', marginBottom: 12 }}>{ps.offer.title}</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12 }}>
+                {[
+                  { label: 'FORMAT',       value: ps.offer.format      },
+                  { label: 'PRICE',        value: ps.offer.price       },
+                  { label: 'TARGET BUYER', value: ps.offer.targetBuyer },
+                  { label: 'CTA',          value: ps.offer.cta         },
+                ].map(({ label, value }) => (
+                  <div key={label} style={{ background: '#0a0a0a', borderRadius: 8, padding: 10 }}>
+                    <div style={{ fontSize: 10, color: '#555', letterSpacing: '0.08em', marginBottom: 3 }}>{label}</div>
+                    <div style={{ fontSize: 12, color: '#e5e5e5' }}>{value}</div>
+                  </div>
+                ))}
+              </div>
+              <div style={{ fontSize: 11, color: '#555', marginBottom: 6 }}>DELIVERABLES</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                {ps.offer.deliverables.map((d, i) => (
+                  <span key={i} style={{ fontSize: 12, color: '#ccc', background: '#161616', border: '1px solid #222', borderRadius: 6, padding: '3px 10px' }}>
+                    {d}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {ps.posts.length > 0 && (
+            <div style={{ background: '#111', border: '1px solid #222', borderRadius: 12, padding: 20 }}>
+              <div style={{ fontSize: 10, color: '#555', letterSpacing: '0.08em', marginBottom: 16 }}>STEP 3 · CONTENT</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                {ps.posts.map((post, i) => (
+                  <div key={i} style={{ background: '#0a0a0a', borderRadius: 10, padding: 16 }}>
+                    <div style={{ fontSize: 10, color: '#9ef500', fontWeight: 700, letterSpacing: '0.1em', marginBottom: 8 }}>{post.platform}</div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: '#e5e5e5', marginBottom: 8 }}>{post.hook}</div>
+                    <div style={{ fontSize: 12, color: '#888', whiteSpace: 'pre-line', marginBottom: 8, lineHeight: 1.6 }}>{post.body}</div>
+                    <div style={{ fontSize: 12, color: '#facc15', marginBottom: 10 }}>{post.cta}</div>
+                    <button
+                      onClick={() => navigator.clipboard.writeText(`${post.hook}\n\n${post.body}\n\n${post.cta}`)}
+                      style={{ background: 'transparent', border: '1px solid #222', color: '#555', fontSize: 11, padding: '4px 10px', borderRadius: 6, cursor: 'pointer' }}
+                    >
+                      Copy
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── INDIVIDUAL TOOLS MODE ───────────────────────────────────────────── */}
+      {mode === 'tools' && (
+        <>
+          <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
+            {TOOLS.map(t => (
+              <button
+                key={t.id}
+                onClick={() => setActiveTool(t.id)}
+                style={{
+                  flex: 1, background: activeTool === t.id ? '#0a1500' : '#111',
+                  border: `1px solid ${activeTool === t.id ? '#9ef500' : '#222'}`,
+                  borderRadius: 10, padding: '14px 12px', cursor: 'pointer',
+                  textAlign: 'left', transition: 'all 0.15s',
+                }}
+              >
+                <div style={{ fontSize: 16, marginBottom: 4 }}>{t.icon}</div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: activeTool === t.id ? '#9ef500' : '#e5e5e5' }}>
+                  {t.label}
+                </div>
+                <div style={{ fontSize: 11, color: '#555', marginTop: 2 }}>{t.tagline}</div>
+              </button>
+            ))}
+          </div>
+          <div style={{ background: '#0d0d0d', border: '1px solid #1a1a1a', borderRadius: 12, padding: 24 }}>
+            {activeTool === 'niche'   && <NicheTool />}
+            {activeTool === 'offer'   && <OfferTool />}
+            {activeTool === 'content' && <ContentTool />}
+          </div>
+        </>
+      )}
     </div>
   )
 }
