@@ -13,6 +13,7 @@
  */
 
 import { useState } from 'react'
+import { useSession } from 'next-auth/react'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -142,8 +143,9 @@ function NicheTool() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ idea }),
       })
-      if (res.ok) {
-        setResult(await res.json())
+      const data = await res.json()
+      if (res.ok && data.ok) {
+        setResult(data as NicheResult)
       } else {
         setResult(mockNicheResult(idea))
       }
@@ -252,8 +254,9 @@ function OfferTool() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ niche }),
       })
-      if (res.ok) {
-        setResult(await res.json())
+      const data = await res.json()
+      if (res.ok && data.ok) {
+        setResult(data as OfferResult)
       } else {
         setResult(mockOfferResult(niche))
       }
@@ -351,9 +354,9 @@ function ContentTool() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ offer }),
       })
-      if (res.ok) {
-        const data = await res.json()
-        setPosts(data.posts ?? [])
+      const data = await res.json()
+      if (res.ok && data.ok) {
+        setPosts((data.posts ?? []) as ContentResult[])
       } else {
         setPosts(mockContentPosts(offer))
       }
