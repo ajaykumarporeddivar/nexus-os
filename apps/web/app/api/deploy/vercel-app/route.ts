@@ -353,7 +353,25 @@ export async function POST(req: NextRequest) {
         deps.next = '15.5.18'
         deps.react = deps.react ?? '19.0.0'
         deps['react-dom'] = deps['react-dom'] ?? '19.0.0'
+        deps['lucide-react'] = deps['lucide-react'] ?? '0.468.0'
+        deps.clsx = deps.clsx ?? '2.1.1'
+        deps['tailwind-merge'] = deps['tailwind-merge'] ?? '2.5.4'
+        devDeps.typescript = devDeps.typescript ?? '5.4.5'
+        devDeps['@types/react'] = devDeps['@types/react'] ?? '19.0.0'
+        devDeps['@types/react-dom'] = devDeps['@types/react-dom'] ?? '19.0.0'
+        devDeps['@types/node'] = devDeps['@types/node'] ?? '20.17.9'
+        devDeps.tailwindcss = devDeps.tailwindcss ?? '3.4.17'
+        devDeps.postcss = devDeps.postcss ?? '8.4.49'
+        devDeps.autoprefixer = devDeps.autoprefixer ?? '10.4.20'
+        devDeps.eslint = devDeps.eslint ?? '8.57.1'
         devDeps['eslint-config-next'] = '15.5.18'
+        pkg.scripts = {
+          dev: 'next dev',
+          build: 'next build',
+          start: 'next start',
+          lint: 'next lint',
+          ...((pkg.scripts ?? {}) as Record<string, string>),
+        }
         pkg.dependencies = deps
         pkg.devDependencies = devDeps
 

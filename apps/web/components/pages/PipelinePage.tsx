@@ -697,6 +697,56 @@ function formatRemainingDuration(totalSeconds: number): string {
   return mins > 0 ? `~${mins}m ${secs}s left` : `~${secs}s left`
 }
 
+function normalizeDeployPackageJson(files: Record<string, string>): Record<string, string> {
+  const next = { ...files }
+  const fallbackPackage = {
+    name: 'nexus-generated-app',
+    version: '0.1.0',
+    private: true,
+    scripts: { dev: 'next dev', build: 'next build', start: 'next start', lint: 'next lint' },
+    dependencies: {},
+    devDependencies: {},
+  }
+  let pkg: Record<string, unknown>
+  try {
+    pkg = next['package.json'] ? JSON.parse(next['package.json']) : fallbackPackage
+  } catch {
+    pkg = fallbackPackage
+  }
+  const deps = { ...((pkg.dependencies ?? {}) as Record<string, string>) }
+  const devDeps = { ...((pkg.devDependencies ?? {}) as Record<string, string>) }
+  const scripts = { ...((pkg.scripts ?? {}) as Record<string, string>) }
+
+  Object.assign(deps, {
+    next: '15.5.18',
+    react: deps.react ?? '19.0.0',
+    'react-dom': deps['react-dom'] ?? '19.0.0',
+    'lucide-react': deps['lucide-react'] ?? '0.468.0',
+    clsx: deps.clsx ?? '2.1.1',
+    'tailwind-merge': deps['tailwind-merge'] ?? '2.5.4',
+  })
+  Object.assign(devDeps, {
+    typescript: devDeps.typescript ?? '5.4.5',
+    '@types/react': devDeps['@types/react'] ?? '19.0.0',
+    '@types/react-dom': devDeps['@types/react-dom'] ?? '19.0.0',
+    '@types/node': devDeps['@types/node'] ?? '20.17.9',
+    tailwindcss: devDeps.tailwindcss ?? '3.4.17',
+    postcss: devDeps.postcss ?? '8.4.49',
+    autoprefixer: devDeps.autoprefixer ?? '10.4.20',
+    eslint: devDeps.eslint ?? '8.57.1',
+    'eslint-config-next': '15.5.18',
+  })
+  Object.assign(scripts, {
+    dev: scripts.dev ?? 'next dev',
+    build: scripts.build ?? 'next build',
+    start: scripts.start ?? 'next start',
+    lint: scripts.lint ?? 'next lint',
+  })
+
+  next['package.json'] = JSON.stringify({ ...pkg, private: true, scripts, dependencies: deps, devDependencies: devDeps }, null, 2)
+  return next
+}
+
 function MiniBars({ value, tone = 'acid' }: { value: number; tone?: 'acid' | 'cyan' | 'rose' }) {
   const color = tone === 'cyan' ? 'bg-cyan-300' : tone === 'rose' ? 'bg-rose-400' : 'bg-[#c8f23c]'
   return (
@@ -5120,6 +5170,8 @@ export default function PipelinePage() {
                 }
               }
 
+              buildFilesRef.current = normalizeDeployPackageJson(buildFilesRef.current)
+
               // Re-push updated files to GitHub (update existing app repo)
               const slug = forgeSpecRef.current!.projectName
               const appRepoUrl = deployResult?.appRepoUrl ?? ''
@@ -7054,6 +7106,7 @@ REPAIR SCOPE:
     log('DEPLOY starting…')
 
     const slug = forge.projectName
+    appFiles = normalizeDeployPackageJson(appFiles)
 
     let specRepoUrl  = ''
     let appRepoUrl   = ''
