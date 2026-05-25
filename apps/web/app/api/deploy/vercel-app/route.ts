@@ -75,6 +75,24 @@ async function uploadBlob(
 // Files that aren't part of the Next.js source build
 const SKIP = ['.github/', 'README.md', '.env.example', 'vitest.config', '__tests__/']
 
+function shouldSkipLegacyDuplicatePath(path: string, allPaths: Set<string>): boolean {
+  const normalized = path.replace(/\\/g, '/').replace(/^\.\/+/, '')
+  const hasCanonicalApp = allPaths.has('src/app/page.tsx') || allPaths.has('src/app/dashboard/page.tsx')
+  if (!hasCanonicalApp) return false
+
+  // The BUILD safety net emits a canonical App Router app under src/.
+  // Provider outputs sometimes also include legacy Pages Router files and
+  // top-level component/lib duplicates. Those optional files can break
+  // `next build` even though the canonical app is deployable, so exclude them
+  // from the deployment payload.
+  if (/^pages\//.test(normalized)) return true
+  if (/^components\//.test(normalized)) return true
+  if (/^hooks\//.test(normalized)) return true
+  if (/^context\//.test(normalized)) return true
+  if (/^lib\//.test(normalized)) return true
+  return false
+}
+
 function normaliseGeneratedImportPaths(source: string): string {
   const replacements: Array<[RegExp, string]> = [
     [/from\s+['"](?:\.\.\/)+(?:src\/)?lib\/data['"]/g, "from '@/lib/data'"],
@@ -163,8 +181,13 @@ export async function POST(req: NextRequest) {
       'layout.tsx':          'src/app/layout.tsx',
     }
 
+    const inputPaths = new Set(Object.keys(files).map(path => path.replace(/\\/g, '/').replace(/^\.\/+/, '')))
     const sourceFiles = Object.entries(files)
-      .filter(([path, content]) => !!content && !!path && !SKIP.some(s => path.includes(s)))
+      .filter(([path, content]) => {
+        if (!content || !path) return false
+        if (SKIP.some(s => path.includes(s))) return false
+        return !shouldSkipLegacyDuplicatePath(path, inputPaths)
+      })
       .map(([path, content]): [string, string] => {
         const normalizedContent = normaliseGeneratedImportPaths(String(content))
         // Remap bare filename → correct app directory location

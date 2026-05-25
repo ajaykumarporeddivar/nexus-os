@@ -5141,7 +5141,7 @@ export default function PipelinePage() {
               }
 
               // Trigger a new Vercel deployment
-              const vRes = await fetch('/api/deploy/vercel', {
+              const vRes = await fetch('/api/deploy/vercel-app', {
                 method:  'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ projectName: slug, files: buildFilesRef.current }),
