@@ -7962,16 +7962,19 @@ REPAIR SCOPE:
 
             {/* Progress header */}
             {phase === 'running' && (
-              <div className="space-y-3 border-b border-white/10 bg-black/20 px-6 pb-5 pt-6">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2.5">
-                    <span className="w-2 h-2 rounded-full bg-[#c8f23c] animate-pulse flex-shrink-0" />
-                    <span className="text-sm font-black text-white">Pipeline running</span>
-                    <span className="text-[9px] font-mono text-ink3 bg-paper2 border border-border rounded px-2 py-0.5">⏱ {elapsedDisplay}</span>
-                    <span className="text-[9px] font-mono text-zinc-400 bg-white/[0.04] border border-white/10 rounded px-2 py-0.5">ETA {etaDisplay}</span>
-                    {etaTargetTime && (
-                      <span className="text-[9px] font-mono text-zinc-400 bg-white/[0.04] border border-white/10 rounded px-2 py-0.5">finish ~{etaTargetTime}</span>
-                    )}
+              <div className="space-y-4 border-b border-[#c8f23c]/20 bg-[radial-gradient(circle_at_top_left,rgba(200,242,60,0.12),transparent_30%),linear-gradient(135deg,rgba(255,255,255,0.04),rgba(255,255,255,0.01))] px-6 pb-6 pt-6">
+                <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2.5">
+                      <span className="h-2.5 w-2.5 flex-shrink-0 rounded-full bg-[#c8f23c] shadow-[0_0_18px_rgba(200,242,60,0.9)] animate-pulse" />
+                      <span className="text-base font-black text-white">Pipeline running</span>
+                      <span className="rounded-full border border-[#c8f23c]/35 bg-[#c8f23c]/10 px-2.5 py-1 text-[9px] font-black font-mono uppercase tracking-widest text-[#d7ff57]">
+                        {progressPct >= 92 ? 'final deploy window' : progressPct >= 52 ? 'build sprint active' : 'forge intelligence running'}
+                      </span>
+                    </div>
+                    <p className="mt-1 text-[11px] leading-relaxed text-zinc-400">
+                      Real-time mission clock for {TOTAL_AGENTS} agents, quality gates, repair loops, preview, and live deploy.
+                    </p>
                   </div>
                   <button
                     onClick={cancelPipeline}
@@ -7980,6 +7983,32 @@ REPAIR SCOPE:
                   >
                     ■ STOP
                   </button>
+                </div>
+
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+                  <div className="relative overflow-hidden rounded-2xl border border-[#c8f23c]/35 bg-[#c8f23c]/10 p-4 shadow-[0_0_26px_rgba(200,242,60,0.14)]">
+                    <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-[#c8f23c] to-transparent" />
+                    <p className="text-[9px] font-black font-mono uppercase tracking-[0.18em] text-[#d7ff57]">Elapsed</p>
+                    <p className="mt-1 font-mono text-4xl font-black leading-none text-white tabular-nums">{elapsedDisplay}</p>
+                    <p className="mt-2 text-[10px] text-zinc-400">live run clock</p>
+                  </div>
+                  <div className="rounded-2xl border border-white/15 bg-black/35 p-4">
+                    <p className="text-[9px] font-black font-mono uppercase tracking-[0.18em] text-zinc-500">ETA left</p>
+                    <p className="mt-1 font-mono text-3xl font-black leading-none text-[#d7ff57] tabular-nums">{etaDisplay}</p>
+                    <p className="mt-2 text-[10px] text-zinc-400">adaptive from completed agents</p>
+                  </div>
+                  <div className="rounded-2xl border border-white/15 bg-black/35 p-4">
+                    <p className="text-[9px] font-black font-mono uppercase tracking-[0.18em] text-zinc-500">Finish target</p>
+                    <p className="mt-1 font-mono text-3xl font-black leading-none text-white tabular-nums">{etaTargetTime ? `~${etaTargetTime}` : '--:--'}</p>
+                    <p className="mt-2 text-[10px] text-zinc-400">local time projection</p>
+                  </div>
+                  <div className="rounded-2xl border border-white/15 bg-black/35 p-4">
+                    <p className="text-[9px] font-black font-mono uppercase tracking-[0.18em] text-zinc-500">Velocity</p>
+                    <p className="mt-1 font-mono text-3xl font-black leading-none text-white tabular-nums">
+                      {averageAgentDurationSec !== null && averageAgentDurationSec > 0 ? `${(60 / averageAgentDurationSec).toFixed(1)}/m` : '--'}
+                    </p>
+                    <p className="mt-2 text-[10px] text-zinc-400">agent throughput</p>
+                  </div>
                 </div>
 
                 {/* Progress bar */}
@@ -8007,9 +8036,9 @@ REPAIR SCOPE:
                       live ETA {etaDisplay}
                     </span>
                   </div>
-                  <div className="w-full h-2 bg-white/10 rounded-full overflow-hidden">
+                  <div className="h-3 w-full overflow-hidden rounded-full bg-white/10 ring-1 ring-white/10">
                     <div
-                      className="h-full bg-[#c8f23c] rounded-full transition-all duration-700 ease-out shadow-[0_0_8px_2px_rgba(200,242,60,0.5)]"
+                      className="h-full rounded-full bg-gradient-to-r from-[#c8f23c] via-[#e7ff72] to-[#c8f23c] transition-all duration-700 ease-out shadow-[0_0_16px_3px_rgba(200,242,60,0.6)]"
                       style={{ width: `${progressPct}%` }}
                     />
                   </div>
