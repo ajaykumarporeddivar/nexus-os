@@ -405,27 +405,33 @@ async function groqComplete(
       setCooldown(key, GROQ_COOLDOWN_MS)
       continue
     }
-    // 413 = payload too large — truncate messages by 40% and retry once
+    // 413 = payload too large. Shrink until Groq accepts the request.
     if (res.status === 413) {
-      console.warn(`[ai] Groq 413 on key …${key.slice(-6)} — truncating and retrying`)
-      const truncated = messages.map(m => ({
-        ...m,
-        content: typeof m.content === 'string' ? m.content.slice(0, Math.floor(m.content.length * 0.6)) : m.content,
-      }))
-      const retryRes = await fetch(GROQ_URL, {
-        method:  'POST',
-        headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
-        body:    JSON.stringify({
-          model,
-          max_tokens: Math.min(cap, 4096),
-          messages:   [{ role: 'system', content: system.slice(0, Math.floor(system.length * 0.7)) }, ...truncated],
-        }),
-      })
-      if (retryRes.ok) {
-        const retryData = await retryRes.json()
-        return { text: retryData.choices?.[0]?.message?.content ?? '', key }
+      console.warn(`[ai] Groq 413 on key …${key.slice(-6)} — shrinking and retrying`)
+      for (const ratio of [0.45, 0.28, 0.16, 0.09, 0.05]) {
+        const truncated = messages.map(m => ({
+          ...m,
+          content: typeof m.content === 'string'
+            ? m.content.slice(0, Math.max(600, Math.floor(m.content.length * ratio)))
+            : m.content,
+        }))
+        const retryRes = await fetch(GROQ_URL, {
+          method:  'POST',
+          headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+          body:    JSON.stringify({
+            model,
+            max_tokens: Math.min(cap, ratio <= 0.16 ? 1536 : 3072),
+            messages:   [{ role: 'system', content: system.slice(0, Math.max(1000, Math.floor(system.length * ratio))) }, ...truncated],
+          }),
+        })
+        if (retryRes.status === 413) continue
+        if (retryRes.ok) {
+          const retryData = await retryRes.json()
+          return { text: retryData.choices?.[0]?.message?.content ?? '', key }
+        }
+        console.warn(`[ai] Groq 413 retry failed (${retryRes.status}) — trying next key`)
+        break
       }
-      console.warn(`[ai] Groq 413 retry failed (${retryRes.status}) — skipping key`)
       continue
     }
     if (!res.ok) {
@@ -483,41 +489,51 @@ async function* groqStream(
       setCooldown(key, GROQ_COOLDOWN_MS)
       continue
     }
-    // 413 = request payload too large — truncate messages content by 40% and retry this key once
+    // 413 = request payload too large. Shrink until Groq accepts the request;
+    // retrying the same payload only repeats the failure.
     if (res.status === 413) {
-      console.warn(`[ai] Groq stream 413 on key …${key.slice(-6)} — payload too large, truncating messages and retrying`)
-      const truncated = messages.map(m => ({
-        ...m,
-        content: typeof m.content === 'string' ? m.content.slice(0, Math.floor(m.content.length * 0.6)) : m.content,
-      }))
-      const retryRes = await fetch(GROQ_URL, {
-        method:  'POST',
-        headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
-        body:    JSON.stringify({
-          model,
-          max_tokens: Math.min(cap, 4096),
-          stream:     true,
-          messages:   [{ role: 'system', content: system.slice(0, Math.floor(system.length * 0.7)) }, ...truncated],
-        }),
-      })
-      if (!retryRes.ok) {
-        console.warn(`[ai] Groq stream 413 retry also failed (${retryRes.status}) — skipping key`)
-        continue
-      }
-      const retryReader = retryRes.body!.getReader()
-      const retryDec    = new TextDecoder()
-      while (true) {
-        const { done, value } = await retryReader.read()
-        if (done) break
-        for (const line of retryDec.decode(value).split('\n')) {
-          if (!line.startsWith('data: ') || line.includes('[DONE]')) continue
-          try {
-            const delta = JSON.parse(line.slice(6))?.choices?.[0]?.delta?.content
-            if (delta) yield delta
-          } catch { /* partial chunk */ }
+      console.warn(`[ai] Groq stream 413 on key …${key.slice(-6)} — payload too large, shrinking and retrying`)
+      for (const ratio of [0.45, 0.28, 0.16, 0.09, 0.05]) {
+        const truncated = messages.map(m => ({
+          ...m,
+          content: typeof m.content === 'string'
+            ? m.content.slice(0, Math.max(600, Math.floor(m.content.length * ratio)))
+            : m.content,
+        }))
+        const retryRes = await fetch(GROQ_URL, {
+          method:  'POST',
+          headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+          body:    JSON.stringify({
+            model,
+            max_tokens: Math.min(cap, ratio <= 0.16 ? 1536 : 3072),
+            stream:     true,
+            messages:   [{ role: 'system', content: system.slice(0, Math.max(1000, Math.floor(system.length * ratio))) }, ...truncated],
+          }),
+        })
+        if (retryRes.status === 413) {
+          console.warn(`[ai] Groq stream 413 retry still too large at ratio ${ratio}`)
+          continue
         }
+        if (!retryRes.ok) {
+          console.warn(`[ai] Groq stream 413 retry failed (${retryRes.status}) — trying next key`)
+          break
+        }
+        const retryReader = retryRes.body!.getReader()
+        const retryDec    = new TextDecoder()
+        while (true) {
+          const { done, value } = await retryReader.read()
+          if (done) break
+          for (const line of retryDec.decode(value).split('\n')) {
+            if (!line.startsWith('data: ') || line.includes('[DONE]')) continue
+            try {
+              const delta = JSON.parse(line.slice(6))?.choices?.[0]?.delta?.content
+              if (delta) yield delta
+            } catch { /* partial chunk */ }
+          }
+        }
+        return
       }
-      return
+      continue
     }
     if (!res.ok) throw new Error(`Groq stream error ${res.status}`)
 
@@ -621,7 +637,7 @@ export async function* aiStream(opts: AICompleteOptions): AsyncGenerator<string>
   let lastProviderError = ''
 
   // 1️⃣ Anthropic streaming
-  if (anthropicKey) {
+  if (anthropicKey && !shouldSkipProvider('anthropic')) {
     try {
       const client = new Anthropic({ apiKey: anthropicKey })
       const stream = client.messages.stream({
@@ -642,6 +658,7 @@ export async function* aiStream(opts: AICompleteOptions): AsyncGenerator<string>
         const msg = err instanceof Error ? err.message : String(err)
         const cls = classifyError(msg)
         if (cls === 'TOKEN_QUOTA_EXCEEDED') throw Object.assign(err instanceof Error ? err : new Error(msg), { code: 'TOKEN_QUOTA_EXCEEDED' })
+        if (cls === 'QUOTA_EXHAUSTED') recordProviderRateLimit('anthropic')
         if (!isAnthropicFallback(msg)) throw err
         lastProviderError = msg
         errored = true
@@ -652,6 +669,7 @@ export async function* aiStream(opts: AICompleteOptions): AsyncGenerator<string>
       const msg = err instanceof Error ? err.message : String(err)
       const cls = classifyError(msg)
       if (cls === 'TOKEN_QUOTA_EXCEEDED') throw Object.assign(err instanceof Error ? err : new Error(msg), { code: 'TOKEN_QUOTA_EXCEEDED' })
+      if (cls === 'QUOTA_EXHAUSTED') recordProviderRateLimit('anthropic')
       if (!isAnthropicFallback(msg)) throw err
       lastProviderError = msg
       console.warn('[ai] Anthropic outer catch → fallback:', msg.slice(0, 100))
@@ -659,17 +677,25 @@ export async function* aiStream(opts: AICompleteOptions): AsyncGenerator<string>
   }
 
   // 2️⃣ Gemini streaming (up to 51 keys with cooldown-aware rotation)
-  if (getGeminiKeys().length > 0) {
+  if (anthropicKey && shouldSkipProvider('anthropic')) {
+    console.info('[ai] Anthropic stream pre-emptively skipped (near quota limit) - routing to Gemini')
+  }
+
+  if (getGeminiKeys().length > 0 && !shouldSkipProvider('gemini')) {
     try {
       yield* geminiStream(system, messages, maxTokens, fastMode)
+      recordProviderRequest('gemini', maxTokens)
       return
     } catch (err) {
       const e = err as { status?: number; message?: string }
       const shouldFallback = isGeminiFallback(e.message ?? '', e.status)
+      if (e.status === 429) recordProviderRateLimit('gemini')
       if (!shouldFallback) throw err
       lastProviderError = e.message ?? lastProviderError
       console.warn('[ai] Gemini stream → Groq fallback:', String(e.message).slice(0, 100))
     }
+  } else if (getGeminiKeys().length > 0 && shouldSkipProvider('gemini')) {
+    console.info('[ai] Gemini stream pre-emptively skipped (near quota limit) - routing to Groq')
   }
 
   // 3️⃣ Groq streaming (up to 51 keys with cooldown-aware rotation)

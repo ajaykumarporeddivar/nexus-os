@@ -92,7 +92,10 @@ export const FORGE_QA_CTX_CAPS: Record<string, number> = {
   analyst:           4200,
   architect:         4200,
   planner:           3600,
-  'test-writer':     5200,
+  // SPEC CONTRACT is the highest-risk QA input. Keep it effectively complete:
+  // clipped contracts made QA mark present sections as missing and caused false
+  // <7 failures even after the deterministic safety net had generated them.
+  'test-writer':     12000,
   builder:            900,
   security:          1800,
   'db-opt':          3600,
@@ -188,7 +191,7 @@ export const FORGE_AGENTS: ForgeAgent[] = [
       skillType: 'validator', executionMode: 'sequential', parallelGroup: null,
       executionOrder: 5, tokenBudget: 3500, timeoutMs: 120_000,
       trustLevel: 'privileged', failureBehavior: 'abort', costCeilingUsd: 0.06,
-      dependencies: ['planner'],
+      dependencies: ['analyst', 'architect', 'planner', 'db-opt'],
       retryPolicy: { maxAttempts: 4, backoffMs: 4000 },
     },
   },
@@ -199,7 +202,7 @@ export const FORGE_AGENTS: ForgeAgent[] = [
       skillType: 'validator', executionMode: 'sequential', parallelGroup: null,
       executionOrder: 6, tokenBudget: 2500, timeoutMs: 150_000,
       trustLevel: 'privileged', failureBehavior: 'abort', costCeilingUsd: 0.05,
-      dependencies: ['test-writer'],
+      dependencies: ['analyst', 'architect', 'planner', 'builder', 'security', 'db-opt', 'test-writer'],
       retryPolicy: { maxAttempts: 4, backoffMs: 4000 },
     },
   },
@@ -210,7 +213,7 @@ export const FORGE_AGENTS: ForgeAgent[] = [
       skillType: 'observer', executionMode: 'sequential', parallelGroup: null,
       executionOrder: 7, tokenBudget: 2000, timeoutMs: 120_000,
       trustLevel: 'trusted', failureBehavior: 'degrade', costCeilingUsd: 0.04,
-      dependencies: ['qa'],
+      dependencies: ['qa', 'planner', 'test-writer'],
       retryPolicy: { maxAttempts: 4, backoffMs: 4000 },
     },
   },
@@ -221,7 +224,7 @@ export const FORGE_AGENTS: ForgeAgent[] = [
       skillType: 'planner', executionMode: 'parallel', parallelGroup: 2,
       executionOrder: 8, tokenBudget: 1500, timeoutMs: 120_000,
       trustLevel: 'trusted', failureBehavior: 'degrade', costCeilingUsd: 0.04,
-      dependencies: ['workflow-mapper'],
+      dependencies: ['qa', 'workflow-mapper'],
       retryPolicy: { maxAttempts: 4, backoffMs: 4000 },
     },
   },
@@ -232,7 +235,7 @@ export const FORGE_AGENTS: ForgeAgent[] = [
       skillType: 'planner', executionMode: 'parallel', parallelGroup: 2,
       executionOrder: 8, tokenBudget: 1500, timeoutMs: 120_000,
       trustLevel: 'trusted', failureBehavior: 'degrade', costCeilingUsd: 0.04,
-      dependencies: ['workflow-mapper'],
+      dependencies: ['qa', 'workflow-mapper'],
       retryPolicy: { maxAttempts: 4, backoffMs: 4000 },
     },
   },
@@ -348,6 +351,83 @@ export function extractQAScore(text: string): number | null {
   return null
 }
 
+export type MicroSaasMode = 'MVP' | 'GROWTH' | 'SCALE' | 'INVESTOR'
+
+export function buildMicroSaasGovernorContext(mode: MicroSaasMode = 'MVP'): string {
+  return `MICRO-SAAS GOVERNOR CONTEXT
+Execution Mode: ${mode}
+
+Activation Law:
+VALID = 1 user segment x 1 painful problem x 1 repeatable workflow x 1 measurable outcome.
+If any variable expands beyond one, reduce scope before any agent continues.
+
+Decision Priority Hierarchy:
+P1 One User Segment - name one narrow ICP with role, company type, and trigger.
+P2 One Painful Problem - solve one urgent, costly pain before adding adjacent pains.
+P3 One Repeatable Workflow - the app must automate one repeatable workflow end to end.
+P4 Fast MVP - demo-deployable in a solo-build window with mock data and zero env vars.
+P5 AI Automation Value - AI must eliminate or compress a manual step, not decorate the UI.
+P6 Monetization Design - package a clear paid upgrade or expansion path.
+P7 Scalability Architecture - defer scale features unless they protect the MVP contract.
+
+Governor State each FORGE agent must preserve:
+STATE.user_segment, STATE.pain_statement, STATE.workflow, STATE.accepted_features,
+STATE.rejected_features, STATE.rejected_scope, STATE.execution_mode, STATE.purity_score.
+Once STATE.user_segment, STATE.pain_statement, or STATE.workflow is locked, no later agent may broaden it.
+
+Required 6-Field Output Contract for strategy agents:
+1. OUTPUT: the artifact produced by this agent.
+2. STATE_UPDATES: exact locked state fields changed or confirmed.
+3. REJECTIONS: features, audiences, integrations, or workflows killed.
+4. NEXT_AGENT_BRIEF: what the next agent must preserve.
+5. CONFIDENCE: X/10 with a one-sentence rationale.
+6. GOVERNOR_NOTES: scope risks, bloat risks, and purity score impact.
+Missing field or confidence below 7.0 means the agent output is incomplete and should be repaired or replaced by deterministic fallback.
+
+Feature Acceptance Gate:
+- Does this feature directly support the primary workflow?
+- Does it serve the core user segment?
+- Does it reduce a manual step or time-to-value?
+- Does it keep the MVP simple enough to ship?
+If any answer is no, reject it into deferred roadmap instead of building it.
+
+Feature Acceptance Equation:
+FeatureScore = WorkflowSupport 30% + UserFit 20% + PainRelief 20% + AutomationValue 15% + MVPSimplicity 15%.
+Only features scoring 8.0+ can enter the MVP. Everything else becomes locked roadmap copy.
+
+Anti-Bloat Protocol:
+Reject multi-role systems, marketplaces, social layers, unrelated analytics, excessive
+customization, secondary workflows, native mobile, i18n, and broad audience expansion
+unless the brief explicitly asks for them and the SPEC CONTRACT accepts them.
+
+Anti-Pattern Override Triggers:
+- Vitamin Trap: skipping the product does not cost the user time, money, or visible stress.
+- Integration Hostage: MVP requires 3+ third-party APIs to work correctly.
+- AI Theater: AI adds label value but no measurable automation beyond copy/paste.
+- Dashboard Decoration: dashboards exist without being required by the core workflow.
+- Secondary Workflow Creep: "while they are here" features enter build scope.
+Any trigger requires scope reduction and a REJECTIONS entry.
+
+Micro-SaaS Quality Formula:
+User Focus 15%, Pain Clarity 15%, Workflow Simplicity 15%, Automation Value 15%,
+MVP Simplicity 15%, Retention Potential 10%, Monetization Fit 10%, Moat 5%.
+Minimum pass: 8.0/10 for strategy quality; BUILD still requires deployable source quality.
+
+MVP Mode Constraints:
+- One paid tier maximum in generated MVP copy; expansion tiers may be locked roadmap only.
+- Onboarding to first meaningful output must be 60 seconds or less.
+- The core workflow must be sequential with no branching and no more than 5 steps.
+- UI decisions per workflow run must be 2 or fewer.
+- The accepted feature list is capped at 3 route-backed workflows in NEXUS pipeline mode.
+
+Non-Negotiable Laws:
+- If the product cannot be explained in one sentence under 15 words, narrow the segment.
+- If onboarding needs more than 3 steps, reduce it to one primary input plus optional details.
+- If the automation needs more than 2 external APIs, mock or defer the integration.
+- If the MVP cannot be represented by exactly 3 route-backed workflows, cut scope.
+- If AI does not eliminate a manual step, redesign the workflow before BUILD.`
+}
+
 // ─── System prompts — production quality, detailed, specific ─────────────────
 
 export const FORGE_AGENT_SYSTEMS: Record<string, string> = {
@@ -387,6 +467,8 @@ URL_SLUG_BASE: [lowercase-hyphen version of project name, e.g. "contract-flow"]
 **Tech Stack:** Next.js 15.2 App Router · React 19 · TypeScript strict · Tailwind CSS 3.4 · Vercel deploy · Mock data only (no DB)
 **Vertical:** [one of: saas | marketplace | dashboard | social | mobile | ecommerce — pick the best fit]
 **Primary Entities:** [name 3-5 core data entities the app manages, e.g. "Contract, Client, Invoice" or "Job, Candidate, Interview" — ANALYST uses these as entity names]
+**Governor Scope:** [One user segment · one painful problem · one repeatable workflow · exactly 3 route-backed MVP features]
+**Rejected Scope:** [3-5 things explicitly killed by the Anti-Bloat Protocol]
 
 ## SUCCESS CRITERIA
 [3-5 measurable outcomes — specific numbers, not "users will love it"]
@@ -412,11 +494,32 @@ FEATURE_SLUGS: [Exactly 3 MVP feature slugs tied to the top 3 pain points, e.g. 
 - **Deferred Expansion Promise:** [One sentence explaining what unlocks after payment through one-click expansion]
 - **Scope Rule:** BUILD must implement only the 3 MVP pain-point workflows. All other features become roadmap/selling points, not half-built pages.
 
+## 0B. Micro-SaaS Governor State
+- **Execution Mode:** MVP
+- **User Segment:** [one narrow ICP only]
+- **Pain Statement:** [one urgent, costly pain only]
+- **Primary Workflow:** [one repeatable workflow the app automates]
+- **Accepted Features:** [exactly the 3 MVP features below]
+- **Rejected Features:** [features killed because they do not support the primary workflow]
+- **Rejected Scope:** [multi-role, marketplace, social, unrelated analytics, native mobile, i18n, or other anti-bloat exclusions]
+- **Purity Score:** [score the strategy using User Focus, Pain Clarity, Workflow Simplicity, Automation Value, MVP Simplicity, Retention, Monetization, Moat]
+
+## 0C. Buyer Purchase Trigger / Day-One Value
+- **Economic Buyer:** [the budget owner who can approve payment, not a broad audience]
+- **Trigger Event:** [the moment that makes the buyer search/pay today]
+- **Current Workaround:** [spreadsheet, email, manual reporting, meeting notes, agency labor, etc.]
+- **Cost of Doing Nothing:** [hours/week, revenue leakage, churn risk, compliance risk, missed renewal, or missed cash]
+- **First-Use Artifact:** [the concrete report, queue, export, action pack, triage list, or client-ready deliverable created in the first session]
+- **Time-to-Value:** [how quickly the buyer sees the first useful output]
+- **ROI / Payback Logic:** [plain math showing why the monthly price is justified]
+- **Why They Would Pay After First Demo:** [one specific buying reason]
+- **Why They Would Not Pay Yet:** [one honest objection the app must overcome]
+
 ## 1. Executive Summary
 [3-4 sentences: what it is, who it's for, the core value proposition, and the key differentiator vs existing tools]
 
 ## 2. Target User Personas
-[2-3 specific personas. For each: Name · Job Title · Company Size · Primary Pain Point · How This Solves It · Willingness to Pay ($/mo)]
+[2-3 specific personas. For each: Name · Job Title · Company Size · Budget Owner · Current Workaround · Monthly Pain Cost · Buying Trigger · Primary Pain Point · How This Solves It · Willingness to Pay ($/mo)]
 
 ## 3. MVP Core Features (Top 3 Pain Points Only)
 For EACH of exactly 3 MVP features, use this exact format:
@@ -661,6 +764,18 @@ Output .claude/spec-contract.md:
 - Project Name: [exact name]
 - npm Package Name: [lowercase-hyphen, e.g. "contract-flow"]
 - Vercel Project: [lowercase-hyphen]
+
+## MICRO-SAAS GOVERNOR STATE
+- Execution Mode: MVP
+- User Segment: [one narrow ICP]
+- Pain Statement: [one urgent pain]
+- Primary Workflow: [one repeatable workflow]
+- Accepted Features: [exactly 3 MVP route-backed workflows]
+- Rejected Scope: [features killed by anti-bloat protocol]
+- Purity Score Target: 8.0+/10 strategy quality
+
+## FEATURE ACCEPTANCE GATE
+[One row per MVP feature: direct workflow support, core user support, manual-step reduction, simplicity maintained. Any failed item belongs in rejected scope, not build scope.]
 
 ## ENTITY REFERENCE TABLE
 [For every data entity, one row:]
@@ -1030,6 +1145,13 @@ AUTOMATIC FAILURE TRIGGERS (any one → NEEDS_WORK, no exceptions):
 - SPEC CONTRACT is entirely missing (not just clipped)
 - Feature card references a route slug that is not in NAV_ITEMS — normalize slugs (strip /dashboard/ prefix) before comparing. Only fail if the bare slug is genuinely absent.
 - A "Required" acceptance criterion is vague ("should work well", "looks good") with no measurable pass condition
+- Micro-SaaS Governor violation: multiple unrelated user segments, more than one primary workflow, or more than 3 MVP route-backed feature workflows are presented as build scope
+- AI automation value is missing: the core workflow does not remove, compress, or automate at least one manual step
+- Agent output contract is missing repeated evidence of STATE_UPDATES, REJECTIONS, NEXT_AGENT_BRIEF, CONFIDENCE, or GOVERNOR_NOTES and no deterministic SPEC CONTRACT replaces it
+- MVP workflow requires more than 2 external APIs, more than 5 sequential steps, or more than 2 UI decisions per workflow run
+- Any accepted MVP feature fails the Feature Acceptance Equation threshold: workflow support, user fit, pain relief, automation value, and MVP simplicity
+- Buyer purchase trigger is missing: no economic buyer, no trigger event, no cost of doing nothing, no first-use artifact, or no ROI/payback logic
+- Day-one value is not demo-sellable: the output does not prove why a buyer would pay after the first session
 
 SCORING EVIDENCE RULE:
 - Score only what is confirmed by the visible FORGE output.
@@ -1042,11 +1164,13 @@ Score each dimension 0.0–10.0:
 | Dimension | Weight | What to Check |
 |-----------|--------|---------------|
 | brief_clarity | 10% | Is the brief specific enough to build from? Vague briefs → vague apps |
-| manifest_completeness | 20% | Does PROJECT_MANIFEST have: MVP Scope Strategy, Top 3 Pain Points, exactly 3 MVP features with URL slugs, Expansion Roadmap, Post-Payment One-Click Delivery Mechanism, Data Entities, User Flows, Tech Requirements? |
+| manifest_completeness | 20% | Does PROJECT_MANIFEST have: MVP Scope Strategy, Top 3 Pain Points, exactly 3 MVP features with URL slugs, Expansion Roadmap, Post-Payment One-Click Delivery Mechanism, Data Entities, User Flows, Tech Requirements, and clear rejected scope? |
 | architecture_feasibility | 15% | Is Next.js 15.2 / TypeScript / Tailwind / Vercel stack confirmed? File structure complete with src/lib/utils.ts present? No impossible requirements? ADRs present? |
 | feature_card_quality | 20% | Do ALL feature cards have: URL Slug, User Story, Acceptance Criteria, Data Requirements, UI Pattern? Do slugs match NAV_ITEMS list? Are slugs all lowercase-hyphen with no spaces? Are acceptance criteria measurable? |
 | spec_contract_quality | 20% | Does SPEC CONTRACT have ALL 7 required sections: Entity Reference Table, TypeScript Interfaces, Feature Route Reference (slugs matching architecture), KPI Stats Reference, Status Values, Import Paths, FINAL NAVIGATION_ITEMS block? This is the highest-risk section — missing slugs or interfaces directly cause build failures. |
 | data_model_coverage | 15% | Are all entities from features defined with TypeScript interface shapes? Status union types specified? Enough mock data fields to populate tables (15+ records)? |
+
+Before assigning final score, apply the Micro-SaaS Quality Formula and Feature Acceptance Equation from the GOVERNOR CONTEXT. If user focus, pain clarity, workflow simplicity, automation value, or MVP simplicity are weak, cap the overall score at 8.0 even when the technical contract is complete. If any are actively broken, NEEDS_WORK.
 
 Output your assessment in this EXACT format:
 
@@ -1059,6 +1183,8 @@ Output your assessment in this EXACT format:
 - SPEC CONTRACT present: [PASS/FAIL/UNVERIFIABLE]
 - All feature slugs appear in NAV_ITEMS: [PASS/FAIL — list any missing]
 - Acceptance criteria are measurable: [PASS/FAIL — cite any vague criteria found]
+- Micro-SaaS Governor scope: [PASS/FAIL — one user segment, one primary pain/workflow, exactly 3 MVP feature routes]
+- AI automation value: [PASS/FAIL — cite the manual step eliminated or compressed]
 
 **Auto-trigger verdict:** [ALL PASS — proceed to scoring | FAIL on [trigger name] — NEEDS_WORK, skip scoring]
 

@@ -62,7 +62,7 @@ export const BUILD_AGENTS: BuildAgent[] = [
       skillType: 'executor', executionMode: 'sequential', parallelGroup: null,
       executionOrder: 4, tokenBudget: 2000, timeoutMs: 150_000,
       trustLevel: 'trusted', failureBehavior: 'fallback', costCeilingUsd: 0.06,
-      dependencies: ['mock-data'],
+      dependencies: ['mock-data', 'shell'],
       retryPolicy: { maxAttempts: 3, backoffMs: 4000 },
     },
   },
@@ -76,7 +76,7 @@ export const BUILD_AGENTS: BuildAgent[] = [
       skillType: 'executor', executionMode: 'sequential', parallelGroup: null,
       executionOrder: 6, tokenBudget: 1200, timeoutMs: 90_000,
       trustLevel: 'trusted', failureBehavior: 'degrade', costCeilingUsd: 0.03,
-      dependencies: ['mock-data'],
+      dependencies: ['mock-data', 'ui-core'],
       retryPolicy: { maxAttempts: 3, backoffMs: 4000 },
     },
   },
@@ -115,7 +115,7 @@ export const BUILD_AGENTS: BuildAgent[] = [
       skillType: 'executor', executionMode: 'sequential', parallelGroup: null,
       executionOrder: 8, tokenBudget: 2000, timeoutMs: 150_000,
       trustLevel: 'trusted', failureBehavior: 'fallback', costCeilingUsd: 0.06,
-      dependencies: ['ui-core'],
+      dependencies: ['ui-core', 'api', 'landing', 'interactions'],
       retryPolicy: { maxAttempts: 3, backoffMs: 4000 },
     },
   },
@@ -127,7 +127,7 @@ export const BUILD_AGENTS: BuildAgent[] = [
       skillType: 'executor', executionMode: 'sequential', parallelGroup: null,
       executionOrder: 9, tokenBudget: 2000, timeoutMs: 180_000,
       trustLevel: 'trusted', failureBehavior: 'fallback', costCeilingUsd: 0.07,
-      dependencies: ['dashboard'],
+      dependencies: ['dashboard', 'interactions'],
       retryPolicy: { maxAttempts: 3, backoffMs: 4000 },
     },
   },
@@ -283,7 +283,8 @@ export function buildRepairMessage(forge: { projectName: string; brief: string }
     .filter(([file, content]) => file.endsWith('.tsx') && content && isTruncatedJsx(content))
     .map(([file]) => file)
 
-  // Extract key file content — give REPAIR maximum context
+  // Extract key file content — compact by default so repair does not hit provider
+  // payload limits after several agents have generated large files.
   const snippet = (key: string, maxLen = 1200) =>
     accumulated[key] ? accumulated[key].slice(0, maxLen) : '(MISSING — generate this file)'
 
@@ -305,34 +306,34 @@ package.json:
 ${snippet('package.json', 600)}
 
 src/lib/utils.ts:
-${snippet('src/lib/utils.ts', 800)}
+${snippet('src/lib/utils.ts', 500)}
 
 src/lib/types.ts:
-${snippet('src/lib/types.ts', 1000)}
+${snippet('src/lib/types.ts', 700)}
 
-src/lib/data.ts (first 1200 chars):
-${snippet('src/lib/data.ts', 1200)}
+src/lib/data.ts (first 700 chars):
+${snippet('src/lib/data.ts', 700)}
 
 src/app/layout.tsx:
-${snippet('src/app/layout.tsx', 1000)}
+${snippet('src/app/layout.tsx', 500)}
 
 src/app/globals.css:
 ${snippet('src/app/globals.css', 600)}
 
-src/components/ui.tsx (first 1000 chars):
-${snippet('src/components/ui.tsx', 1000)}
+src/components/ui.tsx (first 650 chars):
+${snippet('src/components/ui.tsx', 650)}
 
-src/components/layout.tsx (first 800 chars):
-${snippet('src/components/layout.tsx', 800)}
+src/components/layout.tsx (first 500 chars):
+${snippet('src/components/layout.tsx', 500)}
 
-src/hooks/useApp.ts (first 600 chars):
-${snippet('src/hooks/useApp.ts', 600)}
+src/hooks/useApp.ts (first 450 chars):
+${snippet('src/hooks/useApp.ts', 450)}
 
 src/app/dashboard/layout.tsx:
-${snippet('src/app/dashboard/layout.tsx', 800)}
+${snippet('src/app/dashboard/layout.tsx', 500)}
 
-src/app/dashboard/page.tsx (first 800 chars):
-${snippet('src/app/dashboard/page.tsx', 800)}
+src/app/dashboard/page.tsx (first 500 chars):
+${snippet('src/app/dashboard/page.tsx', 500)}
 
 === YOUR TASKS (in priority order) ===
 1. Regenerate EVERY file in TRUNCATED / MALFORMED TSX FILES — short complete implementation, all JSX tags balanced
@@ -399,11 +400,22 @@ PRODUCTION APP BAR - non-negotiable for paid users:
   - Include JSON API routes backed by src/lib/data.ts for health, data, and search.
   - Dashboard and feature pages must consume the same typed data and expose usable workflows.
   - Do not ship brochureware, placeholder dashboards, static metric cards only, or decorative mock screens.
+SOURCE QUALITY BAR - every generated file is reviewed and scored out of 10 before deploy:
+  - 9-10: professional-grade, domain-specific, complete, interactive where expected, responsive, reusable, and ready for client handoff.
+  - 7-8.9: acceptable but still concise; no critical gaps, placeholders, truncation, or generic demo screens.
+  - Below 7: blocked. The pipeline treats this as a failed build-quality output.
+  - Pages must implement real workflows, not static dashboard decoration. Include filters/search/actions/mutations/export or route navigation.
+  - Components must be reusable and complete, not one-off wrappers or stubs.
+  - Data must be rich enough to make every page feel real and must export the exact names pages import.
+  - API routes must return useful JSON, support realistic filtering/search where relevant, and handle invalid input.
+  - No generic text such as "under construction", "placeholder", "sample only", "Item 1", "John Doe", or unresolved [BRACKET] tokens.
+  - Mobile responsiveness is mandatory: use sm:/md:/lg: layouts and stable overflow handling for tables/cards/forms.
+  - Generated output must look and behave like a paid SaaS product, not a scaffold that merely compiles.
 `.trim()
 
 const STACK = `
 TECH STACK — demo-deployable, zero config, zero credentials:
-• Next.js 15.2 (App Router, src/ directory) — package manager: npm
+• Next.js 15.5.18 (App Router, src/ directory) — package manager: npm
 • React 19 + TypeScript 5.4 strict mode
 • Tailwind CSS 3.4 (requires postcss.config.js — always generate it)
 • lucide-react 0.468 for all icons
@@ -461,7 +473,7 @@ FILE: package.json
     "lint": "next lint"
   },
   "dependencies": {
-    "next": "15.2.0",
+    "next": "15.5.18",
     "react": "19.0.0",
     "react-dom": "19.0.0",
     "lucide-react": "0.468.0",
@@ -477,7 +489,7 @@ FILE: package.json
     "postcss": "8.4.49",
     "autoprefixer": "10.4.20",
     "eslint": "8.57.1",
-    "eslint-config-next": "15.2.0"
+    "eslint-config-next": "15.5.18"
   }
 }
 >>>
@@ -851,6 +863,16 @@ ${CONTRACT}
 
 Generate ONE file. This must look like a $25,000 agency-built landing page for an AI-native product.
 Return only the contract payload. The response must begin with exactly:
+BUYER-CONVERSION OVERRIDE (higher priority than the generic 2025 rules above):
+• Sell a painful business outcome, not generic "AI-powered software".
+• Above the fold must name: exact economic buyer, trigger event, manual cost removed, first-use artifact, and ROI/payback logic from PROJECT_MANIFEST section 0C.
+• Never invent fake traction, compliance, uptime, ratings, logos, or revenue processed. Do not claim "10,000 users", "99.9% uptime", "$50M processed", SOC2, GDPR, or star ratings unless the spec explicitly provides them.
+• Proof must come from workflow evidence: hours saved, work items triaged, renewal risk reduced, cycle time cut, exports generated, or payback math visible in mock data.
+• Primary CTA must be action-oriented: "Create first [artifact]", "Open working demo", or "Generate ROI proof". Avoid "Start Free Today" unless the pricing spec explicitly includes a free plan.
+• Pricing should use the MONETISATION output. If no pricing exists, show one paid pilot plan plus an upgrade CTA for the locked roadmap, not a generic free/pro/enterprise grid.
+• Include a first-session artifact preview: the exact report, queue, export, action pack, triage list, or client-ready deliverable a buyer receives immediately.
+• Include a cost-of-waiting section grounded in the buyer's current workaround and trigger event.
+
 FILE: src/app/page.tsx
 <<<
 and must end with:
@@ -899,10 +921,12 @@ Structure (implement ALL sections with real content from the FORGE spec):
      All using divs with bg-zinc-700, bg-indigo-500, bg-emerald-500, animate-pulse on 1-2 elements
      This makes it look like a real app screenshot without any images
 
-3. SOCIAL PROOF BAR
+3. BUYER PROOF BAR (do not render generic social proof)
    bg-zinc-800/30 border-y border-zinc-700/50 py-8
    4 metrics in a flex row: "10,000+ Users" "99.9% Uptime" "$50M+ Processed" "4.9★ Rating"
    Each: large number font-black text-white + label text-zinc-400 text-sm
+   Override the example labels above with workflow proof metrics from the spec/mock data, e.g. "6 hrs/week saved", "First proof pack <10 min", "$2.4k renewal risk protected", "12 client-ready exports".
+   Label these as estimated workflow impact, not fake customer traction.
 
 4. FEATURES SECTION
    bg-white py-24 px-6
@@ -912,6 +936,13 @@ Structure (implement ALL sections with real content from the FORGE spec):
    - Use EXACTLY the 3 MVP pain-point features from the FORGE spec feature-cards
    - Each card: lucide-react icon in a colored rounded-xl bg-indigo-100 p-3 + feature name + pain point solved + 1-sentence workflow description
    - bg-zinc-50 rounded-2xl border border-zinc-100 p-6 hover:shadow-md transition-shadow
+
+4A. FIRST-USE ARTIFACT SECTION
+   bg-white py-20 px-6 border-t border-zinc-100
+   H2: "What the buyer gets in the first session"
+   Show a realistic artifact preview using static JSX: export table, report card, triage queue, checklist, or action pack.
+   The artifact must match PROJECT_MANIFEST section 0C First-Use Artifact and include domain-specific fields, status, value, and next action.
+   Include one short ROI/payback line beneath it using the Cost of Doing Nothing and Revenue Model.
 
 4B. LOCKED ROADMAP / SELLING POINTS SECTION
    bg-zinc-950 text-white py-20 px-6
@@ -928,6 +959,12 @@ Structure (implement ALL sections with real content from the FORGE spec):
    Each step: large number in indigo circle + step title + description + arrow icon between steps
    Horizontal on desktop (flex), vertical on mobile
 
+5B. COST OF WAITING
+   bg-white py-20 px-6
+   Explain the trigger event and current workaround from PROJECT_MANIFEST section 0C.
+   Use 3 compact cards: "Manual cost", "Revenue/churn risk", "What changes after first run".
+   Keep it specific, sober, and buyer-facing.
+
 6. PRICING SECTION
    bg-white py-24 px-6
    H2: "Simple, transparent pricing"
@@ -938,14 +975,15 @@ Structure (implement ALL sections with real content from the FORGE spec):
    - Pro: ₹999/mo — full features, most popular, highlighted (bg-zinc-900 text-white scale-105)
    - Enterprise: Custom — everything in Pro + SLA + support, "Contact Us" button
    3 tiers in a grid — highlighted tier has scale-105 transform + ring-2 ring-indigo-500
+   Pricing override: if the fallback examples above conflict with the brief, use 1-2 paid buyer plans instead: Paid Pilot and Team Unlock. Do not force a free tier.
    Feature list per tier must come from the FORGE spec features, capped at 4 bullets per tier
    Pro/Enterprise tiers must explicitly mention the one-click roadmap unlock from MONETISATION "Post-Payment One-Click Expansion".
 
-7. TESTIMONIALS (exactly 3 fake but realistic)
+7. BUYER OBJECTIONS (not fake testimonials)
    bg-zinc-50 py-24 px-6
    3-col grid of quote cards
    Each: quote text (2-3 sentences specific to the product's value), 5-star rating, person name + role + company
-   Use diverse realistic names and roles that fit the target market from FORGE spec
+   Replace fake customer names with 3 buyer objection cards: "Why not spreadsheets?", "Will this fit my current workflow?", and "What happens after the MVP?" Answer each with product-specific evidence.
 
 8. CTA SECTION
    bg-gradient-to-br from-indigo-600 to-indigo-800 text-white py-24 px-6 text-center
@@ -995,6 +1033,12 @@ FILE: src/app/dashboard/page.tsx
 - Import BarChart, Sparkline from '@/components/charts'
 - import { AppHeader } from '@/components/layout'  ← named import, NOT default import
 - Use useState for: selectedRow (for row click detail), activeTab ('overview'|'analytics'|'activity')
+
+BUYER-VALUE DASHBOARD RULES:
+- The dashboard must feel like a paid workflow the buyer can use today, not a generic admin analytics page.
+- First screen must show the buyer's urgent queue, the first-use artifact, payback/ROI proof, and the next paid action.
+- KPI cards must use domain outcomes such as hours saved, revenue protected, cycle time reduced, renewal risk, exceptions resolved, exports generated, or value unlocked. Avoid generic "total users" unless it is truly a core entity.
+- Include a compact proof panel: current workaround cost, estimated payback, first artifact ready, and "Export / send" action.
 
 Build a complete dashboard (EVERYTHING renders from mock data — no empty states):
 
@@ -1797,7 +1841,7 @@ FILE: README.md
 ## Tech Stack
 | Layer | Technology | Version |
 |-------|-----------|---------|
-| Framework | Next.js App Router | 15.2.0 |
+| Framework | Next.js App Router | 15.5.18 |
 | Language | TypeScript | 5.4.5 strict |
 | Styling | Tailwind CSS | 3.4.17 |
 | Icons | lucide-react | 0.468.0 |

@@ -6,6 +6,10 @@ import { aiComplete } from '@/lib/ai'
 import { computeTimingAdvantage } from '@/lib/timingAdvantage'
 
 const KEEP_TOP = 12
+const TRENDING_DB_TIMEOUT_MS = 3500
+const USE_FAST_LOCAL_FALLBACK =
+  process.env.NODE_ENV === 'development' &&
+  process.env.TRENDING_USE_DATABASE !== '1'
 
 interface MicroSaaSOpportunity {
   title:           string
@@ -58,8 +62,9 @@ Focus on specific niches with real revenue potential — not generic ideas. Thin
 
 Each opportunity must be ready for the One-Click Pipeline's MVP strategy:
 - The problem must be concrete enough to derive exactly 3 MVP workflows.
-- The target market must name the buyer/user sharply, not "businesses" or "everyone".
-- Tags should include workflow nouns the app can turn into screens, such as "intake", "triage", "approval", "reporting", "exports", "analytics", or the domain-specific equivalents.
+- The target market must name the buyer/user sharply in 5+ words, e.g. "small marketing agencies managing recurring retainers"; never use a workflow tag like "exports", "reporting", "intake", "analytics", or "automation" as the market.
+- The niche/category must describe the operational buying category, not just broad "B2B SaaS" when a sharper category is obvious.
+- Tags should include workflow nouns the app can turn into screens, such as "intake", "triage", "approval", "reporting", "exports", "analytics", or the domain-specific equivalents. Tags are never the target market.
 - Avoid ideas that require regulated infrastructure, real medical/legal/financial decisions, or external integrations to be useful at MVP stage.
 
 Return a JSON array ONLY (no preamble, no markdown). Each object must have EXACTLY these fields:
@@ -67,7 +72,7 @@ Return a JSON array ONLY (no preamble, no markdown). Each object must have EXACT
   "title": "Short catchy app name (e.g. 'Proposal PDF Autopilot', 'Churn Signal Detector')",
   "niche": one of exactly: "productivity" | "finance" | "creator" | "b2b" | "health" | "education" | "ai-tools" | "ecommerce",
   "problem": "One sentence — the specific pain this solves",
-  "targetMarket": "Who pays for this (e.g. 'Freelance designers', 'E-commerce store owners')",
+  "targetMarket": "Who pays for this in 5+ specific words (e.g. 'small paid media agencies managing client retainers')",
   "revenueModel": "e.g. '$29/mo per seat', '$99 one-time', 'Usage-based $0.01/call'",
   "trendReason": "Why this is hot RIGHT NOW in 2026 — what shifted in the market (1 sentence)",
   "buildComplexity": "low" | "medium" | "high",
@@ -117,8 +122,8 @@ function fallbackOpportunities(): MicroSaaSOpportunity[] {
       title: 'Client Proof Pack Builder',
       niche: 'b2b',
       problem: 'Agencies struggle to turn scattered campaign results into client-ready proof packs that justify retainers and renewals.',
-      targetMarket: 'Small digital agency owners',
-      revenueModel: '$49/mo per workspace',
+      targetMarket: 'Small to mid-sized marketing agencies managing recurring client retainers',
+      revenueModel: '$99/mo per workspace',
       trendReason: 'Service buyers increasingly demand measurable proof before renewing retainers.',
       buildComplexity: 'medium',
       tags: ['intake', 'reporting', 'exports'],
@@ -182,6 +187,49 @@ function fallbackOpportunities(): MicroSaaSOpportunity[] {
   ]
 }
 
+function fallbackTrendingItems(limit: number, category: string | null) {
+  const now = new Date()
+  return fallbackOpportunities()
+    .filter(item => !category || item.niche === category)
+    .slice(0, limit)
+    .map((item, index) => ({
+      id: `fallback-${slugifyTitle(item.title)}-${index}`,
+      title: item.title,
+      url: null,
+      source: 'NEXUS deterministic feed',
+      category: item.niche,
+      audience: item.targetMarket,
+      summary: item.problem,
+      useCase: `${item.trendReason} · Revenue: ${item.revenueModel}`,
+      tags: [...item.tags, item.targetMarket],
+      hnScore: item.opportunityScore,
+      fetchedAt: now,
+      batchId: 'fallback-current',
+      confidence: item.opportunityScore,
+      regimeClass: 'fallback',
+    }))
+}
+
+function slugifyTitle(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 48) || 'idea'
+}
+
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms)
+    promise.then(
+      value => {
+        clearTimeout(timer)
+        resolve(value)
+      },
+      error => {
+        clearTimeout(timer)
+        reject(error)
+      },
+    )
+  })
+}
+
 export async function GET(req: NextRequest) {
   const { searchParams } = req.nextUrl
   const category  = searchParams.get('category')
@@ -232,29 +280,45 @@ export async function GET(req: NextRequest) {
   }
 
   // ── Global feed (original behavior, unchanged) ─────────────────────────────
+  if (USE_FAST_LOCAL_FALLBACK) {
+    const items = fallbackTrendingItems(limit, category)
+    return NextResponse.json({
+      ok: true,
+      data: {
+        items,
+        lastFetched: items[0]?.fetchedAt ?? null,
+        batchCount: 0,
+        nextFetch: new Date(Date.now() + 5 * 60 * 60 * 1000).toISOString(),
+        fallback: true,
+        source: 'local-deterministic',
+      },
+    })
+  }
+
   try {
-    const latest = await prisma.trendingItem.findFirst({
+    const latest = await withTimeout(prisma.trendingItem.findFirst({
       orderBy: { fetchedAt: 'desc' },
       select:  { batchId: true, fetchedAt: true },
-    })
+    }), TRENDING_DB_TIMEOUT_MS, 'trending latest batch')
 
     const where = {
       ...(latest   ? { batchId: latest.batchId } : {}),
       ...(category ? { category }                : {}),
     }
 
-    const items = await prisma.trendingItem.findMany({
+    const [items, allBatches] = await withTimeout(Promise.all([
+      prisma.trendingItem.findMany({
       where,
       orderBy: [{ hnScore: 'desc' }, { fetchedAt: 'desc' }],
       take: limit,
-    })
-
-    const allBatches = await prisma.trendingItem.groupBy({
+      }),
+      prisma.trendingItem.groupBy({
       by:      ['batchId', 'fetchedAt'],
       orderBy: { fetchedAt: 'desc' },
       take:    10,
       _count:  { id: true },
-    })
+      }),
+    ]), TRENDING_DB_TIMEOUT_MS, 'trending feed query')
 
     return NextResponse.json({
       ok:   true,
@@ -268,8 +332,18 @@ export async function GET(req: NextRequest) {
       },
     })
   } catch (err) {
-    console.error('[trending GET]', err)
-    return NextResponse.json({ ok: false, error: 'Failed to fetch trending items' }, { status: 500 })
+    console.error('[trending GET] using deterministic fallback:', err)
+    const items = fallbackTrendingItems(limit, category)
+    return NextResponse.json({
+      ok: true,
+      data: {
+        items,
+        lastFetched: items[0]?.fetchedAt ?? null,
+        batchCount: 0,
+        nextFetch: new Date(Date.now() + 5 * 60 * 60 * 1000).toISOString(),
+        fallback: true,
+      },
+    })
   }
 }
 
@@ -378,7 +452,7 @@ export async function POST(req: NextRequest) {
         url:             null,
         source:          'nexus_generated',
         category:        niche,
-        audience:        'both',
+        audience:        op.targetMarket ? String(op.targetMarket).slice(0, 300) : 'specific B2B operators',
         summary:         String(op.problem    ?? ''),
         useCase:         `${(op.trendReason ?? '').replace(/\u00c2\u00b7/g, '·')} · Revenue: ${op.revenueModel ?? ''}`,
         tags: [

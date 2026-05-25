@@ -18,7 +18,7 @@ const PROVIDER_ICONS: Record<string, string> = {
 
 const ERROR_MESSAGES: Record<string, string> = {
   OAuthSignin:        'Failed to start sign-in. Please try again.',
-  OAuthCallback:      'Authentication callback failed.',
+  OAuthCallback:      'Authentication callback failed. Start a fresh Google sign-in or use dev login below.',
   OAuthCreateAccount: 'Could not create account.',
   EmailCreateAccount: 'Could not create email account.',
   Callback:           'Callback error.',
@@ -29,10 +29,22 @@ const ERROR_MESSAGES: Record<string, string> = {
   default:            'An error occurred. Please try again.',
 }
 
+function normalizeCallbackUrl(value: string | null) {
+  if (!value) return '/shell'
+  if (value.startsWith('/')) return value
+  try {
+    const parsed = new URL(value)
+    return `${parsed.pathname}${parsed.search}${parsed.hash}` || '/shell'
+  } catch {
+    return '/shell'
+  }
+}
+
 function SignInInner() {
   const searchParams = useSearchParams()
-  const callbackUrl = searchParams.get('callbackUrl') ?? '/shell'
+  const callbackUrl = normalizeCallbackUrl(searchParams.get('callbackUrl'))
   const errorCode = searchParams.get('error') ?? ''
+  const [localError, setLocalError] = useState('')
 
   const [providers, setProviders] = useState<Record<string, Provider>>({})
   const [email, setEmail] = useState('')
@@ -46,8 +58,14 @@ function SignInInner() {
   }, [])
 
   const handleOAuth = async (providerId: string) => {
-    setLoading(providerId)
-    await signIn(providerId, { callbackUrl })
+    try {
+      setLocalError('')
+      setLoading(providerId)
+      await signIn(providerId, { callbackUrl })
+    } catch {
+      setLocalError('Could not start sign-in. Please try again.')
+      setLoading(null)
+    }
   }
 
   const handleEmail = async (e: React.FormEvent) => {
@@ -65,11 +83,26 @@ function SignInInner() {
 
   const handleDevLogin = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!devEmail) return
-    setLoading('dev-credentials')
-    const result = await signIn('dev-credentials', { email: devEmail, password: devPassword, callbackUrl, redirect: false })
-    if (result?.error) setLoading(null)
-    else window.location.href = callbackUrl
+    if (!devEmail || !devPassword) return
+    try {
+      setLocalError('')
+      setLoading('dev-credentials')
+      const result = await signIn('dev-credentials', {
+        email: devEmail,
+        password: devPassword,
+        callbackUrl,
+        redirect: false,
+      })
+      if (result?.error || result?.ok === false) {
+        setLocalError(ERROR_MESSAGES.CredentialsSignin)
+        setLoading(null)
+        return
+      }
+      window.location.assign(result?.url ?? callbackUrl)
+    } catch {
+      setLocalError('Dev sign-in failed. Please try again.')
+      setLoading(null)
+    }
   }
 
   return (
@@ -84,9 +117,9 @@ function SignInInner() {
         </div>
 
         {/* Error */}
-        {errorCode && (
+        {(errorCode || localError) && (
           <div className="panel border-red-500/30 bg-red-500/5 text-red-400 text-sm p-4 text-center">
-            {ERROR_MESSAGES[errorCode] ?? ERROR_MESSAGES.default}
+            {localError || ERROR_MESSAGES[errorCode] || ERROR_MESSAGES.default}
           </div>
         )}
 
@@ -164,7 +197,10 @@ function SignInInner() {
                   <input
                     type="email"
                     value={devEmail}
-                    onChange={e => setDevEmail(e.target.value)}
+                    onChange={e => {
+                      setDevEmail(e.target.value)
+                      if (localError) setLocalError('')
+                    }}
                     placeholder="any@email.com"
                     required
                     className="w-full px-3 py-2 rounded-lg text-sm border border-border bg-paper2 outline-none focus:border-acid"
@@ -172,13 +208,16 @@ function SignInInner() {
                   <input
                     type="password"
                     value={devPassword}
-                    onChange={e => setDevPassword(e.target.value)}
+                    onChange={e => {
+                      setDevPassword(e.target.value)
+                      if (localError) setLocalError('')
+                    }}
                     placeholder={`password (default: nexus-dev)`}
                     className="w-full px-3 py-2 rounded-lg text-sm border border-border bg-paper2 outline-none focus:border-acid"
                   />
                   <button
                     type="submit"
-                    disabled={loading === 'dev-credentials' || !devEmail}
+                    disabled={loading === 'dev-credentials' || !devEmail || !devPassword}
                     className="btn w-full py-2 text-sm disabled:opacity-50 bg-paper2 hover:bg-paper3 border border-border"
                   >
                     {loading === 'dev-credentials' ? 'Signing in…' : 'Dev sign in'}

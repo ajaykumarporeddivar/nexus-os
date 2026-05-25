@@ -87,6 +87,8 @@ Rules:
 - Build complexity should match ${ctx.buildComplexityPref} preference
 - Do NOT generate generic SaaS ideas that could apply to any industry
 - Each idea must be ready for One-Click Pipeline MVP: the problem should derive exactly 3 workflows
+- targetMarket must be a specific buyer/user segment in 5+ words; never use workflow tags like "exports", "reporting", "intake", "analytics", or "automation" as the market
+- Tags should be workflow nouns for screens; tags are not target markets
 - Avoid ideas requiring regulated infrastructure, real medical/legal/financial decisions at MVP
 
 AAS SYSTEM CONTEXT (for internal signal quality):
@@ -98,7 +100,7 @@ Return a JSON array ONLY (no preamble, no markdown). Each object must have EXACT
   "title": "Short catchy app name specific to ${industryLabel}",
   "niche": one of exactly: "productivity" | "finance" | "creator" | "b2b" | "health" | "education" | "ai-tools" | "ecommerce",
   "problem": "One sentence — the specific pain this solves for ${industryLabel} teams",
-  "targetMarket": "Who specifically pays (e.g. '${industryLabel} operations managers')",
+  "targetMarket": "Who specifically pays in 5+ words (e.g. '${industryLabel} operations managers handling client work')",
   "revenueModel": "e.g. '$49/mo per team', '$99 one-time', 'Usage-based'",
   "trendReason": "Why this is hot RIGHT NOW for ${industryLabel} in 2026",
   "buildComplexity": "low" | "medium" | "high",

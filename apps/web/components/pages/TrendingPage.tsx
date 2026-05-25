@@ -121,42 +121,142 @@ function parseItemTags(tags: string[]) {
   const buildTag   = tags.find(t => t.startsWith('build:'))
   const complexity = buildTag ? buildTag.replace('build:', '') : 'medium'
   const cleanTags  = tags.filter(t => !t.startsWith('build:') && !t.startsWith('regime:'))
-  const topicTags  = cleanTags.slice(0, -1)
-  const market     = cleanTags.at(-1) ?? ''
+  const market     = cleanTags.findLast(isSpecificTargetMarket) ?? ''
+  const topicTags  = cleanTags.filter(t => t !== market)
   return { complexity, topicTags, market }
 }
 
+const WORKFLOW_TAGS = new Set([
+  'analytics', 'approval', 'approvals', 'automation', 'billing', 'dashboard',
+  'exports', 'forms', 'intake', 'pipeline', 'portal', 'productivity', 'queue',
+  'reporting', 'reports', 'review', 'search', 'triage', 'workflow',
+])
+
+function isSpecificTargetMarket(value: string): boolean {
+  const clean = value.replace(/[-_]/g, ' ').trim().toLowerCase()
+  if (!clean || WORKFLOW_TAGS.has(clean)) return false
+  const words = clean.split(/\s+/).filter(Boolean)
+  if (words.length < 2) return false
+  return /(agenc|founder|owner|manager|team|operator|creator|freelancer|consultant|marketer|studio|store|shop|firm|department|lead|director|analyst|seller|coach|school|clinic|provider|business|company|workspace)/i.test(clean)
+}
+
+function inferTargetMarket(title: string, problem: string, explicitMarket: string, category: string): string {
+  if (isSpecificTargetMarket(explicitMarket)) return explicitMarket
+
+  const text = `${title} ${problem}`.toLowerCase()
+  if (/\bagenc|client|retainer|campaign|proof pack|reporting\b/.test(text)) {
+    return 'Small to mid-sized marketing agencies managing recurring client retainers'
+  }
+  if (/\bshopify|e-?commerce|store|return|refund|sku|inventory\b/.test(text)) {
+    return 'E-commerce operations managers at growing online stores'
+  }
+  if (/\bcreator|sponsor|brand deal|content\b/.test(text)) {
+    return 'Independent creators and creator managers selling sponsor packages'
+  }
+  if (/\binvoice|finance|cash|expense|payment|reconciliation\b/.test(text)) {
+    return 'Finance operations managers at small B2B teams'
+  }
+  if (/\bproposal|contract|client service|consultant\b/.test(text)) {
+    return 'Service business owners managing high-value client work'
+  }
+
+  const niche = NICHE_META[category]?.label ?? 'B2B'
+  return `${niche} operators with repeatable manual workflows`
+}
+
+function inferNicheCategory(title: string, problem: string, category: string, topicTags: string[]): string {
+  const text = `${title} ${problem} ${topicTags.join(' ')}`.toLowerCase()
+  if (/\bagenc|client|retainer|campaign|proof pack|reporting|proposal\b/.test(text)) {
+    return 'Agency operations / client reporting automation'
+  }
+  if (/\bshopify|e-?commerce|store|return|refund|inventory\b/.test(text)) {
+    return 'E-commerce operations automation'
+  }
+  if (/\bcreator|sponsor|brand deal|content\b/.test(text)) {
+    return 'Creator business operations'
+  }
+  if (/\binvoice|finance|cash|expense|payment|reconciliation\b/.test(text)) {
+    return 'Finance operations automation'
+  }
+  return NICHE_META[category]?.label ?? category
+}
+
+function inferWorkflowActor(targetMarket: string, title = '', problem = ''): string {
+  const text = `${targetMarket} ${title} ${problem}`.toLowerCase()
+  if (/\bagenc|retainer|campaign|proof pack|client reporting/.test(text)) return 'Agency account teams'
+  if (/\bshopify|e-?commerce|store|returns?|refund/.test(text)) return 'E-commerce operations teams'
+  if (/\bcreator|sponsor|brand deal/.test(text)) return 'Creator business teams'
+  if (/\bfinance|invoice|cash|payment|expense/.test(text)) return 'Finance operations teams'
+  if (/\bservice|consultant|proposal|contract/.test(text)) return 'Service delivery teams'
+  return 'Operators'
+}
+
+function inferRevenueModel(title: string, problem: string, category: string, explicitRevenue: string): string {
+  if (/\$\d+/.test(explicitRevenue)) return explicitRevenue
+  const text = `${title} ${problem}`.toLowerCase()
+  if (/\bagenc|retainer|campaign|proof pack|client reporting/.test(text)) {
+    return 'Starter: $49/mo per user; Agency: $99/mo per workspace'
+  }
+  if (/\bshopify|e-?commerce|store|returns?|refund/.test(text)) return '$79/mo per store'
+  if (/\bcreator|sponsor|brand deal/.test(text)) return '$29/mo per creator'
+  if (/\bfinance|invoice|cash|payment|expense/.test(text)) return '$99/mo per finance team'
+  return category === 'b2b' ? '$49/mo per workspace' : '$29/mo per user'
+}
+
 function parseUseCase(useCase: string) {
-  const pivot = useCase.indexOf('· Revenue:')
-  if (pivot === -1) return { trend: useCase, revenue: '' }
+  const match = useCase.match(/\s+(?:·|Â·|\?|•|-)?\s*Revenue:\s*/i)
+  if (!match || typeof match.index !== 'number') return { trend: useCase, revenue: '' }
   return {
-    trend:   useCase.slice(0, pivot).trim(),
-    revenue: useCase.slice(pivot + 10).trim(),
+    trend:   useCase.slice(0, match.index).trim(),
+    revenue: useCase.slice(match.index + match[0].length).trim(),
   }
 }
 
-function compactSentence(value: string, fallback: string): string {
-  const clean = value.replace(/\s+/g, ' ').trim()
-  if (!clean) return fallback
-  return clean.endsWith('.') ? clean.slice(0, -1) : clean
+function buildMvpPainPoints(title: string, summary: string, market: string): string[] {
+  const audience = inferWorkflowActor(market, title, summary)
+  return [
+    `${audience} waste hours turning scattered inputs, requests, and source material into a clean working queue`,
+    `${audience} lack one operating dashboard to prioritize the highest-value work and see what needs action now`,
+    `${audience} need exportable, buyer-ready outputs that prove ROI without manual reporting or spreadsheet cleanup`,
+  ]
 }
 
-function buildMvpPainPoints(title: string, summary: string, market: string): string[] {
-  const cleanTitle = title.replace(/^AI-powered\s+/i, '')
-  const audience   = market || 'target users'
-  const problem    = compactSentence(summary, `${audience} need a faster way to operate ${cleanTitle}`)
-  return [
-    `${audience} cannot quickly turn messy intake, requests, or source material into a clean working queue: ${problem}`,
-    `${audience} lack a single dashboard to prioritize the highest-value work and see what needs action now`,
-    `${audience} need exportable, client-ready outputs that prove ROI without manual reporting or spreadsheet cleanup`,
-  ]
+function buildBuyerTriggerBlock(title: string, problem: string, targetMarket: string, workflowActor: string): string {
+  const titleLower = title.toLowerCase()
+  const problemLower = problem.toLowerCase()
+  const artifact = titleLower.includes('proof')
+    ? 'a client-ready proof pack with ROI summary, campaign evidence, and renewal-risk notes'
+    : titleLower.includes('invoice')
+      ? 'an exception queue with owner, dollar impact, approval status, and next action'
+      : titleLower.includes('clinic') || problemLower.includes('patient')
+        ? 'a follow-up queue with patient priority, outreach reason, and completion status'
+        : 'an exportable action pack with prioritized records, status, owner, and next step'
+  const buyer = targetMarket.toLowerCase().includes('agency')
+    ? 'agency owner or client services lead'
+    : targetMarket.toLowerCase().includes('finance')
+      ? 'finance operations lead'
+      : `${workflowActor} budget owner`
+
+  return `BUYER PURCHASE TRIGGER
+- Economic buyer: the ${buyer} responsible for getting this work finished without extra headcount.
+- Trigger event: a renewal, client review, approval backlog, audit, missed follow-up, or recurring reporting deadline makes the current manual workflow painful today.
+- Current workaround: scattered spreadsheets, email threads, notes, screenshots, and manual cleanup.
+- Cost of delay: wasted weekly hours, slower handoffs, missed revenue protection, and lower confidence in the next decision.
+- First-use artifact: ${artifact}.
+- Payback logic: the buyer should see enough time saved or revenue protected in the first session to justify ${title} as a paid operational tool.`
 }
 
 function buildDeferredRoadmap(tags: string[]): string[] {
   const tagRoadmap = tags
-    .filter(t => !t.startsWith('build:') && !t.startsWith('regime:'))
+    .filter(t => !t.startsWith('build:') && !t.startsWith('regime:') && !isSpecificTargetMarket(t))
     .slice(0, 4)
-    .map(tag => `${tag.replace(/[-_]/g, ' ')} automation`)
+    .map(tag => {
+      const label = tag.replace(/[-_]/g, ' ')
+      if (/exports?/i.test(label)) return 'White-label export packs and client-ready PDF delivery'
+      if (/report/i.test(label)) return 'AI-generated client narrative summaries'
+      if (/intake/i.test(label)) return 'Automated intake parsing from screenshots, notes, and links'
+      return `${label} automation`
+    })
   const base = [
     'Team roles and approval permissions',
     'Real database persistence and workspace accounts',
@@ -173,8 +273,11 @@ function buildDeferredRoadmap(tags: string[]): string[] {
 function buildBriefFromGlobalItem(item: TrendingItem): { brief: string; client: string } {
   const { trend, revenue } = parseUseCase(item.useCase)
   const { market, topicTags } = parseItemTags(item.tags)
-  const niche = NICHE_META[item.category]?.label ?? item.category
-  const painPoints = buildMvpPainPoints(item.title, item.summary, market)
+  const targetMarket = inferTargetMarket(item.title, item.summary, market || item.audience, item.category)
+  const niche = inferNicheCategory(item.title, item.summary, item.category, topicTags)
+  const workflowActor = inferWorkflowActor(targetMarket, item.title, item.summary)
+  const revenueModel = inferRevenueModel(item.title, item.summary, item.category, revenue)
+  const painPoints = buildMvpPainPoints(item.title, item.summary, targetMarket)
   const roadmap = buildDeferredRoadmap(item.tags)
 
   const brief = `Build a micro-SaaS product: ${item.title}
@@ -183,16 +286,18 @@ PROBLEM TO SOLVE
 ${item.summary}
 
 TARGET MARKET
-${market || 'Small businesses and entrepreneurs'}
+${targetMarket}
 
 NICHE / CATEGORY
 ${niche}
 
 REVENUE MODEL
-${revenue || '$29/mo per user'}
+${revenueModel}
 
 WHY IT IS TRENDING NOW
 ${trend || 'High market demand and underserved niche.'}
+
+${buildBuyerTriggerBlock(item.title, item.summary, targetMarket, workflowActor)}
 
 MVP SCOPE STRATEGY
 Build a production-grade MVP that solves exactly the 3 most urgent pain points first. Do not attempt a bloated all-feature platform in the first generated application.
@@ -204,7 +309,7 @@ TOP 3 PAIN POINTS TO BUILD NOW
 
 MVP WORKFLOWS TO IMPLEMENT
 - Intake / input workflow: capture the core user input and normalize it into structured records.
-- Operating dashboard: show priorities, status, metrics, and next actions for the ${market || 'target user'}.
+- Operating dashboard: show priorities, status, metrics, and next actions for ${workflowActor}.
 - Output / export workflow: produce a useful handoff, report, or action pack the buyer can use immediately.
 
 DEFERRED ROADMAP / SELLING POINTS
@@ -212,7 +317,7 @@ Highlight these as locked expansion features, not half-built pages:
 ${roadmap.map((r, i) => `${i + 1}. ${r}`).join('\n')}
 
 POST-PAYMENT ONE-CLICK EXPANSION
-Include an upgrade CTA such as "Unlock full roadmap". After payment, one button click should be presented as the mechanism that delivers the deferred roadmap features for users, agencies, and enterprises. Do not integrate a real payment SDK in this generated MVP; represent it as a credible locked roadmap and upgrade flow.
+Include an upgrade CTA such as "Unlock full roadmap". After payment, one button click should be presented as the mechanism that delivers the deferred roadmap features for ${workflowActor} and their clients. Do not integrate a real payment SDK in this generated MVP; represent it as a credible locked roadmap and upgrade flow.
 
 PRODUCTION QUALITY BAR
 - The generated app must be interactive, not static: forms, filters, stateful dashboard actions, modals, and CSV/export behavior.
@@ -224,9 +329,12 @@ PRODUCTION QUALITY BAR
 }
 
 function buildBriefFromWorkspaceIdea(idea: WorkspaceIdea): { brief: string; client: string } {
-  const niche      = NICHE_META[idea.niche]?.label ?? idea.niche
+  const targetMarket = inferTargetMarket(idea.title, idea.problem, idea.targetMarket, idea.niche)
+  const niche      = inferNicheCategory(idea.title, idea.problem, idea.niche, idea.tags)
+  const workflowActor = inferWorkflowActor(targetMarket, idea.title, idea.problem)
+  const revenueModel = inferRevenueModel(idea.title, idea.problem, idea.niche, idea.revenueModel)
   const roadmap    = buildDeferredRoadmap(idea.tags)
-  const painPoints = buildMvpPainPoints(idea.title, idea.problem, idea.targetMarket)
+  const painPoints = buildMvpPainPoints(idea.title, idea.problem, targetMarket)
 
   const brief = `Build a micro-SaaS product: ${idea.title}
 
@@ -234,16 +342,18 @@ PROBLEM TO SOLVE
 ${idea.problem}
 
 TARGET MARKET
-${idea.targetMarket}
+${targetMarket}
 
 NICHE / CATEGORY
 ${niche}
 
 REVENUE MODEL
-${idea.revenueModel}
+${revenueModel}
 
 WHY IT IS TRENDING NOW
 ${idea.trendReason}
+
+${buildBuyerTriggerBlock(idea.title, idea.problem, targetMarket, workflowActor)}
 
 MVP SCOPE STRATEGY
 Build a production-grade MVP that solves exactly the 3 most urgent pain points first.
@@ -255,7 +365,7 @@ TOP 3 PAIN POINTS TO BUILD NOW
 
 MVP WORKFLOWS TO IMPLEMENT
 - Intake / input workflow: capture the core user input and normalize it into structured records.
-- Operating dashboard: show priorities, status, metrics, and next actions for ${idea.targetMarket}.
+- Operating dashboard: show priorities, status, metrics, and next actions for ${workflowActor}.
 - Output / export workflow: produce a useful handoff, report, or action pack the buyer can use immediately.
 
 DEFERRED ROADMAP / SELLING POINTS
@@ -548,12 +658,19 @@ export default function TrendingPage() {
   // ── Load global feed ───────────────────────────────────────────────────────
   const loadGlobal = useCallback(async () => {
     setLoading(true)
+    setTriggerMsg('')
     try {
       const params = new URLSearchParams({ limit: '20', scope: 'global' })
       if (niche) params.set('category', niche)
       const r = await fetch(`/api/trending?${params}`)
+      if (!r.ok) throw new Error(`Trending feed unavailable (${r.status})`)
       const d = await r.json()
       if (d.ok) setGlobalData(d.data)
+      else throw new Error(d.error ?? 'Trending feed unavailable')
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Trending feed unavailable'
+      setTriggerMsg(msg)
+      setGlobalData(prev => prev ?? { items: [], lastFetched: null, nextFetch: null, batchCount: 0 })
     } finally {
       setLoading(false)
     }
@@ -563,19 +680,26 @@ export default function TrendingPage() {
   const loadWorkspace = useCallback(async () => {
     if (!activeWorkspace?.id) return
     setLoading(true)
+    setTriggerMsg('')
     try {
       const params = new URLSearchParams({ scope: 'workspace', ws: activeWorkspace.id })
       if (niche) params.set('category', niche)
       const r = await fetch(`/api/trending?${params}`)
+      if (!r.ok) throw new Error(`Workspace feed unavailable (${r.status})`)
       const d = await r.json()
       if (d.ok) {
         setWsData(d.data)
         setWsIdeas(d.data.items ?? [])
-      }
+      } else throw new Error(d.error ?? 'Workspace feed unavailable')
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Workspace feed unavailable'
+      setTriggerMsg(msg)
+      setWsData(prev => prev ?? { items: [], lastFetched: null, nextFetch: null, industry: activeProfile?.primaryIndustry ?? 'unconfigured' })
+      setWsIdeas(prev => prev ?? [])
     } finally {
       setLoading(false)
     }
-  }, [activeWorkspace?.id, niche])
+  }, [activeProfile?.primaryIndustry, activeWorkspace?.id, niche])
 
   useEffect(() => {
     if (scope === 'global') loadGlobal()
@@ -594,6 +718,7 @@ export default function TrendingPage() {
     setTriggerMsg('')
     try {
       const r = await fetch('/api/trending', { method: 'POST' })
+      if (!r.ok) throw new Error(r.status === 401 ? 'Sign in to refresh trends.' : `Refresh failed (${r.status})`)
       const d = await r.json()
       if (d.ok) {
         setTriggerMsg(`Generated ${d.data.count} opportunities`)
@@ -601,6 +726,8 @@ export default function TrendingPage() {
       } else {
         setTriggerMsg(d.error ?? 'Failed')
       }
+    } catch (err) {
+      setTriggerMsg(err instanceof Error ? err.message : 'Refresh failed')
     } finally {
       setRefreshing(false)
     }
@@ -616,6 +743,7 @@ export default function TrendingPage() {
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify({ force }),
       })
+      if (!r.ok) throw new Error(r.status === 401 ? 'Sign in to generate workspace ideas.' : `Generation failed (${r.status})`)
       const d = await r.json()
       if (d.ok) {
         if (d.data.skipped) {
@@ -627,6 +755,8 @@ export default function TrendingPage() {
       } else {
         setTriggerMsg(d.error ?? 'Generation failed')
       }
+    } catch (err) {
+      setTriggerMsg(err instanceof Error ? err.message : 'Generation failed')
     } finally {
       setGenerating(false)
     }

@@ -1,6 +1,6 @@
 import { spawn } from 'child_process'
 import { createWriteStream } from 'fs'
-import { mkdir, rm, symlink, writeFile } from 'fs/promises'
+import { mkdir, symlink, writeFile } from 'fs/promises'
 import net from 'net'
 import path from 'path'
 import { NextRequest, NextResponse } from 'next/server'
@@ -62,7 +62,7 @@ function baseFiles(projectName: string): Record<string, string> {
         '@vercel/analytics': 'latest',
         clsx: '^2.1.1',
         'lucide-react': '^0.468.0',
-        next: '^15.2.0',
+        next: '^15.5.18',
         react: '^19.0.0',
         'react-dom': '^19.0.0',
         'tailwind-merge': '^2.5.5',
@@ -161,23 +161,19 @@ async function isPortAvailable(port: number): Promise<boolean> {
   })
 }
 
-async function findPreviewPort(): Promise<number> {
-  for (let port = PREVIEW_PORT_START; port <= PREVIEW_PORT_END; port++) {
-    if (await isPortAvailable(port)) return port
-  }
-  return PREVIEW_PORT_START
-}
-
-async function waitForPreview(url: string, timeoutMs = 45_000): Promise<boolean> {
+async function waitForPreview(url: string, timeoutMs = 90_000): Promise<boolean> {
   const deadline = Date.now() + timeoutMs
+  const urls = [url, `${url}/dashboard`]
   while (Date.now() < deadline) {
-    try {
-      const res = await fetch(url, { cache: 'no-store' })
-      if (res.ok) return true
-    } catch {
-      // Server is still compiling or not listening yet.
+    for (const candidate of urls) {
+      try {
+        const res = await fetch(candidate, { cache: 'no-store' })
+        if (res.ok) return true
+      } catch {
+        // Server is still compiling or not listening yet.
+      }
     }
-    await new Promise(resolve => setTimeout(resolve, 1500))
+    await new Promise(resolve => setTimeout(resolve, 2000))
   }
   return false
 }
@@ -217,6 +213,20 @@ async function startPreviewServer(previewDir: string, appRoot: string, port: num
   }
 }
 
+async function startPreviewServerWithPortRetry(previewDir: string, appRoot: string): Promise<{ url: string; logPath: string; ready: boolean; command: string; port: number }> {
+  let lastError: unknown
+  for (let port = PREVIEW_PORT_START; port <= PREVIEW_PORT_END; port++) {
+    if (!(await isPortAvailable(port))) continue
+    try {
+      const preview = await startPreviewServer(previewDir, appRoot, port)
+      return { ...preview, port }
+    } catch (err) {
+      lastError = err
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error('No local preview port is available')
+}
+
 export async function POST(req: NextRequest) {
   // Local preview requires a writable filesystem — unavailable on Vercel serverless.
   // Return a clear skip signal so the pipeline continues without failing.
@@ -248,11 +258,11 @@ export async function POST(req: NextRequest) {
   }
 
   const projectName = slugify(body.projectName || 'nexus-preview')
+  const runId = `${new Date().toISOString().replace(/[^0-9]/g, '').slice(0, 14)}-${Math.random().toString(36).slice(2, 7)}`
   const { repoRoot, appRoot } = resolveWorkspaceRoots()
   const previewRoot = path.join(repoRoot, '.nexus-previews')
-  const previewDir = path.join(previewRoot, projectName)
+  const previewDir = path.join(previewRoot, `${projectName}-${runId}`)
 
-  await rm(previewDir, { recursive: true, force: true })
   await mkdir(previewDir, { recursive: true })
 
   const filesToWrite = { ...baseFiles(projectName), ...incomingFiles }
@@ -284,8 +294,23 @@ export async function POST(req: NextRequest) {
     nodeModulesLinked = false
   }
 
-  const port = await findPreviewPort()
-  const preview = await startPreviewServer(previewDir, appRoot, port)
+  let preview: Awaited<ReturnType<typeof startPreviewServerWithPortRetry>>
+  try {
+    preview = await startPreviewServerWithPortRetry(previewDir, appRoot)
+  } catch (err) {
+    const message = (err as Error).message || 'Local preview server could not be started'
+    return NextResponse.json({
+      ok: false,
+      error: message,
+      data: {
+        path: previewDir,
+        projectName,
+        fileCount: written.length,
+        skipped,
+        nodeModulesLinked,
+      },
+    }, { status: 200 })
+  }
 
   return NextResponse.json({
     ok: preview.ready,
@@ -297,10 +322,10 @@ export async function POST(req: NextRequest) {
       skipped,
       nodeModulesLinked,
       url: preview.url,
-      port,
+      port: preview.port,
       ready: preview.ready,
       command: preview.command,
       logPath: preview.logPath,
     },
-  }, { status: preview.ready ? 200 : 502 })
+  }, { status: 200 })
 }

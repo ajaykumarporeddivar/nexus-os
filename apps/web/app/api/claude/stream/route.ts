@@ -79,11 +79,11 @@ export async function POST(req: NextRequest) {
     }
     // Strip ASCII control chars (except \t \n \r) to prevent prompt injection via malicious brief content
     const sanitise = (s: string) => s.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '')
-    // 24 000 chars ≈ ~6 000 tokens — safe headroom below Groq's per-request body limit.
-    // Anthropic can handle 32k chars fine; Groq returns 413 above ~20k chars in the user message.
-    // System prompt is kept at 20k to leave room for the user message.
-    const safeSystem  = sanitise(systemPrompt).slice(0, 20_000)
-    const safeMessage = sanitise(userMessage).slice(0, 24_000)
+    // Keep request bodies inside fallback-provider limits. Anthropic can accept more,
+    // but pipeline reliability depends on Gemini/Groq accepting the same call.
+    // Groq rejects oversized fallback calls with 413 before generation starts.
+    const safeSystem  = sanitise(systemPrompt).slice(0, 14_000)
+    const safeMessage = sanitise(userMessage).slice(0, 14_000)
     if (safeMessage.trim().length < 10) {
       return NextResponse.json({ ok: false, error: 'userMessage too short (min 10 chars after sanitisation)' }, { status: 400 })
     }

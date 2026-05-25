@@ -43,6 +43,8 @@ const TIERS = [
     highlight: false,
     features: [
       '20 FORGE Engine runs/month',
+      'Professional source quality gate',
+      'Local preview + live URL readiness checks',
       'Reasoning Engine (all 11 lenses)',
       'Prompt Vault access (read)',
       '5 active kits',
@@ -58,6 +60,8 @@ const TIERS = [
     highlight: true,
     features: [
       'Unlimited FORGE Engine runs',
+      'Ship-readiness score on every build',
+      'Deploy repair + verified live URL tracking',
       'Reasoning Engine + Live Runtime',
       'Prompt Vault (read + write + versions)',
       'Unlimited active kits',
@@ -254,7 +258,7 @@ export default function PricingPage({ onNavigate }: Props) {
       <section className="text-center">
         <p className="sec-label mb-3">Pricing</p>
         <h2 className="text-4xl font-bold mb-4" style={{ fontFamily: 'var(--ff-d)' }}>
-          Built for agencies that ship
+          Built for agencies that need live apps, not agent theater
         </h2>
         <p className="text-ink3 max-w-xl mx-auto">
           No per-seat nonsense. Flat monthly retainer — unlimited builds while you grow.
@@ -262,9 +266,9 @@ export default function PricingPage({ onNavigate }: Props) {
         {/* Social proof bar */}
         <div className="mt-8 grid grid-cols-3 gap-px bg-border rounded-2xl overflow-hidden max-w-lg mx-auto border border-border">
           {[
-            { n: '120+', label: 'Agencies onboarded' },
-            { n: '4,800+', label: 'Projects delivered' },
-            { n: '8.6/10', label: 'Avg QA Gate score' },
+            { n: 'Live URL', label: 'Success metric' },
+            { n: '8.5+', label: 'Source gate target' },
+            { n: 'Auto-fix', label: 'Deploy repair loop' },
           ].map(({ n, label }) => (
             <div key={label} className="bg-paper px-4 py-4 text-center">
               <p className="text-2xl font-black text-ink" style={{ fontFamily: 'var(--ff-d)' }}>{n}</p>
@@ -388,7 +392,7 @@ export default function PricingPage({ onNavigate }: Props) {
         <p className="text-2xl">🛡️</p>
         <h3 className="font-bold text-lg">30-day quality guarantee</h3>
         <p className="text-sm text-ink3 max-w-lg mx-auto">
-          If any FORGE output scores below 8.0/10 on the QA Gate, we revise it for free. No questions. No limits.
+          We measure success by a professional-grade app bundle and a verified live URL. If quality or deployment repair fails, the run is not treated as shipped.
         </p>
       </div>
 

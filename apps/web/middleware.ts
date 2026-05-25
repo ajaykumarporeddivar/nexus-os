@@ -74,6 +74,21 @@ export default withAuth(
       return NextResponse.next()
     }
 
+    // Public Trending page needs the global feed before login. POST remains
+    // protected below so only authenticated users/cron can refresh data.
+    if (pathname === '/api/trending' && req.method === 'GET') {
+      return NextResponse.next()
+    }
+
+    // Public pipeline pages call these during preflight. Let the route handlers
+    // return JSON 401/health payloads instead of middleware redirect HTML.
+    if (pathname === '/api/quota') {
+      return NextResponse.next()
+    }
+    if (pathname === '/api/deploy/vercel' && req.method === 'GET') {
+      return NextResponse.next()
+    }
+
     // G5: /api/leads POST — allow unauthenticated external CRM/webhook ingestion
     // GET stays auth-required (admin list). Route handler enforces its own rate-limit.
     if (pathname === '/api/leads' && req.method === 'POST') {
@@ -152,6 +167,9 @@ export default withAuth(
           pathname === '/api/categories' ||
           pathname === '/api/lead-capture' ||
           pathname === '/api/lead-event' ||
+          (pathname === '/api/trending' && req.method === 'GET') ||
+          pathname === '/api/quota' ||
+          (pathname === '/api/deploy/vercel' && req.method === 'GET') ||
           pathname === '/auth/signin' ||
           pathname === '/' ||
           pathname === '/terms' ||

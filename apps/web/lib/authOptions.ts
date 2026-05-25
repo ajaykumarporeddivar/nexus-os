@@ -63,12 +63,12 @@ if (process.env.NODE_ENV === 'development') {
         // Falls back to email as id if DB is unavailable (dev only).
         let dbId: string = credentials.email
         try {
-          const db = await prisma.user.upsert({
+          const db = await authDbTimeout(prisma.user.upsert({
             where:  { email: credentials.email },
             create: { email: credentials.email, name: credentials.email.split('@')[0] },
             update: {},
             select: { id: true },
-          })
+          }), 'auth dev credentials upsert')
           dbId = db.id
         } catch { /* DB unavailable — use email as fallback id */ }
         return { id: dbId, email: credentials.email, name: credentials.email.split('@')[0] }
@@ -82,6 +82,22 @@ const ADMIN_EMAILS = new Set(
   (process.env.ADMIN_EMAILS ?? 'aporeddiporeddy8@gmail.com')
     .split(',').map(e => e.trim()).filter(Boolean)
 )
+
+function authDbTimeout<T>(promise: Promise<T>, label: string, ms = 2500): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms)
+    promise.then(
+      value => {
+        clearTimeout(timer)
+        resolve(value)
+      },
+      error => {
+        clearTimeout(timer)
+        reject(error)
+      },
+    )
+  })
+}
 
 export const authOptions: NextAuthOptions = {
   providers,
@@ -97,15 +113,15 @@ export const authOptions: NextAuthOptions = {
       // Await the DB upsert — fire-and-forget risks silent failure on Neon cold-start.
       // If it fails, we log and still allow sign-in (non-blocking for UX).
       try {
-        const existing = await prisma.user.findUnique({
+        const existing = await authDbTimeout(prisma.user.findUnique({
           where:  { email: user.email },
           select: { id: true, utmSource: true },
-        })
+        }), 'auth signIn find user')
         // Parse UTM cookie — only set on first sign-in to preserve original attribution
         const utm = existing ? {} : parseUtmCookie(
           (rest as unknown as { req?: NextRequest })?.req
         )
-        await prisma.user.upsert({
+        await authDbTimeout(prisma.user.upsert({
           where:  { email: user.email },
           create: {
             email:    user.email,
@@ -122,7 +138,7 @@ export const authOptions: NextAuthOptions = {
             // Only set UTM on existing row if it was never captured before
             ...(existing && !existing.utmSource ? utm : {}),
           },
-        })
+        }), 'auth signIn upsert user')
         if (!existing && user.email) {
           sendWelcomeEmail(user.email, user.name ?? '').catch(console.error)
         }
@@ -141,10 +157,10 @@ export const authOptions: NextAuthOptions = {
           // Always look up DB id by email (authoritative) so token.sub never goes stale
           // across DB resets or re-migrations.
           try {
-            const dbUser = await prisma.user.findUnique({
+            const dbUser = await authDbTimeout(prisma.user.findUnique({
               where:  { email: user.email },
               select: { id: true, plan: true },
-            })
+            }), 'auth jwt find user by email')
             if (dbUser) {
               token.sub  = dbUser.id
               // Admin emails always keep enterprise regardless of DB plan
@@ -166,18 +182,18 @@ export const authOptions: NextAuthOptions = {
             token.isAdmin = true
             // Re-sync sub by email in case DB was reset
             try {
-              const dbUser = await prisma.user.findUnique({
+              const dbUser = await authDbTimeout(prisma.user.findUnique({
                 where:  { email },
                 select: { id: true },
-              })
+              }), 'auth jwt admin id sync')
               if (dbUser) token.sub = dbUser.id
             } catch { /* non-fatal */ }
           } else if (token.sub) {
             try {
-              const dbUser = await prisma.user.findUnique({
+              const dbUser = await authDbTimeout(prisma.user.findUnique({
                 where:  { id: token.sub as string },
                 select: { plan: true },
-              })
+              }), 'auth jwt plan sync')
               if (dbUser?.plan) token.plan = dbUser.plan
             } catch { /* non-fatal */ }
           }

@@ -75,6 +75,21 @@ async function uploadBlob(
 // Files that aren't part of the Next.js source build
 const SKIP = ['.github/', 'README.md', '.env.example', 'vitest.config', '__tests__/']
 
+function normaliseGeneratedImportPaths(source: string): string {
+  const replacements: Array<[RegExp, string]> = [
+    [/from\s+['"](?:\.\.\/)+(?:src\/)?lib\/data['"]/g, "from '@/lib/data'"],
+    [/from\s+['"](?:\.\.\/)+(?:src\/)?lib\/types['"]/g, "from '@/lib/types'"],
+    [/from\s+['"](?:\.\.\/)+(?:src\/)?lib\/utils['"]/g, "from '@/lib/utils'"],
+    [/from\s+['"](?:\.\.\/)+(?:src\/)?hooks\/useApp['"]/g, "from '@/hooks/useApp'"],
+    [/from\s+['"](?:\.\.\/)+(?:src\/)?components\/ui['"]/g, "from '@/components/ui'"],
+    [/from\s+['"](?:\.\.\/)+(?:src\/)?components\/layout['"]/g, "from '@/components/layout'"],
+    [/from\s+['"](?:\.\.\/)+(?:src\/)?components\/charts['"]/g, "from '@/components/charts'"],
+    [/from\s+['"](?:\.\.\/)+(?:src\/)?components\/forms['"]/g, "from '@/components/forms'"],
+    [/from\s+['"](?:\.\.\/)+(?:src\/)?components\/modals['"]/g, "from '@/components/modals'"],
+  ]
+  return replacements.reduce((next, [pattern, replacement]) => next.replace(pattern, replacement), source)
+}
+
 export async function POST(req: NextRequest) {
   const auth = await requireSession()
   if (auth.error) return auth.error
@@ -151,12 +166,13 @@ export async function POST(req: NextRequest) {
     const sourceFiles = Object.entries(files)
       .filter(([path, content]) => !!content && !!path && !SKIP.some(s => path.includes(s)))
       .map(([path, content]): [string, string] => {
+        const normalizedContent = normaliseGeneratedImportPaths(String(content))
         // Remap bare filename → correct app directory location
         const remapped = NEXTJS_REMAP[path]
-        if (remapped) return [remapped, content as string]
+        if (remapped) return [remapped, normalizedContent]
         // Also fix paths like "app/not-found.tsx" → "src/app/not-found.tsx"
-        if (/^app\//.test(path)) return [`src/${path}`, content as string]
-        return [path, content as string]
+        if (/^app\//.test(path)) return [`src/${path}`, normalizedContent]
+        return [path, normalizedContent]
       })
 
     // ── 3. Inject missing critical files that Tailwind/Next.js require ────────
@@ -191,13 +207,13 @@ export async function POST(req: NextRequest) {
         private: true,
         scripts: { dev: 'next dev', build: 'next build', start: 'next start', lint: 'next lint' },
         dependencies: {
-          next: '15.2.0', react: '19.0.0', 'react-dom': '19.0.0',
+          next: '15.5.18', react: '19.0.0', 'react-dom': '19.0.0',
           'lucide-react': '0.468.0', clsx: '2.1.1', 'tailwind-merge': '2.5.4',
         },
         devDependencies: {
           typescript: '5.4.5', '@types/react': '19.0.0', '@types/react-dom': '19.0.0',
           '@types/node': '20.17.9', tailwindcss: '3.4.17', postcss: '8.4.49',
-          autoprefixer: '10.4.20', eslint: '8.57.1', 'eslint-config-next': '15.2.0',
+          autoprefixer: '10.4.20', eslint: '8.57.1', 'eslint-config-next': '15.5.18',
         },
       }, null, 2)])
     }
@@ -311,6 +327,12 @@ export async function POST(req: NextRequest) {
         try { pkg = JSON.parse(sourceFiles[pkgIdx][1] as string) } catch { pkg = {} }
         const deps = (pkg.dependencies ?? {}) as Record<string, string>
         const devDeps = (pkg.devDependencies ?? {}) as Record<string, string>
+        deps.next = '15.5.18'
+        deps.react = deps.react ?? '19.0.0'
+        deps['react-dom'] = deps['react-dom'] ?? '19.0.0'
+        devDeps['eslint-config-next'] = '15.5.18'
+        pkg.dependencies = deps
+        pkg.devDependencies = devDeps
 
         // Scan all TS/TSX files for bare package imports
         const importRe = /(?:^|\n)\s*(?:import|export)[^'"]*['"]([^.'"@][^'"]*)['"]/g
@@ -346,9 +368,8 @@ export async function POST(req: NextRequest) {
 
         if (added.length > 0) {
           console.info(`[vercel-app] Auto-injected ${added.length} missing packages:`, added.join(', '))
-          pkg.dependencies = deps
-          sourceFiles[pkgIdx] = ['package.json', JSON.stringify(pkg, null, 2)]
         }
+        sourceFiles[pkgIdx] = ['package.json', JSON.stringify(pkg, null, 2)]
       }
     }
 
@@ -404,6 +425,51 @@ export async function POST(req: NextRequest) {
         },
       )
       if (sanitized !== content) sourceFiles[i] = [filePath, sanitized]
+    }
+
+    // LLM pages often agree on domain-specific import names before MOCK DATA
+    // settles on the same export names. Append compatibility exports instead
+    // of replacing otherwise useful generated data.
+    {
+      const dataIdx = sourceFiles.findIndex(([p]) => p === 'src/lib/data.ts')
+      if (dataIdx >= 0) {
+        const current = String(sourceFiles[dataIdx][1] ?? '')
+        const compat: string[] = []
+        if (!/\bexport\s+const\s+STATS\b/.test(current)) {
+          compat.push(`export const STATS = [
+  { label: 'Active Workflows', value: '128', change: 12.4, trend: 'up' as const },
+  { label: 'Revenue Protected', value: '$42,800', change: 18.2, trend: 'up' as const },
+  { label: 'Approval Rate', value: '86%', change: 9.1, trend: 'up' as const },
+  { label: 'Cycle Time', value: '2.4 days', change: -14.0, trend: 'down' as const },
+]`)
+        }
+        if (!/\bexport\s+const\s+MOCK_SPONSORS\b/.test(current)) {
+          compat.push(`export const MOCK_SPONSORS = [
+  { id: 'spon-1', name: 'Northstar Ventures', status: 'active', owner: 'Partnerships', value: 48000, createdAt: '2026-05-01' },
+  { id: 'spon-2', name: 'Atlas Commerce', status: 'pending', owner: 'Revenue', value: 32000, createdAt: '2026-05-03' },
+  { id: 'spon-3', name: 'Signal Labs', status: 'active', owner: 'Success', value: 27500, createdAt: '2026-05-05' },
+]`)
+        }
+        if (!/\bexport\s+const\s+MOCK_CAMPAIGNS\b/.test(current)) {
+          compat.push(`export const MOCK_CAMPAIGNS = [
+  { id: 'camp-1', name: 'Launch Pipeline', status: 'active', owner: 'Growth', value: 84, createdAt: '2026-05-06' },
+  { id: 'camp-2', name: 'Sponsor Renewal', status: 'pending', owner: 'Partnerships', value: 62, createdAt: '2026-05-07' },
+  { id: 'camp-3', name: 'Executive Proof Pack', status: 'completed', owner: 'Delivery', value: 91, createdAt: '2026-05-08' },
+]`)
+        }
+        if (!/\bexport\s+const\s+MOCK_DELIVERABLES\b/.test(current)) {
+          compat.push(`export const MOCK_DELIVERABLES = [
+  { id: 'del-1', name: 'ROI summary deck', status: 'active', owner: 'Delivery', value: 95, dueDate: '2026-05-24' },
+  { id: 'del-2', name: 'Campaign report', status: 'pending', owner: 'Analytics', value: 72, dueDate: '2026-05-26' },
+  { id: 'del-3', name: 'Renewal brief', status: 'completed', owner: 'Revenue', value: 88, dueDate: '2026-05-28' },
+]`)
+        }
+        if (!/\bexport\s+const\s+KPI_STATS\b/.test(current)) compat.push('export const KPI_STATS = STATS')
+        if (!/\bexport\s+const\s+DASHBOARD_STATS\b/.test(current)) compat.push('export const DASHBOARD_STATS = STATS')
+        if (compat.length > 0) {
+          sourceFiles[dataIdx] = ['src/lib/data.ts', `${current.trim()}\n\n// Deploy compatibility exports for generated pages.\n${compat.join('\n\n')}\n`]
+        }
+      }
     }
 
     // ── 3c. Inject stubs for missing critical files ───────────────────────────
