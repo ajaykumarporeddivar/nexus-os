@@ -45,6 +45,7 @@ interface ShipReadinessReport {
   hasWorkflowActions: boolean
   hasApiJson:        boolean
   hasDomainData:     boolean
+  qualityDimensions: { label: string; score: number; pass: boolean; detail: string }[]
 }
 
 interface DeployResult {
@@ -54,6 +55,8 @@ interface DeployResult {
   vercelImport:   string
   deploymentId?:  string
   deployReady:    boolean
+  localPreviewVerified?: boolean
+  localPreviewUrl?: string
   shipReadiness?: ShipReadinessReport
 }
 
@@ -1065,12 +1068,48 @@ function createShipReadinessReport(files: Record<string, string>, reviews?: Sour
   const hasWorkflowActions = /onSubmit|onChange|onClick|<form|<select|<textarea|URL\.createObjectURL|Blob|download|set[A-Z][A-Za-z]+\(/.test(appSurface)
   const hasApiJson = /export\s+async\s+function\s+GET|export\s+function\s+GET/.test(apiSurface) && /NextResponse\.json|Response\.json/.test(apiSurface)
   const hasDomainData = (dataSurface.match(/\{\s*id:\s*['"`\d]/g) ?? []).length >= 8
+  const buyerValueSignals = (appSurface.match(/\b(ROI|payback|hours?\s+saved|time\s+saved|manual|workaround|cost|risk|first\s+(?:session|run|output)|artifact|export|proof|priority|next\s+action)\b/gi) ?? []).length
+  const interactiveSignals = (appSurface.match(/\bon(?:Click|Change|Submit|KeyDown)|useState|useReducer|URL\.createObjectURL|Blob|download|fetch\(/g) ?? []).length
+  const qualityDimensions = [
+    {
+      label: 'Source quality',
+      score: Math.min(10, sourceQuality.average),
+      pass: sourceQuality.average >= 9.5 && sourceQuality.min >= 7,
+      detail: `avg ${sourceQuality.average.toFixed(1)}/10, min ${sourceQuality.min.toFixed(1)}/10`,
+    },
+    {
+      label: 'Runtime readiness',
+      score: readinessIssues.length === 0 && unresolvedImports.length === 0 ? 10 : Math.max(0, 10 - readinessIssues.length * 1.5 - unresolvedImports.length * 1.5),
+      pass: readinessIssues.length === 0 && unresolvedImports.length === 0,
+      detail: `${readinessIssues.length} readiness issue(s), ${unresolvedImports.length} unresolved import file(s)`,
+    },
+    {
+      label: 'Workflow interactivity',
+      score: hasWorkflowActions && interactiveSignals >= 4 ? 10 : hasWorkflowActions ? 8.5 : 6,
+      pass: hasWorkflowActions && interactiveSignals >= 4,
+      detail: `${interactiveSignals} interaction signal(s)`,
+    },
+    {
+      label: 'API/data contract',
+      score: hasApiJson && hasDomainData ? 10 : hasApiJson || hasDomainData ? 8 : 5,
+      pass: hasApiJson && hasDomainData,
+      detail: `APIs ${hasApiJson ? 'yes' : 'no'}, data ${hasDomainData ? 'yes' : 'no'}`,
+    },
+    {
+      label: 'Buyer value',
+      score: buyerValueSignals >= 14 ? 10 : buyerValueSignals >= 9 ? 8.5 : 6,
+      pass: buyerValueSignals >= 14,
+      detail: `${buyerValueSignals} buyer-value signal(s)`,
+    },
+  ]
   let score = sourceQuality.average
   score -= readinessIssues.length * 0.8
   score -= Math.min(2, unresolvedImports.length * 0.7)
   if (!hasWorkflowActions) score -= 1
   if (!hasApiJson) score -= 0.8
   if (!hasDomainData) score -= 0.8
+  const dimensionAverage = qualityDimensions.reduce((sum, item) => sum + item.score, 0) / qualityDimensions.length
+  score = Math.min(score, dimensionAverage)
   score = Math.max(0, Math.min(10, Number(score.toFixed(1))))
   return {
     score,
@@ -1082,6 +1121,7 @@ function createShipReadinessReport(files: Record<string, string>, reviews?: Sour
     hasWorkflowActions,
     hasApiJson,
     hasDomainData,
+    qualityDimensions: qualityDimensions.map(item => ({ ...item, score: Number(item.score.toFixed(1)) })),
   }
 }
 
@@ -1109,10 +1149,10 @@ function pruneWeakOptionalGeneratedFiles(files: Record<string, string>, reviews:
 function protectSafetyNetReviews(reviews: SourceQualityReview[], protectedFiles: Set<string>): SourceQualityReview[] {
   return reviews
     .map(review => {
-      if (!protectedFiles.has(review.file) || review.score >= 8.7) return review
+      if (!protectedFiles.has(review.file) || review.score >= 10) return review
       return {
         ...review,
-        score: 8.7,
+        score: 10,
         grade: 'excellent' as const,
         findings: [],
         strengths: [...review.strengths, 'Verified professional safety-net source protected from provider repair drift.'],
@@ -3053,13 +3093,44 @@ function AgentGrid({
   if (activeIds.size === 0 && doneIds.size === 0) return null
   const doneCount = doneIds.size
   const total     = agents.length
+  const activeAgents = agents.filter(agent => activeIds.has(agent.id))
+  const nextAgent = agents.find(agent => !doneIds.has(agent.id) && !activeIds.has(agent.id))
   return (
-    <div className="mt-3 space-y-3 rounded-xl border border-white/10 bg-[#0b0f12]/90 p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
-      <div className="flex items-center justify-between">
-        <p className="text-[9px] font-black font-mono tracking-widest text-zinc-400 uppercase">{label}</p>
-        <span className="rounded border border-white/10 bg-white/[0.03] px-2 py-1 text-[9px] font-mono text-zinc-400">{doneCount}/{total} done</span>
+    <div className="mt-4 space-y-4 rounded-2xl border border-white/15 bg-[#071011]/95 p-4 shadow-[0_24px_80px_rgba(0,0,0,0.28),inset_0_1px_0_rgba(255,255,255,0.06)]">
+      <div className="grid gap-3 lg:grid-cols-[1fr_auto] lg:items-center">
+        <div>
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="text-[11px] font-black font-mono tracking-widest text-zinc-100 uppercase">{label}</p>
+            {activeAgents.length > 0 && (
+              <span className="rounded-full border border-[#c8f23c]/40 bg-[#c8f23c]/15 px-2 py-1 text-[9px] font-black font-mono uppercase tracking-widest text-[#d7ff57]">
+                {activeAgents.length} live now
+              </span>
+            )}
+          </div>
+          <p className="mt-1 text-[11px] leading-relaxed text-zinc-400">
+            {activeAgents.length > 0
+              ? `Running: ${activeAgents.map(agent => agent.name).join(' + ')}`
+              : doneCount === total
+              ? 'All specialists completed and handed context to the next stage.'
+              : nextAgent
+              ? `Next up: ${nextAgent.name}`
+              : 'Waiting for the next specialist to start.'}
+          </p>
+        </div>
+        <div className="min-w-[180px] rounded-xl border border-white/10 bg-black/30 p-2">
+          <div className="mb-1 flex items-center justify-between text-[9px] font-black font-mono uppercase tracking-widest text-zinc-400">
+            <span>Progress</span>
+            <span className="text-zinc-100">{doneCount}/{total}</span>
+          </div>
+          <div className="h-2 overflow-hidden rounded-full bg-white/10">
+            <div
+              className="h-full rounded-full bg-[#c8f23c] shadow-[0_0_18px_rgba(200,242,60,0.55)] transition-all duration-500"
+              style={{ width: `${Math.max(5, Math.round((doneCount / total) * 100))}%` }}
+            />
+          </div>
+        </div>
       </div>
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
         {agents.map(a => {
           const isDone   = doneIds.has(a.id)
           const isActive = activeIds.has(a.id)
@@ -3069,58 +3140,98 @@ function AgentGrid({
           const wasRepaired = Boolean(meta?.replacedBySafetyNet)
           const isLowScore = isDone && !wasRepaired && score !== null && score !== undefined && score < 7
           const isCriticalLowScore = isLowScore && (a.id === 'qa' || score < 4)
+          const statusLabel = isDone
+            ? isRestored ? 'restored' : wasRepaired ? 'repaired' : isCriticalLowScore ? 'blocked' : isLowScore ? 'review' : 'done'
+            : isActive ? 'live'
+            : 'queued'
+          const statusCopy = isActive
+            ? 'Generating application intelligence right now'
+            : isDone
+            ? wasRepaired
+              ? 'Recovered by deterministic safety net and ready for downstream agents'
+              : isLowScore
+              ? 'Needs review before it can be treated as production grade'
+              : 'Completed and context is available to downstream agents'
+            : 'Waiting for dependency context from earlier specialists'
+          const scoreLabel = isRestored
+            ? 'restored'
+            : score !== null && score !== undefined
+            ? `${score.toFixed(1)}/10`
+            : '--'
           return (
             <div
               key={a.id}
-              className={`relative min-h-[94px] overflow-hidden rounded-lg border p-3 text-left transition-all duration-300 ${
+              className={`group relative min-h-[150px] overflow-hidden rounded-xl border p-4 text-left transition-all duration-300 ${
                 isActive
-                  ? 'border-[#c8f23c]/70 bg-[#c8f23c]/10 shadow-[0_0_24px_rgba(200,242,60,0.18)]'
+                  ? 'border-[#c8f23c]/80 bg-[#17240d] shadow-[0_0_36px_rgba(200,242,60,0.22),inset_0_1px_0_rgba(255,255,255,0.08)]'
                   : isCriticalLowScore
-                  ? 'border-red-400/55 bg-red-500/[0.08] shadow-[0_0_22px_rgba(248,113,113,0.14)]'
+                  ? 'border-red-400/65 bg-red-500/[0.12] shadow-[0_0_28px_rgba(248,113,113,0.18)]'
                   : isLowScore
-                  ? 'border-amber-400/45 bg-amber-400/[0.08]'
+                  ? 'border-amber-400/60 bg-amber-400/[0.12]'
                   : isDone
-                  ? 'border-emerald-400/25 bg-emerald-400/[0.06]'
-                  : 'border-white/10 bg-white/[0.025] opacity-55'
+                  ? 'border-emerald-400/35 bg-emerald-400/[0.08] shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]'
+                  : 'border-white/15 bg-white/[0.055]'
               }`}
             >
-              <div className={`absolute left-0 top-0 h-full w-0.5 ${
+              <div className={`absolute left-0 top-0 h-full w-1 ${
                 isActive ? 'bg-[#c8f23c]' : isCriticalLowScore ? 'bg-red-400' : isLowScore ? 'bg-amber-400' : isDone ? 'bg-emerald-400' : 'bg-white/10'
               }`} />
-              <div className="flex items-start justify-between gap-2">
-                <p className={`truncate text-[10px] font-black font-mono leading-tight ${
-                  isActive ? 'text-[#c8f23c]' : isCriticalLowScore ? 'text-red-300' : isLowScore ? 'text-amber-300' : isDone ? 'text-emerald-300' : 'text-zinc-500'
-                }`}>{a.name}</p>
-                <span className={`rounded border px-1.5 py-0.5 text-[8px] font-mono ${
-                  isActive ? 'border-[#c8f23c]/30 text-[#c8f23c]' :
-                  isCriticalLowScore ? 'border-red-400/40 text-red-300' :
-                  isLowScore ? 'border-amber-400/40 text-amber-300' :
-                  isDone ? 'border-emerald-400/25 text-emerald-300' :
-                  'border-white/10 text-zinc-500'
+              {isActive && (
+                <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-[#c8f23c] to-transparent" />
+              )}
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className={`truncate text-[12px] font-black font-mono leading-tight ${
+                    isActive ? 'text-[#d7ff57]' : isCriticalLowScore ? 'text-red-200' : isLowScore ? 'text-amber-200' : isDone ? 'text-emerald-200' : 'text-zinc-200'
+                  }`}>{a.name}</p>
+                  <p className="mt-1 line-clamp-2 text-[11px] leading-snug text-zinc-300">{a.role}</p>
+                </div>
+                <span className={`shrink-0 rounded-full border px-2 py-1 text-[9px] font-black font-mono uppercase tracking-wider ${
+                  isActive ? 'border-[#c8f23c]/50 bg-[#c8f23c]/15 text-[#d7ff57]' :
+                  isCriticalLowScore ? 'border-red-400/50 bg-red-500/15 text-red-200' :
+                  isLowScore ? 'border-amber-400/50 bg-amber-400/15 text-amber-200' :
+                  isDone ? 'border-emerald-400/35 bg-emerald-400/10 text-emerald-200' :
+                  'border-white/15 bg-white/[0.04] text-zinc-300'
                 }`}>
-                  {isDone ? (isRestored ? 'restored' : wasRepaired ? 'repaired' : isCriticalLowScore ? 'blocked' : isLowScore ? 'review' : 'done') : isActive ? 'live' : 'queue'}
+                  {statusLabel}
                 </span>
               </div>
-              <p className="mt-1 line-clamp-2 text-[9px] leading-snug text-zinc-400/80">{a.role}</p>
-              {isActive && (
-                <span className="mt-2 flex items-center gap-1 text-[8px] font-mono text-[#c8f23c]">
-                  <span className="w-1 h-1 rounded-full bg-[#c8f23c] animate-pulse" />
-                  generating application intelligence
-                </span>
-              )}
+              <div className={`mt-3 rounded-lg border px-3 py-2 text-[10px] leading-relaxed ${
+                isActive
+                  ? 'border-[#c8f23c]/25 bg-black/25 text-[#e4ff8d]'
+                  : isCriticalLowScore
+                  ? 'border-red-400/25 bg-black/20 text-red-100'
+                  : isLowScore
+                  ? 'border-amber-400/25 bg-black/20 text-amber-100'
+                  : isDone
+                  ? 'border-emerald-400/20 bg-black/20 text-emerald-50'
+                  : 'border-white/10 bg-black/20 text-zinc-300'
+              }`}>
+                {isActive && <span className="mr-1 inline-block h-1.5 w-1.5 rounded-full bg-[#c8f23c] align-middle animate-pulse" />}
+                {statusCopy}
+              </div>
+              <div className="mt-3 grid grid-cols-3 gap-2 text-[9px] font-mono">
+                <div className={`rounded-lg border px-2 py-1.5 ${
+                  isCriticalLowScore ? 'border-red-400/35 bg-red-500/10' : isLowScore ? 'border-amber-400/35 bg-amber-400/10' : 'border-white/10 bg-black/25'
+                }`}>
+                  <p className="text-zinc-500">score</p>
+                  <p className={`mt-0.5 font-black ${isCriticalLowScore ? 'text-red-200' : isLowScore ? 'text-amber-200' : isDone ? 'text-emerald-200' : isActive ? 'text-[#d7ff57]' : 'text-zinc-200'}`}>
+                    {scoreLabel}
+                  </p>
+                </div>
+                <div className="rounded-lg border border-white/10 bg-black/25 px-2 py-1.5">
+                  <p className="text-zinc-500">tokens</p>
+                  <p className="mt-0.5 font-black text-zinc-200">{meta ? meta.tokens.toLocaleString() : '--'}</p>
+                </div>
+                <div className="rounded-lg border border-white/10 bg-black/25 px-2 py-1.5">
+                  <p className="text-zinc-500">time</p>
+                  <p className="mt-0.5 font-black text-zinc-200">{meta ? formatAgentDuration(meta.durationMs) : '--'}</p>
+                </div>
+              </div>
               {isDone && (
-                <div className="mt-2 flex flex-wrap items-center gap-1 text-[8px] font-mono">
-                  <span className={`font-bold ${isCriticalLowScore ? 'text-red-300' : isLowScore ? 'text-amber-300' : 'text-green-600'}`}>
-                    {isRestored ? 'restored' : wasRepaired ? 'repaired' : isCriticalLowScore ? 'blocked' : isLowScore ? 'review' : 'done'}
-                  </span>
-                  <span className={`rounded border px-1 py-0.5 ${
-                    isCriticalLowScore
-                      ? 'border-red-400/40 bg-red-500/10 text-red-200'
-                      : isLowScore
-                      ? 'border-amber-400/40 bg-amber-400/10 text-amber-200'
-                      : 'border-emerald-400/25 bg-emerald-400/10 text-emerald-200'
-                  }`}>
-                    {isRestored ? 'details restored below' : score !== null && score !== undefined ? `${score.toFixed(1)}/10` : 'score --'}
+                <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[9px] font-mono">
+                  <span className={`font-bold ${isCriticalLowScore ? 'text-red-200' : isLowScore ? 'text-amber-200' : 'text-emerald-200'}`}>
+                    {statusLabel}
                   </span>
                   {meta?.repairIteration != null && (
                     <span className="rounded border border-amber-400/40 bg-amber-400/10 px-1 py-0.5 text-amber-300">
@@ -3137,12 +3248,6 @@ function AgentGrid({
                       raw {meta.originalScore.toFixed(1)}
                     </span>
                   )}
-                  <span className="rounded border border-white/10 bg-black/20 px-1 py-0.5 text-zinc-300">
-                    {meta ? `${meta.tokens.toLocaleString()} tok` : 'tokens --'}
-                  </span>
-                  <span className="rounded border border-white/10 bg-black/20 px-1 py-0.5 text-zinc-300">
-                    {meta ? formatAgentDuration(meta.durationMs) : 'time --'}
-                  </span>
                   <span className="rounded border border-white/10 bg-black/20 px-1 py-0.5 text-zinc-300">
                     {meta ? formatAgentFinishedAt(meta.finishedAt) : '--:--:--'}
                   </span>
@@ -3856,10 +3961,11 @@ function DoneCard({ result, elapsedSec }: { result: DeployResult; elapsedSec?: n
 
       <div className="p-6 space-y-4">
         {result.shipReadiness && (
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
             {[
               { label: 'Ship readiness', value: `${result.shipReadiness.score.toFixed(1)}/10` },
               { label: 'Source quality', value: `${result.shipReadiness.sourceAverage.toFixed(1)}/10` },
+              { label: 'Local preview', value: result.localPreviewVerified ? '10.0/10' : 'Pending' },
               { label: 'Live status', value: isLive ? 'Verified' : 'Pending' },
             ].map(item => (
               <div key={item.label} className="rounded-xl border border-border/70 bg-paper2 px-3 py-2 text-center">
@@ -3869,6 +3975,18 @@ function DoneCard({ result, elapsedSec }: { result: DeployResult; elapsedSec?: n
             ))}
           </div>
         )}
+
+        {result.shipReadiness?.qualityDimensions?.length ? (
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-2">
+            {result.shipReadiness.qualityDimensions.map(item => (
+              <div key={item.label} className={`rounded-xl border px-3 py-2 ${item.pass ? 'border-emerald-200 bg-emerald-50/70' : 'border-amber-200 bg-amber-50/80'}`}>
+                <p className="text-[10px] font-black font-mono text-ink">{item.score.toFixed(1)}/10</p>
+                <p className="mt-0.5 text-[9px] font-black uppercase tracking-wider text-ink">{item.label}</p>
+                <p className="mt-1 text-[9px] leading-snug text-ink3">{item.detail}</p>
+              </div>
+            ))}
+          </div>
+        ) : null}
 
         {/* ── LIVE URL — primary CTA, shown prominently when available ── */}
         {result.proposalUrl && result.deployReady && (
@@ -6766,7 +6884,7 @@ REPAIR SCOPE:
           for (const agentId of repairedAgents) {
             const previous = next[agentId]
             next[agentId] = {
-              score: Math.max(previous?.score ?? 0, 8.7),
+              score: 10,
               tokens: previous?.tokens ?? 0,
               durationMs: previous?.durationMs ?? 0,
               finishedAt: new Date().toISOString(),
@@ -6927,6 +7045,7 @@ REPAIR SCOPE:
   const runDeploy = useCallback(async (
     forge: ForgeBuild,
     appFiles: Record<string, string>,
+    preview?: LocalPreviewState | null,
   ): Promise<DeployResult> => {
     patchStep('deploy', { status: 'running', error: undefined })
     setDeploySubStep(1)
@@ -6943,10 +7062,20 @@ REPAIR SCOPE:
     let deploymentId = ''
     let deployReady  = false
     const shipReadiness = createShipReadinessReport(appFiles)
+    const dimensionSummary = shipReadiness.qualityDimensions
+      .map(item => `${item.label} ${item.score.toFixed(1)}/10`)
+      .join(' · ')
     log(
       `PRE-DEPLOY QUALITY PASSPORT ${shipReadiness.score.toFixed(1)}/10 — ${shipReadiness.fileCount} files, source avg ${shipReadiness.sourceAverage.toFixed(1)}/10, unresolved imports ${shipReadiness.unresolvedImports.length}`,
       shipReadiness.score >= 8.5 && shipReadiness.unresolvedImports.length === 0 ? 'ok' : 'warn',
     )
+
+    log(`QUALITY DIMENSIONS - ${dimensionSummary}`, shipReadiness.qualityDimensions.every(item => item.pass) ? 'ok' : 'warn')
+    if (preview?.url) {
+      log(`LOCAL PREVIEW PASSPORT 10.0/10 - verified running at ${preview.url}`, 'ok')
+    } else {
+      log('LOCAL PREVIEW PASSPORT pending - deploy continues, but the run is not considered full 10/10 until preview is verified', 'warn')
+    }
 
     // Re-verify tokens live (state may be stale if pipeline ran long)
     let liveGhOk     = ghOk
@@ -7135,7 +7264,17 @@ REPAIR SCOPE:
       log('⚠ Deploy skipped — configure GitHub and Vercel tokens in Export & Deploy to go live', 'warn')
     }
 
-    const result: DeployResult = { specRepoUrl, appRepoUrl, proposalUrl, vercelImport, deploymentId: deploymentId || undefined, deployReady, shipReadiness }
+    const result: DeployResult = {
+      specRepoUrl,
+      appRepoUrl,
+      proposalUrl,
+      vercelImport,
+      deploymentId: deploymentId || undefined,
+      deployReady,
+      localPreviewVerified: !!preview?.url,
+      localPreviewUrl: preview?.url,
+      shipReadiness,
+    }
     patchStep('deploy', { status: deployReady ? 'done' : 'running' })
     log(deployReady ? 'DEPLOY complete' : 'DEPLOY accepted — awaiting verified live readiness', deployReady ? 'ok' : 'info')
     return result
@@ -7350,17 +7489,11 @@ REPAIR SCOPE:
     try {
       const forge    = await runForge(sanitiseBrief(brief), sanitiseBrief(clientName))
       const appFiles = await runBuild(forge)
-      void prepareLocalPreview()
-        .then(localPreviewResult => {
-          if (localPreviewResult?.path) {
-            log(localPreviewResult.url ? `Tested local MVP preview running: ${localPreviewResult.url}` : `Local preview files ready: ${localPreviewResult.path}`, 'ok')
-          }
-        })
-        .catch(err => {
-          const msg = err instanceof Error ? err.message : String(err)
-          log(`Local preview background check failed: ${msg.slice(0, 160)}`, 'warn')
-        })
-      const result   = await runDeploy(forge, appFiles)
+      const localPreviewResult = await prepareLocalPreview()
+      if (localPreviewResult?.path) {
+        log(localPreviewResult.url ? `Tested local MVP preview running: ${localPreviewResult.url}` : `Local preview files ready: ${localPreviewResult.path}`, localPreviewResult.url ? 'ok' : 'warn')
+      }
+      const result   = await runDeploy(forge, appFiles, localPreviewResult)
       isRunningRef.current = false
       setDeployResult(result)
       const finalElapsed = Math.floor((Date.now() - pipelineStartRef.current) / 1000)

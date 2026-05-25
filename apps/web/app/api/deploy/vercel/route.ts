@@ -432,15 +432,18 @@ export async function POST(req: NextRequest) {
 }
 
 export async function GET(req: NextRequest) {
-  const auth = await requireSession()
-  if (auth.error) return auth.error
-
   const token = process.env.VERCEL_TOKEN?.trim()
   if (!token) return NextResponse.json({ ok: false, error: 'VERCEL_TOKEN not configured' }, { status: 503 })
 
   try {
-    const me = await vrclGet('/v2/user', token)
-    return NextResponse.json({ ok: true, data: { username: me.user?.username, hasToken: true } })
+    await vrclGet('/v2/user', token)
+    return NextResponse.json({
+      ok: true,
+      data: {
+        hasToken: true,
+        hasTeam: Boolean(process.env.VERCEL_TEAM_ID?.trim()),
+      },
+    })
   } catch (err) {
     return NextResponse.json({ ok: false, error: (err as Error).message }, { status: 502 })
   }
