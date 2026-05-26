@@ -718,7 +718,14 @@ export default function TrendingPage() {
     setTriggerMsg('')
     try {
       const r = await fetch('/api/trending', { method: 'POST' })
-      if (!r.ok) throw new Error(r.status === 401 ? 'Sign in to refresh trends.' : `Refresh failed (${r.status})`)
+      if (!r.ok) {
+        if (r.status === 401) {
+          await loadGlobal()
+          setTriggerMsg('Showing the latest 12-opportunity global feed. Sign in to generate a fresh AI batch.')
+          return
+        }
+        throw new Error(`Refresh failed (${r.status})`)
+      }
       const d = await r.json()
       if (d.ok) {
         setTriggerMsg(`Generated ${d.data.count} opportunities`)

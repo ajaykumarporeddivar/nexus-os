@@ -184,6 +184,72 @@ function fallbackOpportunities(): MicroSaaSOpportunity[] {
       tags: ['intake', 'queue', 'reporting'],
       opportunityScore: 85,
     },
+    {
+      title: 'Meeting Action Extractor',
+      niche: 'ai-tools',
+      problem: 'Customer-facing teams lose commitments because meeting notes, owners, and next steps are scattered after every call.',
+      targetMarket: 'Client success teams running weekly account calls',
+      revenueModel: '$39/mo per seat',
+      trendReason: 'AI note takers created more transcripts, but teams still need accountable follow-through workflows.',
+      buildComplexity: 'low',
+      tags: ['intake', 'approval', 'queue'],
+      opportunityScore: 84,
+    },
+    {
+      title: 'Proposal Risk Scanner',
+      niche: 'productivity',
+      problem: 'Service firms send proposals without spotting risky terms, missing scope, and weak proof before buyers compare vendors.',
+      targetMarket: 'Small consulting firms sending fixed-fee proposals',
+      revenueModel: '$49/mo per workspace',
+      trendReason: 'Buyers are scrutinizing vendor value harder while lean firms need faster proposal QA.',
+      buildComplexity: 'low',
+      tags: ['review', 'risk', 'exports'],
+      opportunityScore: 83,
+    },
+    {
+      title: 'Subscription Save Desk',
+      niche: 'b2b',
+      problem: 'Small SaaS teams do not know which cancellation requests are saveable until churn has already happened.',
+      targetMarket: 'Bootstrapped SaaS founders managing customer retention',
+      revenueModel: '$79/mo per workspace',
+      trendReason: 'Retention is getting more attention as paid acquisition remains expensive.',
+      buildComplexity: 'medium',
+      tags: ['triage', 'analytics', 'playbooks'],
+      opportunityScore: 82,
+    },
+    {
+      title: 'Creator Content Repurposer',
+      niche: 'creator',
+      problem: 'Solo creators struggle to turn one long-form asset into a structured weekly queue of posts, hooks, and sponsor-safe snippets.',
+      targetMarket: 'Independent creators publishing across multiple channels',
+      revenueModel: '$29/mo per creator',
+      trendReason: 'Creators are being asked to publish more formats without hiring operations help.',
+      buildComplexity: 'low',
+      tags: ['intake', 'calendar', 'exports'],
+      opportunityScore: 81,
+    },
+    {
+      title: 'Support Escalation Radar',
+      niche: 'b2b',
+      problem: 'Support managers miss the tickets that are about to become churn, refund, or executive escalation risks.',
+      targetMarket: 'B2B support teams handling high-value accounts',
+      revenueModel: '$99/mo per team',
+      trendReason: 'Customer support is moving from reactive ticket handling to revenue protection.',
+      buildComplexity: 'medium',
+      tags: ['triage', 'priority', 'analytics'],
+      opportunityScore: 80,
+    },
+    {
+      title: 'Ad Creative Winner Board',
+      niche: 'ecommerce',
+      problem: 'E-commerce marketers cannot quickly turn messy ad test results into a clear queue of winning creatives and next experiments.',
+      targetMarket: 'Shopify brands running weekly paid social tests',
+      revenueModel: '$89/mo per brand',
+      trendReason: 'Creative testing velocity is becoming the main paid growth advantage for small brands.',
+      buildComplexity: 'medium',
+      tags: ['reporting', 'ranking', 'exports'],
+      opportunityScore: 79,
+    },
   ]
 }
 
@@ -320,15 +386,27 @@ export async function GET(req: NextRequest) {
       }),
     ]), TRENDING_DB_TIMEOUT_MS, 'trending feed query')
 
+    const minimumCount = Math.min(limit, KEEP_TOP)
+    const seenTitles = new Set(items.map(item => item.title.toLowerCase().trim()))
+    const supplementedItems = items.length >= minimumCount
+      ? items
+      : [
+          ...items,
+          ...fallbackTrendingItems(limit, category)
+            .filter(item => !seenTitles.has(item.title.toLowerCase().trim()))
+            .slice(0, minimumCount - items.length),
+        ]
+
     return NextResponse.json({
       ok:   true,
       data: {
-        items,
+        items:       supplementedItems,
         lastFetched: latest?.fetchedAt ?? null,
         batchCount:  allBatches.length,
         nextFetch:   latest
           ? new Date(latest.fetchedAt.getTime() + 5 * 60 * 60 * 1000).toISOString()
           : null,
+        supplemented: supplementedItems.length > items.length,
       },
     })
   } catch (err) {
