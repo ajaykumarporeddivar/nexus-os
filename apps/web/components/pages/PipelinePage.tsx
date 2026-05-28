@@ -6827,9 +6827,7 @@ REPAIR SCOPE:
         // Capture shared context snapshot — all agents in this wave get same baseline
         const waveCtx = { ...allFiles }
         const waveResults = await Promise.all(
-          wave.map(id =>
-            withTimeout(runAgent(id, waveCtx, true), BUILD_AGENTS.find(a => a.id === id)!.skill.timeoutMs, id)
-          )
+          wave.map(id => runAgent(id, waveCtx, true))
         )
         // Merge all parallel results into allFiles
         for (const parsed of waveResults) Object.assign(allFiles, parsed)
@@ -7452,6 +7450,41 @@ REPAIR SCOPE:
 
     let runQuotaClaimed = false
 
+    // Give the launch click immediate feedback before slower quota/token
+    // preflight calls. Any preflight failure below rolls this state back.
+    abortRef.current = new AbortController()
+    totalTokensRef.current = 0
+    totalCallsRef.current = 0
+    pipelineStartRef.current = Date.now()
+    isRunningRef.current = true
+    setPhase('running')
+    setLogLines([])
+    setStreamingAgentId(null); setStreamingAgentText(''); streamingTextRef.current = ''
+    setForgeQaScore(null)
+    setFinalElapsedSec(0)
+    setSteps(INITIAL_STEPS.map(s => ({ ...s, status: 'pending' as StepStatus })))
+    setForgeActiveAgents(new Set())
+    setForgeDoneAgents(new Set())
+    setBuildActiveAgents(new Set())
+    setBuildDoneAgents(new Set())
+    setForgeAgentMeta({})
+    setBuildAgentMeta({})
+    setBuildStage(0)
+    setBuildWarning(null)
+    setLocalPreview(null)
+    setDeployResult(null)
+    forgeContentRef.current = {}
+    buildFilesRef.current = {}
+    forgeSpecRef.current = null
+    deployRepairAttemptRef.current = 0
+    circuitBreakers.current.clear()
+    agentCostLedger.current.clear()
+    setPipelineShareSlug(null)
+    setTotalCostUsd(0)
+    try { sessionStorage.removeItem('nexus-pipeline-forge-spec') } catch { /* ignore */ }
+    try { sessionStorage.removeItem('nexus-pipeline-build-files') } catch { /* ignore */ }
+    log('Launch accepted - checking run quota and preparing AI specialists', 'info')
+
     try {
       const qRes = await fetch('/api/quota', { method: 'POST' })
       const qData = await qRes.json().catch(() => ({}))
@@ -7468,6 +7501,9 @@ REPAIR SCOPE:
       }
     } catch (err) {
       const msg = (err as Error).message
+      isRunningRef.current = false
+      setPhase('error')
+      setSteps(ss => ss.map(s => s.status === 'running' ? { ...s, status: 'error', error: msg } : s))
       log(`Pipeline error: ${msg}`, 'err')
       announce(`Pipeline could not start. ${msg}. Say guide me for help.`, { priority: 'high' })
       return
@@ -7503,41 +7539,11 @@ REPAIR SCOPE:
     } catch { /* non-fatal — never block a run on budget check */ }
 
     // G1: create fresh AbortController for this run
-    abortRef.current    = new AbortController()
-    totalTokensRef.current = 0
-    totalCallsRef.current  = 0
-    pipelineStartRef.current = Date.now()
+    // Run state was already primed above so the launch button feels instant.
 
     // Section 0: launch — single sentence, spoken before FORGE starts
     isRunningRef.current = true
     announce('Pipeline launched. Twenty-three AI specialists are about to build your product from scratch — spec, code, and live deployment, fully autonomous. Voice guidance is available throughout. Say guide me, status, how long, repeat, or stop.')
-    setPhase('running')
-    setLogLines([])
-    setStreamingAgentId(null); setStreamingAgentText(''); streamingTextRef.current = ''
-    setForgeQaScore(null)
-    setFinalElapsedSec(0)
-    setSteps(INITIAL_STEPS.map(s => ({ ...s, status: 'pending' as StepStatus })))
-    setForgeActiveAgents(new Set())
-    setForgeDoneAgents(new Set())
-    setBuildActiveAgents(new Set())
-    setBuildDoneAgents(new Set())
-    setForgeAgentMeta({})
-    setBuildAgentMeta({})
-    setBuildStage(0)
-    setBuildWarning(null)
-    setLocalPreview(null)
-    setDeployResult(null)
-    forgeContentRef.current        = {}
-    buildFilesRef.current          = {}
-    forgeSpecRef.current           = null
-    deployRepairAttemptRef.current = 0
-    // ACORA: reset circuit breakers + cost ledger for fresh run
-    circuitBreakers.current.clear()
-    agentCostLedger.current.clear()
-    setPipelineShareSlug(null)
-    setTotalCostUsd(0)
-    try { sessionStorage.removeItem('nexus-pipeline-forge-spec') } catch { /* ignore */ }
-    try { sessionStorage.removeItem('nexus-pipeline-build-files') } catch { /* ignore */ }
 
     try {
       const forge    = await runForge(sanitiseBrief(brief), sanitiseBrief(clientName))

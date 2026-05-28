@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation'
 
 import { useState, useCallback, useRef, useEffect } from 'react'
 import { LENSES } from '@/lib/lensData'
+import { buildReasoningPipelinePassport } from '@/lib/reasoningPipelinePassport'
 import { useWorkspace } from '@/lib/workspaceContext'
 import type { Lens } from '@nexus-os/shared-types'
 
@@ -177,6 +178,21 @@ export default function ReasoningEnginePage() {
     setOutput('')
   }, [])
 
+  const sendToPipeline = useCallback(() => {
+    if (!problem.trim()) return
+    const passport = buildReasoningPipelinePassport({
+      problem,
+      reasoningContext: chainContext,
+      latestOutput: output,
+      workspaceName: workspace?.name,
+    })
+    sessionStorage.setItem('nexus-prefill-pipeline-brief', passport.brief)
+    sessionStorage.setItem('nexus-prefill-pipeline-client', passport.clientName)
+    localStorage.setItem('nexus-prefill-pipeline-brief', passport.brief)
+    localStorage.setItem('nexus-prefill-pipeline-client', passport.clientName)
+    router.push('/shell?page=pipeline')
+  }, [chainContext, output, problem, router, workspace?.name])
+
   const hasChainData = !!(chainContext || beliefs || criticPredictions || observerFindings)
 
   return (
@@ -271,6 +287,25 @@ export default function ReasoningEnginePage() {
           </span>
         </div>
       )}
+
+      <div className="mb-5 rounded-2xl border border-acid/40 bg-acid/10 p-4 shadow-[0_0_24px_rgba(200,242,60,0.08)]">
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div>
+            <p className="sec-label mb-1 text-acid">Pipeline Passport</p>
+            <h3 className="text-lg font-black text-ink">Turn this reasoning into a One-Click Pipeline brief</h3>
+            <p className="mt-1 max-w-2xl text-xs leading-relaxed text-ink3">
+              Packages the lens chain into buyer, pain, MVP workflows, anti-bloat rules, roadmap locks, and production quality gates before BUILD starts.
+            </p>
+          </div>
+          <button
+            onClick={sendToPipeline}
+            disabled={!problem.trim()}
+            className="btn btn-primary shrink-0 disabled:opacity-50"
+          >
+            Send 10/10 Brief to Pipeline →
+          </button>
+        </div>
+      </div>
 
       <div className="flex gap-6 min-h-[640px]">
         {/* ─── Sidebar ─── */}
@@ -378,11 +413,17 @@ export default function ReasoningEnginePage() {
                 {output || <span className="text-ink3 animate-pulse">Running {selected.name}…</span>}
               </div>
               {output && !isRunning && (
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <button
                     onClick={() => navigator.clipboard.writeText(output).catch(() => {})}
                     className="btn btn-ghost text-xs"
                   >Copy Output</button>
+                  <button
+                    onClick={sendToPipeline}
+                    className="btn btn-primary text-xs"
+                  >
+                    Send 10/10 Brief to Pipeline →
+                  </button>
                   <span className="text-[10px] text-ink3">Output auto-added to chain context</span>
                 </div>
               )}

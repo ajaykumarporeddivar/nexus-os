@@ -6,11 +6,16 @@
  *
  * Key pool: GEMINI_API_KEY + GEMINI_API_KEY1…GEMINI_API_KEY14 (all active in .env)
  * Model: imagen-3.0-generate-002
- * Endpoint: https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-002:predict
+ * Endpoint: https://generativelanguage.googleapis.com/v1beta/models/{gemini-image-model}:generateContent
  */
 
-const IMAGEN_MODEL   = 'imagen-3.0-generate-002'
-const IMAGEN_BASE    = `https://generativelanguage.googleapis.com/v1beta/models/${IMAGEN_MODEL}:predict`
+const GEMINI_IMAGE_MODELS = [
+  process.env.GEMINI_IMAGE_MODEL,
+  'gemini-3.1-flash-image-preview',
+  'gemini-2.5-flash-image',
+].filter(Boolean) as string[]
+
+const GEMINI_BASE = 'https://generativelanguage.googleapis.com/v1beta/models'
 
 // ── Key pool (mirrors quotaTracker pattern) ───────────────────────────────────
 
@@ -200,64 +205,61 @@ export async function generateImage(
   promptJson: string,
   aspectRatio: '9:16' | '1:1' | '16:9' | '4:3' = '9:16'
 ): Promise<ImageGenResult> {
-  const key = nextKey()
-  if (!key) throw new Error('No Gemini API keys configured')
-
   const flatPrompt = jsonPromptToText(promptJson)
 
   const body = {
-    instances: [{ prompt: flatPrompt }],
-    parameters: {
-      sampleCount:       1,
-      aspectRatio,
-      safetyFilterLevel: 'block_only_high',
-      personGeneration:  'allow_adult',
-    },
+    contents: [{
+      parts: [{ text: `${flatPrompt}. Render exactly one finished ${aspectRatio} image.` }],
+    }],
+    generationConfig: { responseModalities: ['TEXT', 'IMAGE'] },
   }
 
-  const url = `${IMAGEN_BASE}?key=${key}`
-  const res = await fetch(url, {
-    method:  'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body:    JSON.stringify(body),
-  })
+  const keysToTry = Math.min(getGeminiKeys().length, 3)
+  if (keysToTry === 0) throw new Error('No Gemini API keys configured')
 
-  if (!res.ok) {
-    // Try one more key on 429 / 403
-    if (res.status === 429 || res.status === 403) {
-      const key2 = nextKey()
-      if (key2 && key2 !== key) {
-        const res2 = await fetch(`${IMAGEN_BASE}?key=${key2}`, {
-          method:  'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body:    JSON.stringify(body),
-        })
-        if (res2.ok) {
-          return parseImagenResponse(await res2.json(), flatPrompt)
-        }
-        const err2 = await res2.text()
-        throw new Error(`Imagen (retry) ${res2.status}: ${err2.slice(0, 200)}`)
-      }
+  const errors: string[] = []
+  for (const model of GEMINI_IMAGE_MODELS) {
+    for (let attempt = 0; attempt < keysToTry; attempt++) {
+      const key = nextKey()
+      if (!key) break
+      const res = await fetch(`${GEMINI_BASE}/${model}:generateContent`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
+        body:    JSON.stringify(body),
+      })
+      if (res.ok) return parseGeminiImageResponse(await res.json(), flatPrompt, model)
+      const errText = await res.text().catch(() => '')
+      errors.push(`${model} ${res.status}: ${errText.slice(0, 180)}`)
+      if (![400, 403, 404, 429].includes(res.status)) break
     }
-    const errText = await res.text()
-    throw new Error(`Imagen ${res.status}: ${errText.slice(0, 300)}`)
   }
 
-  return parseImagenResponse(await res.json(), flatPrompt)
+  throw new Error(`Gemini image generation failed. ${errors.slice(0, 3).join(' | ')}`)
 }
 
-function parseImagenResponse(json: unknown, flatPrompt: string): ImageGenResult {
+function parseGeminiImageResponse(json: unknown, flatPrompt: string, model: string): ImageGenResult {
   const j = json as {
-    predictions?: Array<{ bytesBase64Encoded?: string; mimeType?: string }>
+    candidates?: Array<{
+      content?: {
+        parts?: Array<{
+          inlineData?: { data?: string; mimeType?: string }
+          inline_data?: { data?: string; mime_type?: string; mimeType?: string }
+        }>
+      }
+    }>
   }
-  const pred = j.predictions?.[0]
-  if (!pred?.bytesBase64Encoded) {
-    throw new Error('Imagen returned no image data. Response: ' + JSON.stringify(j).slice(0, 200))
+  for (const candidate of j.candidates ?? []) {
+    for (const part of candidate.content?.parts ?? []) {
+      const inline: { data?: string; mimeType?: string; mime_type?: string } | undefined = part.inlineData ?? part.inline_data
+      if (inline?.data) {
+        return {
+          base64:   inline.data,
+          mimeType: inline.mimeType ?? inline.mime_type ?? 'image/png',
+          model,
+          prompt:   flatPrompt,
+        }
+      }
+    }
   }
-  return {
-    base64:   pred.bytesBase64Encoded,
-    mimeType: pred.mimeType ?? 'image/png',
-    model:    IMAGEN_MODEL,
-    prompt:   flatPrompt,
-  }
+  throw new Error('Gemini returned no image data. Response: ' + JSON.stringify(j).slice(0, 240))
 }

@@ -4,6 +4,7 @@ import { useState, useCallback, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { LENSES } from '@/lib/lensData'
 import { auditEvent } from '@/lib/auditEvent'
+import { buildReasoningPipelinePassport } from '@/lib/reasoningPipelinePassport'
 import type { SimState, Belief, STREntry, ReasoningContext, GovernorRisk, GovernorDepth } from '@nexus-os/shared-types'
 
 const DEPTH_LIMITS: Record<GovernorDepth, number> = {
@@ -237,6 +238,23 @@ export default function LiveRuntimePage({ onApiKeyChange, onNavigateForge }: Pro
     onNavigateForge()
   }, [state.reasoningContext, onNavigateForge])
 
+  const handleSendToPipeline = useCallback(() => {
+    if (!problem.trim()) return
+    const summary = state.reasoningContext
+      .map(r => `[Iter ${r.iteration} - ${r.lensId}]: ${r.output.slice(0, 900)}`)
+      .join('\n\n')
+    const passport = buildReasoningPipelinePassport({
+      problem,
+      reasoningContext: summary,
+      latestOutput: streamText,
+    })
+    sessionStorage.setItem('nexus-prefill-pipeline-brief', passport.brief)
+    sessionStorage.setItem('nexus-prefill-pipeline-client', passport.clientName)
+    localStorage.setItem('nexus-prefill-pipeline-brief', passport.brief)
+    localStorage.setItem('nexus-prefill-pipeline-client', passport.clientName)
+    router.push('/shell?page=pipeline')
+  }, [problem, router, state.reasoningContext, streamText])
+
   const sigBars = Array.from({ length: 5 }, (_, i) => i < Math.ceil(state.signalQuality / 20))
 
   return (
@@ -329,9 +347,14 @@ export default function LiveRuntimePage({ onApiKeyChange, onNavigateForge }: Pro
               <div className="flex items-center gap-3">
                 <span className="text-xs font-mono text-ink3">{tokenCount} tokens</span>
                 {state.reasoningContext.length > 0 && (
-                  <button onClick={handleSendToForge} className="btn btn-ghost text-xs py-1 px-3">
-                    Send reasoning to FORGE →
-                  </button>
+                  <>
+                    <button onClick={handleSendToPipeline} className="btn btn-primary text-xs py-1 px-3">
+                      Send 10/10 Brief to Pipeline →
+                    </button>
+                    <button onClick={handleSendToForge} className="btn btn-ghost text-xs py-1 px-3">
+                      Send reasoning to FORGE →
+                    </button>
+                  </>
                 )}
               </div>
             </div>
