@@ -33,6 +33,7 @@ interface ForgeBuild {
   score:       number | null
   files:       Record<string, string>
   builtAt:     string
+  vertical?:   string   // resolved by ORCHESTRATOR declaration (Phase 4 fix)
 }
 
 interface ShipReadinessReport {
@@ -184,7 +185,7 @@ function labelFromSlug(slug: string): string {
 }
 
 function extractRouteSlugs(upstream: Record<string, string>): string[] {
-  const text = `${upstream.planner ?? ''}\n${upstream.architect ?? ''}`
+  const text = `${upstream.analyst ?? ''}\n${upstream.planner ?? ''}\n${upstream.architect ?? ''}`
   const found = new Set<string>()
   const patterns = [
     /\/dashboard\/([a-z0-9-]+)/gi,
@@ -201,17 +202,171 @@ function extractRouteSlugs(upstream: Record<string, string>): string[] {
   return [...found].slice(0, 3)
 }
 
+// ── Domain extraction helpers ─────────────────────────────────────────────────
+
+/** Parse entity status values from ANALYST entity blocks like: status ('active'|'pending'|'closed') */
+function extractDomainStatuses(analystText: string, entityName: string): string[] {
+  // Look for status definition near the entity section
+  const entitySection = analystText.match(
+    new RegExp(`###\\s*${entityName}[\\s\\S]{0,600}`, 'i')
+  )?.[0] ?? analystText
+  const statusMatch = entitySection.match(/status\s*\(([^)]+)\)/)
+  if (statusMatch) {
+    return statusMatch[1]
+      .split('|')
+      .map(s => s.trim().replace(/['"]/g, ''))
+      .filter(Boolean)
+      .slice(0, 5)
+  }
+  return []
+}
+
+/** Parse entity field names from ANALYST entity blocks like: Fields: id (string), name (string), ... */
+function extractDomainFields(analystText: string, entityName: string): string[] {
+  const entitySection = analystText.match(
+    new RegExp(`###\\s*${entityName}[\\s\\S]{0,800}`, 'i')
+  )?.[0] ?? ''
+  const fieldsLine = entitySection.match(/Fields:\s*([^\n]+)/)
+  if (!fieldsLine) return []
+  // Extract field names from "fieldName (type)" pairs
+  return [...fieldsLine[1].matchAll(/(\w+)\s*\(/g)]
+    .map(m => m[1])
+    .filter(f => f !== 'id' && f !== 'status' && f !== 'createdAt' && f !== 'updatedAt')
+    .slice(0, 6)
+}
+
+/** Parse entity names from ANALYST ## 4. Data Entities section */
+function extractDomainEntities(analystText: string): string[] {
+  // Try explicit "Primary Entities" line first
+  const primMatch = analystText.match(/\*\*Primary Entities?:\*\*\s*([^\n]+)/)
+  if (primMatch) {
+    return primMatch[1].split(/[,/]/).map(e => e.trim().replace(/[`*]/g, '')).filter(Boolean).slice(0, 3)
+  }
+  // Fall back to ### EntityName headers in "Data Entities" section
+  const entitySection = analystText.match(/##\s*4\.\s*Data Entities[\s\S]{0,3000}/)
+  if (entitySection) {
+    const names = [...entitySection[0].matchAll(/###\s+([A-Z][a-zA-Z]+)/g)].map(m => m[1])
+    if (names.length >= 2) return names.slice(0, 3)
+  }
+  return []
+}
+
+/** Camel-case a human phrase into a JS identifier: "approval rate" → "approvalRate" */
+function toCamelCase(str: string): string {
+  return str
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, '')
+    .split(/\s+/)
+    .map((w, i) => (i === 0 ? w : w.charAt(0).toUpperCase() + w.slice(1)))
+    .join('')
+}
+
+/**
+ * Derive 4 domain-specific KPI entries from ANALYST text.
+ * Returns an array of { key, label, value, growth } ready for the STATS block.
+ * Falls back to generic values if extraction yields fewer than 2 metrics.
+ */
+function extractDomainKpis(
+  analystText: string,
+  briefText: string,
+): Array<{ key: string; label: string; value: string; growth: string }> {
+  const genericFallbacks = [
+    { key: 'activeWorkflows',   label: 'Active Workflows',  value: '24',       growth: '+18%' },
+    { key: 'approvalRate',      label: 'Approval Rate',     value: '86%',      growth: '+9%'  },
+    { key: 'revenueProtected',  label: 'Revenue Protected', value: '$42,800',  growth: '+21%' },
+    { key: 'cycleTime',         label: 'Avg Cycle Time',    value: '2.4 days', growth: '-14%' },
+  ]
+
+  const successBlock  = analystText.match(/##\s*SUCCESS CRITERIA[\s\S]{0,800}/i)?.[0] ?? ''
+  const economicBlock = analystText.match(/##\s*0[BC]?\.[\s\S]{0,1200}/i)?.[0] ?? ''
+  const allText       = `${successBlock}\n${economicBlock}\n${briefText}`
+
+  // Regex patterns that match quantifiable domain outcomes
+  const metricPatterns = [
+    /reduce\s+([a-z][a-z\s]{2,25}(?:time|cost|hours?|overhead|errors?|delays?))/gi,
+    /increase\s+([a-z][a-z\s]{2,25}(?:rate|revenue|conversions?|retention|bookings?))/gi,
+    /improve\s+([a-z][a-z\s]{2,25}(?:rate|score|accuracy|throughput|satisfaction))/gi,
+    /save\s+([a-z][a-z\s]{2,25}(?:hours?|days?|cost|revenue|time))/gi,
+    /track\s+([a-z][a-z\s]{2,25}(?:rate|volume|count|revenue|pipeline|status))/gi,
+    /([a-z][a-z\s]{2,25}(?:rate|score|time|volume|revenue|cost|count|pipeline))\s+(?:by|of|to)\s+\d/gi,
+  ]
+
+  const found: string[] = []
+  for (const pat of metricPatterns) {
+    for (const m of allText.matchAll(pat)) {
+      const raw   = (m[1] ?? m[0]).trim().replace(/\s+/g, ' ')
+      const label = raw.charAt(0).toUpperCase() + raw.slice(1)
+      if (label.length >= 5 && !found.some(f => f.toLowerCase() === label.toLowerCase())) {
+        found.push(label)
+      }
+      if (found.length >= 6) break
+    }
+    if (found.length >= 6) break
+  }
+
+  if (found.length < 2) return genericFallbacks
+
+  // Assign plausible mock values / growth based on the metric type
+  const mockValue = (label: string): string => {
+    const l = label.toLowerCase()
+    if (/revenue|savings?|cash|cost/.test(l)) return '$38,200'
+    if (/%|rate|score|accuracy/.test(l))      return '84%'
+    if (/time|days?|hours?/.test(l))          return '1.8 days'
+    return '147'
+  }
+  const mockGrowth = (label: string): string =>
+    /reduce|save|cost|overhead|delay|time/.test(label.toLowerCase()) ? '-16%' : '+22%'
+
+  return found.slice(0, 4).map(label => ({
+    key:    toCamelCase(label),
+    label,
+    value:  mockValue(label),
+    growth: mockGrowth(label),
+  }))
+}
+
 function createDeterministicSpecContract(briefText: string, upstream: Record<string, string>): string {
   const projectName = titleFromBrief(briefText)
   const packageName = slugify(projectName)
   const slugs = extractRouteSlugs(upstream)
   const featureSlugs = (slugs.length >= 3 ? slugs : [...slugs, 'intake', 'review', 'reporting']).slice(0, 3)
-  const features = featureSlugs.map(slug => {
+
+  // ── Phase 3: Domain-aware entity extraction ────────────────────────────────
+  const analystText = upstream.analyst ?? ''
+  const domainEntities = extractDomainEntities(analystText)
+
+  const features = featureSlugs.map((slug, i) => {
     const label = labelFromSlug(slug)
-    const type = `${toPascalCase(slug)}Record`
-    const array = `MOCK_${slug.replace(/-/g, '_').toUpperCase()}`
-    return { slug, label, type, array }
+    // Use domain entity name for the TypeScript type if we have one; fall back to slug-derived name
+    const domainEntity = domainEntities[i]
+    const type = domainEntity ? `${domainEntity}` : `${toPascalCase(slug)}Record`
+    const array = `MOCK_${(domainEntity ?? slug).replace(/-/g, '_').toUpperCase()}`
+    return { slug, label, type, array, domainEntity }
   })
+
+  // Build domain-specific status union — prefer extracted values, fall back to generic
+  const primaryEntity = features[0]
+  const domainStatuses = primaryEntity?.domainEntity
+    ? extractDomainStatuses(analystText, primaryEntity.domainEntity)
+    : []
+  const statusValues = domainStatuses.length >= 2
+    ? domainStatuses
+    : ['new', 'in_progress', 'approved', 'blocked']
+  const workflowStatusUnion = statusValues.map(s => `'${s}'`).join(' | ')
+
+  // Build domain-specific interface fields — prefer extracted values, fall back to generic
+  const buildEntityFields = (feature: typeof features[0]): string => {
+    const extracted = feature.domainEntity
+      ? extractDomainFields(analystText, feature.domainEntity)
+      : []
+    const domainFields = extracted.length >= 2
+      ? extracted.map(f => `  ${f}: string`).join('\n')
+      : `  title: string\n  owner: string\n  value: number\n  priority: 'low' | 'medium' | 'high'\n  notes: string`
+    return domainFields
+  }
+
+  const domainKpis = extractDomainKpis(analystText, briefText)
 
   return `# SPEC CONTRACT — ${projectName}
 ## (BUILD ENGINE Reference — do not modify)
@@ -252,16 +407,12 @@ ${features.map(f => `| ${f.label} | ${f.type} | ${f.array} | 18 | title, status,
 
 ## TYPESCRIPT INTERFACE SHAPES
 \`\`\`typescript
-export type WorkflowStatus = 'new' | 'in_progress' | 'approved' | 'blocked'
+export type WorkflowStatus = ${workflowStatusUnion}
 
 ${features.map(f => `export interface ${f.type} {
   id: string
-  title: string
+${buildEntityFields(f)}
   status: WorkflowStatus
-  owner: string
-  value: number
-  priority: 'low' | 'medium' | 'high'
-  notes: string
   createdAt: string
   updatedAt: string
 }`).join('\n\n')}
@@ -275,30 +426,25 @@ ${features.map((f, index) => `| ${f.label} | ${f.slug} | '${f.slug}' | ${['Clipb
 ## KPI STATS REFERENCE
 \`\`\`typescript
 export const STATS = {
-  activeWorkflows: '24',
-  activeWorkflowsGrowth: '+18%',
-  approvalRate: '86%',
-  approvalRateGrowth: '+9%',
-  revenueProtected: '$42,800',
-  revenueProtectedGrowth: '+21%',
-  cycleTime: '2.4 days',
-  cycleTimeGrowth: '-14%',
+${domainKpis.flatMap(k => [
+  `  ${k.key}: '${k.value}',`,
+  `  ${k.key}Growth: '${k.growth}',`,
+]).join('\n')}
 }
 \`\`\`
 
 ## STATUS VALUES PER ENTITY
 | Entity | Status Value | Badge Variant |
 |--------|-------------|---------------|
-${features.flatMap(f => [
-    `| ${f.label} | 'new' | 'info' |`,
-    `| ${f.label} | 'in_progress' | 'warning' |`,
-    `| ${f.label} | 'approved' | 'success' |`,
-    `| ${f.label} | 'blocked' | 'error' |`,
-  ]).join('\n')}
+${features.flatMap(f => statusValues.map((sv, i) => {
+    const variants = ['info', 'warning', 'success', 'error']
+    return `| ${f.label} | '${sv}' | '${variants[i % variants.length]}' |`
+  })).join('\n')}
 
 ## CRITICAL IMPORT PATHS (all BUILD agents must use these exactly)
 - Types: import { ${features.map(f => f.type).join(', ')}, WorkflowStatus } from '@/lib/types'
 - Data: import { ${features.map(f => f.array).join(', ')}, STATS, DEMO_USER } from '@/lib/data'
+- **IMPORTANT**: Use ONLY these type names and array names — they are derived from this domain's entities. Do NOT use generic names like IntakeRecord, ReviewRecord, or MOCK_INTAKE.
 - UI: import { Button, Card, Badge, Table, StatCard, Modal } from '@/components/ui'
 - Layout: import { AppHeader, AppSidebar } from '@/components/layout'
 - Charts: import { BarChart, LineChart, Sparkline, DonutChart } from '@/components/charts'
@@ -5888,8 +6034,8 @@ export default function PipelinePage() {
       INDUSTRY_TO_VERTICAL[activeProfile.primaryIndustry]
     ) ? (INDUSTRY_TO_VERTICAL[activeProfile.primaryIndustry] as 'marketplace' | 'dashboard' | 'saas' | 'social' | 'mobile' | 'ecommerce') : null
 
-    const vertical        = wsVertical ?? detectVertical(briefText)
-    const verticalContext = VERTICAL_CONTEXTS[vertical]
+    let vertical        = wsVertical ?? detectVertical(briefText)
+    let verticalContext = VERTICAL_CONTEXTS[vertical]
     log(`FORGE ENGINE starting — 13 agents · vertical: ${vertical.toUpperCase()}${wsVertical ? ' (workspace-overridden)' : ''}`)
     // Section 1: FORGE narration — fires once at start, completes naturally while agents run (~40-90s)
     announce('FORGE has started. The system is turning your brief into a build contract: product definition first, architecture next, then implementation rules, validation, and go-to-market notes.', { rate: 1.02, tag: 'phase-forge', minGapMs: 0 })
@@ -6091,6 +6237,25 @@ export default function PipelinePage() {
     )
     await abortSleep(200)
 
+    // ── Phase 4 fix: reconcile ORCHESTRATOR's declared vertical ───────────────
+    // ORCHESTRATOR outputs "**Vertical:** saas" (or marketplace/dashboard/etc.)
+    // Use it if valid — it's more accurate than the text-heuristic detectVertical()
+    {
+      const orchText = content['orchestrator'] ?? ''
+      const vertMatch = orchText.match(/\*\*Vertical:\*\*\s*([a-z]+)/i)
+      const validVerticals: Array<'saas' | 'marketplace' | 'dashboard' | 'social' | 'mobile' | 'ecommerce'> =
+        ['saas', 'marketplace', 'dashboard', 'social', 'mobile', 'ecommerce']
+      const declared = vertMatch?.[1]?.toLowerCase() as 'saas' | 'marketplace' | 'dashboard' | 'social' | 'mobile' | 'ecommerce' | undefined
+      if (declared && validVerticals.includes(declared) && declared !== vertical) {
+        const updatedCtx = VERTICAL_CONTEXTS[declared]
+        if (updatedCtx) {
+          log(`FORGE ENGINE vertical updated by ORCHESTRATOR: ${vertical.toUpperCase()} → ${declared.toUpperCase()}`, 'ok')
+          vertical        = declared
+          verticalContext = updatedCtx
+        }
+      }
+    }
+
     // ── Phase B: analyst (sequential — establishes PROJECT_MANIFEST) ──────────
     // Append workspace intelligence context when available — gives ANALYST precise
     // industry/market/revenue-model guidance beyond what the brief alone provides.
@@ -6156,10 +6321,12 @@ export default function PipelinePage() {
     )
     {
       const validatorOutputWasComplete = hasUsableSpecContract(content['test-writer'] ?? '')
-      content['test-writer'] = createDeterministicSpecContract(briefText, content)
+      if (!validatorOutputWasComplete) {
+        content['test-writer'] = createDeterministicSpecContract(briefText, content)
+      }
       specFiles['.claude/spec-contract.md'] = content['test-writer']
       if (validatorOutputWasComplete) {
-        log('✓ SPEC CONTRACT canonicalized into deterministic BUILD-safe format', 'ok')
+        log('✓ SPEC CONTRACT: AI SPEC VALIDATOR output preserved as-is (domain-specific)', 'ok')
       } else {
       log('⚠ SPEC VALIDATOR output was missing required SPEC CONTRACT sections — deterministic contract safety net applied', 'warn')
       announce('The SPEC VALIDATOR did not return a complete contract, so the pipeline generated a deterministic build-safe contract before QA.', { priority: 'high', tag: 'spec-contract-safety-net' })
@@ -6242,13 +6409,13 @@ export default function PipelinePage() {
         )
         {
           const validatorOutputWasComplete = hasUsableSpecContract(content['test-writer'] ?? '')
-          content['test-writer'] = createDeterministicSpecContract(briefText, content)
-          specFiles['.claude/spec-contract.md'] = content['test-writer']
           if (!validatorOutputWasComplete) {
-          log(`⚠ SPEC CONTRACT safety net applied during coherence repair #${rev + 1}`, 'warn')
+            content['test-writer'] = createDeterministicSpecContract(briefText, content)
+            log(`⚠ SPEC CONTRACT safety net applied during coherence repair #${rev + 1}`, 'warn')
           } else {
-            log(`✓ SPEC CONTRACT canonicalized during coherence repair #${rev + 1}`, 'ok')
+            log(`✓ SPEC CONTRACT preserved (AI output valid) during coherence repair #${rev + 1}`, 'ok')
           }
+          specFiles['.claude/spec-contract.md'] = content['test-writer']
         }
         setForgeActiveAgents(new Set())
 
@@ -6485,6 +6652,7 @@ export default function PipelinePage() {
       score:       qaScore,
       files:       specFiles,
       builtAt:     new Date().toISOString(),
+      vertical,   // persisted so UI/deploy calls don't re-detect from brief text
     }
 
     // Persist for other pages
@@ -7386,7 +7554,7 @@ REPAIR SCOPE:
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             projectName: forge.projectName, brief: forge.brief,
-            vertical:    detectVertical(forge.brief),
+            vertical:    forge.vertical ?? detectVertical(forge.brief),
             qaScore: forge.score, elapsedSec: finalElapsedSec || null,
             agentCount: forgeDoneAgents.size + buildDoneAgents.size,
             fileCount: Object.keys(buildFilesRef.current).length,
@@ -8260,7 +8428,7 @@ REPAIR SCOPE:
             agentCount={forgeDoneAgents.size + buildDoneAgents.size}
             fileCount={Object.keys(buildFilesRef.current).length}
             brief={forgeSpecRef.current?.brief ?? brief}
-            vertical={forgeSpecRef.current ? detectVertical(forgeSpecRef.current.brief) : undefined}
+            vertical={forgeSpecRef.current?.vertical ?? (forgeSpecRef.current ? detectVertical(forgeSpecRef.current.brief) : undefined)}
           />
         )}
 
@@ -8275,7 +8443,7 @@ REPAIR SCOPE:
               agentCount={forgeDoneAgents.size + buildDoneAgents.size}
               fileCount={Object.keys(buildFilesRef.current).length}
               shareSlug={pipelineShareSlug}
-              vertical={forgeSpecRef.current ? detectVertical(forgeSpecRef.current.brief) : undefined}
+              vertical={forgeSpecRef.current?.vertical ?? (forgeSpecRef.current ? detectVertical(forgeSpecRef.current.brief) : undefined)}
             />
             {Object.keys(buildFilesRef.current).length > 0 && (
               <button
