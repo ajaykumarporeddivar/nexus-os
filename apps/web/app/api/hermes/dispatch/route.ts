@@ -117,6 +117,30 @@ export async function POST(req: NextRequest) {
         triggeredBy: 'hermes',
       })
 
+    } else if (agentType === 'deploy') {
+      // Direct deploy via /api/claude/deploy — push ref to GitHub + create Vercel deployment
+      const baseUrl = process.env.VERCEL_URL
+        ? `https://${process.env.VERCEL_URL}`
+        : (process.env.NEXTAUTH_URL ?? 'http://localhost:3000')
+      const deploySecret = process.env.CRON_SECRET ?? process.env.INTERNAL_API_SECRET ?? process.env.HERMES_SECRET ?? ''
+      const res = await fetch(`${baseUrl}/api/claude/deploy`, {
+        method:  'POST',
+        headers: {
+          'Content-Type':   'application/json',
+          'x-cron-secret':  deploySecret,
+        },
+        body: JSON.stringify({
+          ref:         typeof context.ref === 'string' ? context.ref : 'main',
+          projectName: typeof context.projectName === 'string' ? context.projectName : undefined,
+          skipGithub:  context.skipGithub === true,
+          skipVercel:  context.skipVercel === true,
+          files:       typeof context.files === 'object' && context.files !== null ? context.files : undefined,
+          env:         typeof context.env === 'object' && context.env !== null ? context.env : undefined,
+        }),
+        signal: AbortSignal.timeout(120_000),
+      })
+      result = await res.json()
+
     } else if (agentType === 'health') {
       const baseUrl = process.env.VERCEL_URL
         ? `https://${process.env.VERCEL_URL}`
@@ -128,8 +152,13 @@ export async function POST(req: NextRequest) {
       const baseUrl = process.env.VERCEL_URL
         ? `https://${process.env.VERCEL_URL}`
         : (process.env.NEXTAUTH_URL ?? 'http://localhost:3000')
+      // Pass all available secrets so the status route can validate with whichever is configured
+      const internalHeaders: Record<string, string> = {}
+      if (process.env.HERMES_SECRET)   internalHeaders['x-hermes-secret']  = process.env.HERMES_SECRET
+      if (process.env.CRON_SECRET)     internalHeaders['x-cron-secret']    = process.env.CRON_SECRET
+      if (process.env.INTERNAL_API_SECRET) internalHeaders['x-nexus-internal'] = process.env.INTERNAL_API_SECRET
       const res  = await fetch(`${baseUrl}/api/hermes/status`, {
-        headers: { 'x-hermes-secret': process.env.HERMES_SECRET ?? '' },
+        headers: internalHeaders,
         signal: AbortSignal.timeout(8000),
       })
       result = await res.json()

@@ -12,6 +12,11 @@
 import { randomUUID } from 'crypto'
 import { aiComplete } from '@/lib/ai'
 import { prisma } from '@/lib/prisma'
+import {
+  createPipelineRun,
+  updatePipelineStep,
+  completePipelineRun,
+} from '@/lib/pipelineState'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -302,15 +307,29 @@ export async function triggerPipeline(params: PipelineParams): Promise<PipelineR
   const by          = params.triggeredBy ?? 'manual'
 
   console.log(`[orchestrator] Pipeline START  runId=${runId}  task="${params.task}"  by=${by}`)
-  await writeAudit('forge_run_started', runId, { task: params.task, projectName, triggeredBy: by })
+  await Promise.all([
+    writeAudit('forge_run_started', runId, { task: params.task, projectName, triggeredBy: by }),
+    createPipelineRun(runId, params.task, projectName, by),   // ← Redis state init
+  ])
 
   // ── Step 1: FORGE ──────────────────────────────────────────────────────────
+  await updatePipelineStep(runId, 'forge', { status: 'running', startedAt: new Date().toISOString() })
   const forgeResult = await runForge(params.task, projectName)
   console.log(`[orchestrator] FORGE ${forgeResult.ok ? 'OK' : 'FAIL'} in ${forgeResult.durationMs}ms`)
+  await updatePipelineStep(runId, 'forge', {
+    status:     forgeResult.ok ? 'done' : 'failed',
+    doneAt:     new Date().toISOString(),
+    durationMs: forgeResult.durationMs,
+    error:      forgeResult.error,
+    data:       forgeResult.ok ? forgeResult.data : undefined,
+  })
 
   if (!forgeResult.ok) {
     const totalMs = Date.now() - totalStart
-    await writeAudit('forge_run_completed', runId, { ok: false, step: 'forge', error: forgeResult.error })
+    await Promise.all([
+      writeAudit('forge_run_completed', runId, { ok: false, step: 'forge', error: forgeResult.error }),
+      completePipelineRun(runId, false, totalMs, forgeResult.error),
+    ])
     return {
       runId, ok: false, totalMs,
       steps:  { forge: forgeResult, build: { ok: false, durationMs: 0, error: 'skipped' }, deploy: { ok: false, durationMs: 0, error: 'skipped' } },
@@ -319,12 +338,22 @@ export async function triggerPipeline(params: PipelineParams): Promise<PipelineR
   }
 
   // ── Step 2: BUILD ──────────────────────────────────────────────────────────
+  await updatePipelineStep(runId, 'build', { status: 'running', startedAt: new Date().toISOString() })
   const buildResult = await runBuild(forgeResult.data, projectName)
   console.log(`[orchestrator] BUILD ${buildResult.ok ? 'OK' : 'FAIL'} in ${buildResult.durationMs}ms`)
+  await updatePipelineStep(runId, 'build', {
+    status:     buildResult.ok ? 'done' : 'failed',
+    doneAt:     new Date().toISOString(),
+    durationMs: buildResult.durationMs,
+    error:      buildResult.error,
+  })
 
   if (!buildResult.ok) {
     const totalMs = Date.now() - totalStart
-    await writeAudit('forge_run_completed', runId, { ok: false, step: 'build', error: buildResult.error })
+    await Promise.all([
+      writeAudit('forge_run_completed', runId, { ok: false, step: 'build', error: buildResult.error }),
+      completePipelineRun(runId, false, totalMs, buildResult.error),
+    ])
     return {
       runId, ok: false, totalMs,
       steps:  { forge: forgeResult, build: buildResult, deploy: { ok: false, durationMs: 0, error: 'skipped' } },
@@ -334,19 +363,30 @@ export async function triggerPipeline(params: PipelineParams): Promise<PipelineR
 
   // ── Step 3: DEPLOY ─────────────────────────────────────────────────────────
   const buildData = buildResult.data as { files: Record<string, string>; fileCount: number }
+  await updatePipelineStep(runId, 'deploy', { status: 'running', startedAt: new Date().toISOString() })
   const deployResult = await runDeploy(buildData.files, projectName, params.env)
   console.log(`[orchestrator] DEPLOY ${deployResult.ok ? 'OK' : 'FAIL'} in ${deployResult.durationMs}ms`)
+  await updatePipelineStep(runId, 'deploy', {
+    status:     deployResult.ok ? 'done' : 'failed',
+    doneAt:     new Date().toISOString(),
+    durationMs: deployResult.durationMs,
+    error:      deployResult.error,
+    data:       deployResult.ok ? deployResult.data : undefined,
+  })
 
   const totalMs = Date.now() - totalStart
   const ok      = forgeResult.ok && buildResult.ok && deployResult.ok
 
-  await writeAudit('forge_run_completed', runId, {
-    ok,
-    forge:  { ok: forgeResult.ok, ms: forgeResult.durationMs },
-    build:  { ok: buildResult.ok, ms: buildResult.durationMs, files: buildData.fileCount },
-    deploy: { ok: deployResult.ok, ms: deployResult.durationMs, data: deployResult.data },
-    totalMs,
-  })
+  await Promise.all([
+    writeAudit('forge_run_completed', runId, {
+      ok,
+      forge:  { ok: forgeResult.ok, ms: forgeResult.durationMs },
+      build:  { ok: buildResult.ok, ms: buildResult.durationMs, files: buildData.fileCount },
+      deploy: { ok: deployResult.ok, ms: deployResult.durationMs, data: deployResult.data },
+      totalMs,
+    }),
+    completePipelineRun(runId, ok, totalMs),
+  ])
 
   console.log(`[orchestrator] Pipeline ${ok ? 'DONE' : 'PARTIAL'} runId=${runId} in ${totalMs}ms`)
 

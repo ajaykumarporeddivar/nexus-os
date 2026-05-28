@@ -14,6 +14,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma }                    from '@/lib/prisma'
+import { getStalledRuns }            from '@/lib/pipelineState'
 
 export const runtime     = 'nodejs'
 export const maxDuration = 120
@@ -210,15 +211,22 @@ export async function GET(req: NextRequest) {
     console.log(`[self-heal] ${runId}: Recovery ${healResult.healed ? 'SUCCESS' : 'FAILED'}: ${healResult.action}`)
   }
 
+  // ── Check for stalled pipeline runs (running but no update in 5+ min) ────────
+  const stalledRuns = await getStalledRuns(300_000)
+  if (stalledRuns.length > 0) {
+    console.warn(`[self-heal] ${runId}: ${stalledRuns.length} stalled pipeline run(s) detected: ${stalledRuns.map(r => r.runId).join(', ')}`)
+  }
+
   const durationMs = Date.now() - t0
 
   const summary = {
     runId,
-    ok:         allOk,
-    healed:     healResult?.healed ?? false,
-    failCount:  failedChecks.length,
+    ok:          allOk,
+    healed:      healResult?.healed ?? false,
+    failCount:   failedChecks.length,
     failedChecks,
-    healAction: healResult?.action ?? null,
+    healAction:  healResult?.action ?? null,
+    stalledRuns: stalledRuns.length,
     durationMs,
   }
 
@@ -232,6 +240,7 @@ export async function GET(req: NextRequest) {
     failedChecks,
     healAction:  healResult?.action ?? null,
     healResult:  healResult?.result ?? null,
+    stalledRuns: stalledRuns.map(r => ({ runId: r.runId, task: r.task, currentStep: r.currentStep, updatedAt: r.updatedAt })),
     durationMs,
   })
 }

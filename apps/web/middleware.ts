@@ -146,6 +146,7 @@ export default withAuth(
     // Autonomous pipeline + Hermes routes: allow with CRON_SECRET, INTERNAL_API_SECRET, or HERMES_SECRET
     if (
       pathname === '/api/pipeline/trigger' ||
+      pathname.startsWith('/api/pipeline/status/') ||
       pathname === '/api/claude/deploy' ||
       pathname.startsWith('/api/hermes/')
     ) {
@@ -279,6 +280,7 @@ export default withAuth(
         // Autonomous pipeline + Hermes routes: CRON_SECRET | INTERNAL_API_SECRET | HERMES_SECRET
         if (
           pathname === '/api/pipeline/trigger' ||
+          pathname.startsWith('/api/pipeline/status/') ||
           pathname === '/api/claude/deploy' ||
           pathname.startsWith('/api/hermes/')
         ) {
