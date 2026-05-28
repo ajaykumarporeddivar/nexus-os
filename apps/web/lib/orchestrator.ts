@@ -249,7 +249,7 @@ async function runDeploy(
     )
 
     // Create deployment
-    const deployRes = await fetch(`https://api.vercel.com/v13/deployments${qs}`, {
+    const deployRes = await fetch(`https://api.vercel.com/v13/deployments${qs ? qs + '&' : '?'}skipAutoDetectionConfirmation=1`, {
       method:  'POST',
       headers: {
         Authorization:  `Bearer ${token}`,
