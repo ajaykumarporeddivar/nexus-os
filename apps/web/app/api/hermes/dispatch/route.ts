@@ -30,18 +30,21 @@ export const maxDuration = 300
 
 function isAuthorized(req: NextRequest): boolean {
   const hermesSecret   = process.env.HERMES_SECRET
-  const cronSecret     = process.env.INTERNAL_API_SECRET ?? process.env.CRON_SECRET
+  const cronSecret     = process.env.CRON_SECRET
+  const internalSecret = process.env.INTERNAL_API_SECRET
 
   // Dev: no secrets configured → allow
-  if (!hermesSecret && !cronSecret) return true
+  if (!hermesSecret && !cronSecret && !internalSecret) return true
 
-  const auth   = req.headers.get('authorization') ?? ''
-  const hermes = req.headers.get('x-hermes-secret') ?? ''
-  const xCron  = req.headers.get('x-cron-secret') ?? ''
-  const query  = req.nextUrl.searchParams.get('secret') ?? ''
+  const auth      = req.headers.get('authorization') ?? ''
+  const hermes    = req.headers.get('x-hermes-secret') ?? ''
+  const xCron     = req.headers.get('x-cron-secret') ?? ''
+  const xInternal = req.headers.get('x-nexus-internal') ?? ''
+  const query     = req.nextUrl.searchParams.get('secret') ?? ''
 
-  if (hermesSecret && (hermes === hermesSecret || auth === `Bearer ${hermesSecret}`)) return true
-  if (cronSecret   && (xCron === cronSecret || auth === `Bearer ${cronSecret}` || query === cronSecret)) return true
+  if (hermesSecret   && (hermes === hermesSecret || auth === `Bearer ${hermesSecret}`)) return true
+  if (cronSecret     && (xCron === cronSecret || auth === `Bearer ${cronSecret}` || query === cronSecret)) return true
+  if (internalSecret && xInternal === internalSecret) return true
 
   return false
 }

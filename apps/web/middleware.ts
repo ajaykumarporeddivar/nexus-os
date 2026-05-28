@@ -135,11 +135,35 @@ export default withAuth(
       pathname === '/api/cron/proposal-deadline-monitor' ||
       pathname === '/api/cron/proposal-digest' ||
       pathname === '/api/cron/proposal-dlq-retry' ||
-      pathname === '/api/cron/proposal-retention'
+      pathname === '/api/cron/proposal-retention' ||
+      pathname === '/api/cron/self-heal'
     ) {
       const secret = req.headers.get('x-cron-secret') ?? req.nextUrl.searchParams.get('secret')
       if (secret === process.env.CRON_SECRET) return NextResponse.next()
       // Fall through — no secret, withAuth callback will block
+    }
+
+    // Autonomous pipeline + Hermes routes: allow with CRON_SECRET, INTERNAL_API_SECRET, or HERMES_SECRET
+    if (
+      pathname === '/api/pipeline/trigger' ||
+      pathname === '/api/claude/deploy' ||
+      pathname.startsWith('/api/hermes/')
+    ) {
+      const cronSecret     = process.env.CRON_SECRET
+      const internalSecret = process.env.INTERNAL_API_SECRET
+      const hermesSecret   = process.env.HERMES_SECRET
+      const auth    = req.headers.get('authorization') ?? ''
+      const xCron   = req.headers.get('x-cron-secret') ?? ''
+      const xInternal = req.headers.get('x-nexus-internal') ?? ''
+      const xHermes = req.headers.get('x-hermes-secret') ?? ''
+      const query   = req.nextUrl.searchParams.get('secret') ?? ''
+      if (
+        (cronSecret     && (xCron === cronSecret || auth === `Bearer ${cronSecret}` || query === cronSecret)) ||
+        (internalSecret && xInternal === internalSecret) ||
+        (hermesSecret   && (xHermes === hermesSecret || auth === `Bearer ${hermesSecret}`)) ||
+        (!cronSecret && !internalSecret && !hermesSecret)   // dev: no secrets → allow
+      ) return NextResponse.next()
+      // Fall through — invalid secret, withAuth will block
     }
 
     return NextResponse.next()
@@ -214,7 +238,8 @@ export default withAuth(
           pathname === '/api/cron/proposal-deadline-monitor' ||
           pathname === '/api/cron/proposal-digest' ||
           pathname === '/api/cron/proposal-dlq-retry' ||
-          pathname === '/api/cron/proposal-retention'
+          pathname === '/api/cron/proposal-retention' ||
+          pathname === '/api/cron/self-heal'
         ) {
           // Strict: CRON_SECRET only (no session bypass)
           const cronSecret = process.env.CRON_SECRET
@@ -248,6 +273,28 @@ export default withAuth(
             headerSecret === cronSecret ||
             querySecret  === cronSecret ||
             bearerToken  === cronSecret
+          )
+        }
+
+        // Autonomous pipeline + Hermes routes: CRON_SECRET | INTERNAL_API_SECRET | HERMES_SECRET
+        if (
+          pathname === '/api/pipeline/trigger' ||
+          pathname === '/api/claude/deploy' ||
+          pathname.startsWith('/api/hermes/')
+        ) {
+          const cronSecret     = process.env.CRON_SECRET
+          const internalSecret = process.env.INTERNAL_API_SECRET
+          const hermesSecret   = process.env.HERMES_SECRET
+          if (!cronSecret && !internalSecret && !hermesSecret) return true   // dev
+          const auth      = req.headers.get('authorization') ?? ''
+          const xCron     = req.headers.get('x-cron-secret') ?? ''
+          const xInternal = req.headers.get('x-nexus-internal') ?? ''
+          const xHermes   = req.headers.get('x-hermes-secret') ?? ''
+          const query     = req.nextUrl.searchParams.get('secret') ?? ''
+          return (
+            (!!cronSecret     && (xCron === cronSecret || auth === `Bearer ${cronSecret}` || query === cronSecret)) ||
+            (!!internalSecret && xInternal === internalSecret) ||
+            (!!hermesSecret   && (xHermes === hermesSecret || auth === `Bearer ${hermesSecret}`))
           )
         }
 
