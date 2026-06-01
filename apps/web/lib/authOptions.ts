@@ -141,6 +141,12 @@ export const authOptions: NextAuthOptions = {
         }), 'auth signIn upsert user')
         if (!existing && user.email) {
           sendWelcomeEmail(user.email, user.name ?? '').catch(console.error)
+          // HSF L2 — notify owner of new user signup
+          import('@/lib/sovereignty').then(({ notifyOwner }) =>
+            notifyOwner('user.signup', `New user signed up: ${user.email}`, {
+              email: user.email ?? '', name: user.name ?? '', method: 'google_oauth',
+            })
+          ).catch(console.error)
         }
       } catch (err) {
         console.error('[auth signIn upsert]', err)

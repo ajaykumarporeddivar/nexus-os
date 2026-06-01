@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import crypto from 'crypto'
 import { prisma } from '@/lib/prisma'
 import { sendPlanUpgradeEmail } from '@/lib/email'
+import { notifyOwner } from '@/lib/sovereignty'
 
 const PLAN_AMOUNTS: Record<string, number> = {
   starter:    4100_00,  // INR paise — ~$49
@@ -86,6 +87,12 @@ export async function POST(req: NextRequest) {
         paymentId: razorpay_payment_id,
         orderId: razorpay_order_id,
         amount,
+      }).catch(console.error)
+
+      // HSF L2 — notify owner of new payment
+      notifyOwner('payment.verified', `New ${resolvedPlan} payment — ₹${(amount/100).toLocaleString()}`, {
+        email, plan: resolvedPlan, paymentId: razorpay_payment_id, orderId: razorpay_order_id,
+        amountInr: `₹${(amount/100).toLocaleString()}`,
       }).catch(console.error)
     }
 

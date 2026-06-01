@@ -17,6 +17,11 @@ import {
   updatePipelineStep,
   completePipelineRun,
 } from '@/lib/pipelineState'
+import {
+  runForgeGate,
+  runBuildGate,
+  logControlDecision,
+} from '@/lib/controlEngine'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -27,6 +32,8 @@ export interface PipelineParams {
   ref?:          string          // git branch (default: main)
   env?:          Record<string, string>
   triggeredBy?:  'cron' | 'hermes' | 'self-heal' | 'manual'
+  vertical?:     string          // domain vertical hint (saas/marketplace/dashboard/etc.)
+  skipGates?:    boolean         // bypass L2.75 control gates (admin/testing only)
 }
 
 export interface StepResult {
@@ -337,6 +344,33 @@ export async function triggerPipeline(params: PipelineParams): Promise<PipelineR
     }
   }
 
+  // ── L2.75 FORGE Gate — quality + domain coherence + oscillation ────────────
+  // Skip gates only for admin/testing (skipGates: true in params)
+  const forgeData    = forgeResult.data as { spec?: string; score?: number } | undefined
+  const forgeGate    = params.skipGates ? { allowed: true, checks: [], blocking: null } : await runForgeGate({
+    qaScore:      forgeData?.score ?? null,
+    briefText:    params.task,
+    specContract: forgeData?.spec ?? '',
+    projectName,
+    vertical:     params.vertical,
+  })
+  if (!params.skipGates) await logControlDecision(runId, 'forge', forgeGate)
+  console.log(`[orchestrator] FORGE GATE ${forgeGate.allowed ? 'PASS' : 'BLOCK'}: ${forgeGate.blocking?.reason ?? 'all checks passed'}`)
+
+  if (!forgeGate.allowed) {
+    const gateError = `L2.75 Control Gate blocked BUILD: ${forgeGate.blocking?.reason}`
+    const totalMs   = Date.now() - totalStart
+    await Promise.all([
+      writeAudit('forge_run_completed', runId, { ok: false, step: 'forge_gate', error: gateError, gate: forgeGate }),
+      completePipelineRun(runId, false, totalMs, gateError),
+    ])
+    return {
+      runId, ok: false, totalMs,
+      steps:  { forge: forgeResult, build: { ok: false, durationMs: 0, error: gateError }, deploy: { ok: false, durationMs: 0, error: 'skipped' } },
+      error:  gateError,
+    }
+  }
+
   // ── Step 2: BUILD ──────────────────────────────────────────────────────────
   await updatePipelineStep(runId, 'build', { status: 'running', startedAt: new Date().toISOString() })
   const buildResult = await runBuild(forgeResult.data, projectName)
@@ -361,8 +395,27 @@ export async function triggerPipeline(params: PipelineParams): Promise<PipelineR
     }
   }
 
-  // ── Step 3: DEPLOY ─────────────────────────────────────────────────────────
+  // ── L2.75 BUILD Gate — file count + deployment readiness ──────────────────
   const buildData = buildResult.data as { files: Record<string, string>; fileCount: number }
+  const buildGate = params.skipGates ? { allowed: true, checks: [], blocking: null } : runBuildGate({ files: buildData.files })
+  if (!params.skipGates) await logControlDecision(runId, 'build', buildGate)
+  console.log(`[orchestrator] BUILD GATE ${buildGate.allowed ? 'PASS' : 'BLOCK'}: ${buildGate.blocking?.reason ?? 'all checks passed'}`)
+
+  if (!buildGate.allowed) {
+    const gateError = `L2.75 Control Gate blocked DEPLOY: ${buildGate.blocking?.reason}`
+    const totalMs   = Date.now() - totalStart
+    await Promise.all([
+      writeAudit('forge_run_completed', runId, { ok: false, step: 'build_gate', error: gateError, gate: buildGate }),
+      completePipelineRun(runId, false, totalMs, gateError),
+    ])
+    return {
+      runId, ok: false, totalMs,
+      steps:  { forge: forgeResult, build: buildResult, deploy: { ok: false, durationMs: 0, error: gateError } },
+      error:  gateError,
+    }
+  }
+
+  // ── Step 3: DEPLOY ─────────────────────────────────────────────────────────
   await updatePipelineStep(runId, 'deploy', { status: 'running', startedAt: new Date().toISOString() })
   const deployResult = await runDeploy(buildData.files, projectName, params.env)
   console.log(`[orchestrator] DEPLOY ${deployResult.ok ? 'OK' : 'FAIL'} in ${deployResult.durationMs}ms`)
