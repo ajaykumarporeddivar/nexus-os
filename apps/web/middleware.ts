@@ -155,6 +155,7 @@ export default withAuth(
     if (
       pathname === '/api/pipeline/trigger' ||
       pathname.startsWith('/api/pipeline/status/') ||
+      pathname === '/api/pipeline/reputation' ||
       pathname === '/api/claude/deploy' ||
       pathname.startsWith('/api/hermes/')
     ) {
@@ -290,6 +291,7 @@ export default withAuth(
         if (
           pathname === '/api/pipeline/trigger' ||
           pathname.startsWith('/api/pipeline/status/') ||
+          pathname === '/api/pipeline/reputation' ||
           pathname === '/api/claude/deploy' ||
           pathname.startsWith('/api/hermes/')
         ) {
