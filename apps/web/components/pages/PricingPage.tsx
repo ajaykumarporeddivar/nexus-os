@@ -118,7 +118,7 @@ function loadRazorpay(): Promise<void> {
 }
 
 export default function PricingPage({ onNavigate }: Props) {
-  const { data: session } = useSession()
+  const { data: session, update: updateSession } = useSession()
   const [form, setForm] = useState({ name: '', agency: '', email: '', phone: '', usecase: '' })
   const [submitted, setSubmitted] = useState(false)
   const [submitting, setSubmitting] = useState(false)
@@ -196,6 +196,10 @@ export default function PricingPage({ onNavigate }: Props) {
           if (verifyData.ok) {
             setPaidPlan(tierId === 'agency' ? 'Agency' : 'Starter')
             setPaySuccess(true)
+            // Refresh NextAuth JWT so session.user.plan reflects the new plan immediately
+            await updateSession({ plan: tierId })
+            // Force full session reload after 1s to pull DB-authoritative plan
+            setTimeout(() => updateSession(), 1000)
           } else {
             setError('Payment verification failed. Contact support.')
           }

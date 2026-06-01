@@ -18,6 +18,9 @@ const PUBLIC_API = new Set([
   // NOTE: /api/leads POST is allowed below via method-check (G5) — GET stays admin-only
 ])
 
+// Webhook routes — Razorpay posts here with its own signature, no session
+const WEBHOOK_PREFIXES = ['/api/webhook/']
+
 
 // Public page routes
 const PUBLIC_PAGES = new Set([
@@ -71,6 +74,11 @@ export default withAuth(
 
     // Allow explicitly public API routes
     if (PUBLIC_API.has(pathname)) {
+      return NextResponse.next()
+    }
+
+    // Allow all webhook routes (Razorpay etc.) — they carry their own HMAC signatures
+    if (WEBHOOK_PREFIXES.some(p => pathname.startsWith(p))) {
       return NextResponse.next()
     }
 
@@ -186,6 +194,7 @@ export default withAuth(
           pathname === '/api/health' ||
           pathname === '/api/pipeline-stats' ||
           pathname.startsWith('/api/checkout') ||
+          pathname.startsWith('/api/webhook/') ||
           pathname === '/api/demo-booking' ||
           pathname === '/api/whatsapp/send' ||
           pathname === '/api/groq/stream' ||
