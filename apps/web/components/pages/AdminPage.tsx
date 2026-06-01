@@ -1,8 +1,24 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
+
+interface AdminUser {
+  id:              string
+  email:           string | null
+  name:            string | null
+  image:           string | null
+  plan:            string | null
+  createdAt:       string
+  planActivatedAt: string | null
+  razorpayOrderId: string | null
+}
+
+interface UserListData {
+  users: AdminUser[]
+  total: number
+}
 
 interface AdminStats {
   users: {
@@ -79,10 +95,53 @@ function StatCard({ label, value, sub, accent = false }: { label: string; value:
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export default function AdminPage() {
-  const [stats,   setStats]   = useState<AdminStats | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error,   setError]   = useState('')
-  const [refresh, setRefresh] = useState(0)
+  const [stats,     setStats]     = useState<AdminStats | null>(null)
+  const [loading,   setLoading]   = useState(true)
+  const [error,     setError]     = useState('')
+  const [refresh,   setRefresh]   = useState(0)
+  const [userList,  setUserList]  = useState<UserListData | null>(null)
+  const [userSearch, setUserSearch] = useState('')
+  const [userPlan,  setUserPlan]  = useState('')
+  const [userLoading, setUserLoading] = useState(false)
+  const [selected,  setSelected]  = useState<Set<string>>(new Set())
+  const [deleting,  setDeleting]  = useState(false)
+
+  const loadUsers = useCallback(() => {
+    setUserLoading(true)
+    const qs = new URLSearchParams()
+    if (userSearch) qs.set('search', userSearch)
+    if (userPlan)   qs.set('plan',   userPlan)
+    qs.set('take', '100')
+    fetch(`/api/admin/users?${qs}`)
+      .then(r => r.json())
+      .then(d => { if (d.ok) setUserList(d.data) })
+      .finally(() => setUserLoading(false))
+  }, [userSearch, userPlan])
+
+  useEffect(() => { loadUsers() }, [loadUsers])
+
+  const toggleSelect = (id: string) => {
+    setSelected(prev => {
+      const next = new Set(prev)
+      next.has(id) ? next.delete(id) : next.add(id)
+      return next
+    })
+  }
+
+  const deleteSelected = async () => {
+    if (selected.size === 0) return
+    if (!confirm(`Delete ${selected.size} user(s)? This cannot be undone.`)) return
+    setDeleting(true)
+    await fetch('/api/admin/users', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids: [...selected] }),
+    })
+    setSelected(new Set())
+    loadUsers()
+    setRefresh(r => r + 1)
+    setDeleting(false)
+  }
 
   useEffect(() => {
     setLoading(true)
@@ -115,6 +174,21 @@ export default function AdminPage() {
 
   return (
     <div className="max-w-5xl mx-auto px-6 py-10 space-y-8">
+
+      {/* ── Users Table — always visible at top ────────────────────────── */}
+      <UsersSection
+        userList={userList}
+        userLoading={userLoading}
+        userSearch={userSearch}
+        setUserSearch={setUserSearch}
+        userPlan={userPlan}
+        setUserPlan={setUserPlan}
+        selected={selected}
+        toggleSelect={toggleSelect}
+        deleteSelected={deleteSelected}
+        deleting={deleting}
+        loadUsers={loadUsers}
+      />
 
       {/* Header */}
       <div className="flex items-center justify-between">
@@ -275,5 +349,124 @@ export default function AdminPage() {
       </section>
 
     </div>
+  )
+}
+
+// ── Users section — rendered outside main stats card (always visible) ─────────
+function UsersSection({
+  userList, userLoading, userSearch, setUserSearch,
+  userPlan, setUserPlan, selected, toggleSelect,
+  deleteSelected, deleting, loadUsers,
+}: {
+  userList: UserListData | null
+  userLoading: boolean
+  userSearch: string
+  setUserSearch: (v: string) => void
+  userPlan: string
+  setUserPlan: (v: string) => void
+  selected: Set<string>
+  toggleSelect: (id: string) => void
+  deleteSelected: () => void
+  deleting: boolean
+  loadUsers: () => void
+}) {
+  const PLAN_BADGE: Record<string, string> = {
+    enterprise: 'bg-acid/20 text-acid border border-acid/30',
+    agency:     'bg-violet-500/20 text-violet-300 border border-violet-500/30',
+    starter:    'bg-blue-500/20 text-blue-300 border border-blue-500/30',
+    free:       'bg-paper3 text-ink3 border border-border',
+  }
+
+  return (
+    <section className="mt-8">
+      <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+        <p className="sec-label">All Users ({userList?.total ?? '…'})</p>
+        <div className="flex gap-2 items-center flex-wrap">
+          <input
+            value={userSearch}
+            onChange={e => setUserSearch(e.target.value)}
+            placeholder="Search email or name…"
+            className="input text-xs h-7 px-2 w-48"
+          />
+          <select
+            value={userPlan}
+            onChange={e => setUserPlan(e.target.value)}
+            className="input text-xs h-7 px-2"
+          >
+            <option value="">All plans</option>
+            <option value="free">Free</option>
+            <option value="starter">Starter</option>
+            <option value="agency">Agency</option>
+            <option value="enterprise">Enterprise</option>
+          </select>
+          <button onClick={loadUsers} className="btn-ghost text-xs h-7 px-3">↺ Refresh</button>
+          {selected.size > 0 && (
+            <button
+              onClick={deleteSelected}
+              disabled={deleting}
+              className="btn text-xs h-7 px-3 bg-red-600 hover:bg-red-500 text-white border-0"
+            >
+              {deleting ? 'Deleting…' : `Delete ${selected.size}`}
+            </button>
+          )}
+        </div>
+      </div>
+
+      <div className="card overflow-hidden p-0">
+        {userLoading ? (
+          <p className="text-xs text-ink3 px-4 py-6">Loading users…</p>
+        ) : (
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="border-b border-border bg-paper2">
+                <th className="px-3 py-2 w-8">
+                  <input
+                    type="checkbox"
+                    onChange={e => {
+                      if (e.target.checked) userList?.users.forEach(u => toggleSelect(u.id))
+                      else userList?.users.forEach(u => { if (selected.has(u.id)) toggleSelect(u.id) })
+                    }}
+                    checked={!!userList?.users.length && userList.users.every(u => selected.has(u.id))}
+                  />
+                </th>
+                <th className="text-left px-3 py-2 text-ink3 font-medium">Email</th>
+                <th className="text-left px-3 py-2 text-ink3 font-medium">Name</th>
+                <th className="text-left px-3 py-2 text-ink3 font-medium">Plan</th>
+                <th className="text-left px-3 py-2 text-ink3 font-medium">Joined</th>
+                <th className="text-left px-3 py-2 text-ink3 font-medium">Paid</th>
+              </tr>
+            </thead>
+            <tbody>
+              {!userList?.users.length && (
+                <tr><td colSpan={6} className="px-4 py-6 text-ink3 text-center">No users found</td></tr>
+              )}
+              {userList?.users.map(u => (
+                <tr
+                  key={u.id}
+                  className={`border-b border-border/50 hover:bg-paper2/50 transition-colors ${selected.has(u.id) ? 'bg-acid/5' : ''}`}
+                >
+                  <td className="px-3 py-2">
+                    <input type="checkbox" checked={selected.has(u.id)} onChange={() => toggleSelect(u.id)} />
+                  </td>
+                  <td className="px-3 py-2 font-mono text-[11px]">{u.email ?? '—'}</td>
+                  <td className="px-3 py-2 text-ink2">{u.name ?? <span className="text-ink3">—</span>}</td>
+                  <td className="px-3 py-2">
+                    <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${PLAN_BADGE[u.plan ?? 'free'] ?? PLAN_BADGE.free}`}>
+                      {u.plan ?? 'free'}
+                    </span>
+                  </td>
+                  <td className="px-3 py-2 text-ink3 tabular-nums">
+                    {new Date(u.createdAt).toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' })}
+                  </td>
+                  <td className="px-3 py-2 text-ink3">
+                    {u.razorpayOrderId ? <span className="text-green-400 font-bold">✓</span> : <span className="text-ink3">—</span>}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </section>
   )
 }
