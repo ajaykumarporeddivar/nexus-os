@@ -323,6 +323,12 @@ export default function AdminPage() {
         </div>
       </section>
 
+      {/* ── Reputation Engine ──────────────────────────────────────────── */}
+      <ReputationSection />
+
+      {/* ── Manual Cron Triggers ───────────────────────────────────────── */}
+      <CronTriggers />
+
       {/* ── Audit log (last 20) ────────────────────────────────────────── */}
       <section>
         <p className="sec-label mb-3">Recent audit events</p>
@@ -466,6 +472,208 @@ function UsersSection({
             </tbody>
           </table>
         )}
+      </div>
+    </section>
+  )
+}
+
+// ── Reputation Engine widget ──────────────────────────────────────────────────
+
+interface VerticalRep { vertical: string; totalRuns: number; avgQaScore: number; successRate: number; rank: number }
+interface SystemRep   { period: string; totalRuns: number; successRuns: number; avgQaScore: number; successRate: number; gateBlockRate: number; trend: string }
+
+function ReputationSection() {
+  const [data,    setData]    = useState<{ system: SystemRep; verticals: VerticalRep[] } | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [period,  setPeriod]  = useState<'24h' | '7d' | '30d'>('7d')
+
+  useEffect(() => {
+    setLoading(true)
+    fetch(`/api/pipeline/reputation?period=${period}`)
+      .then(r => r.json())
+      .then(d => { if (d.ok) setData(d.data) })
+      .catch(() => undefined)
+      .finally(() => setLoading(false))
+  }, [period])
+
+  const trendIcon = (t: string) => t === 'improving' ? '↑' : t === 'declining' ? '↓' : '→'
+  const trendColor = (t: string) => t === 'improving' ? 'text-emerald-400' : t === 'declining' ? 'text-red-400' : 'text-ink3'
+
+  return (
+    <section>
+      <div className="flex items-center justify-between mb-3">
+        <p className="sec-label">Pipeline Reputation (AOI v6)</p>
+        <div className="flex gap-1">
+          {(['24h', '7d', '30d'] as const).map(p => (
+            <button key={p} onClick={() => setPeriod(p)}
+              className={`text-[10px] px-2 py-1 rounded-md border transition-all font-mono ${period === p ? 'border-acid/40 bg-acid/10 text-acid' : 'border-border text-ink3 hover:text-ink'}`}>
+              {p}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {loading ? (
+        <p className="text-xs text-ink3 animate-pulse">Loading reputation…</p>
+      ) : !data ? (
+        <p className="text-xs text-ink3">No reputation data yet — run pipelines to generate scores.</p>
+      ) : (
+        <div className="space-y-3">
+          {/* System health */}
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+            <div className="card p-4">
+              <p className="sec-label text-[10px]">Total Runs</p>
+              <p className="text-2xl font-bold font-mono">{data.system.totalRuns}</p>
+            </div>
+            <div className="card p-4">
+              <p className="sec-label text-[10px]">Success Rate</p>
+              <p className={`text-2xl font-bold font-mono ${data.system.successRate >= 0.8 ? 'text-emerald-400' : data.system.successRate >= 0.6 ? 'text-amber-400' : 'text-red-400'}`}>
+                {(data.system.successRate * 100).toFixed(0)}%
+              </p>
+            </div>
+            <div className="card p-4">
+              <p className="sec-label text-[10px]">Avg QA Score</p>
+              <p className="text-2xl font-bold font-mono">{data.system.avgQaScore.toFixed(1)}</p>
+            </div>
+            <div className="card p-4">
+              <p className="sec-label text-[10px]">Gate Block Rate</p>
+              <p className={`text-2xl font-bold font-mono ${data.system.gateBlockRate > 0.3 ? 'text-amber-400' : 'text-ink'}`}>
+                {(data.system.gateBlockRate * 100).toFixed(0)}%
+              </p>
+              <p className="text-[10px] text-ink3">L2.75 blocks</p>
+            </div>
+            <div className="card p-4">
+              <p className="sec-label text-[10px]">Trend</p>
+              <p className={`text-2xl font-bold ${trendColor(data.system.trend)}`}>
+                {trendIcon(data.system.trend)}
+              </p>
+              <p className="text-[10px] text-ink3">{data.system.trend}</p>
+            </div>
+          </div>
+
+          {/* Vertical leaderboard */}
+          {data.verticals.length > 0 && (
+            <div className="card p-4">
+              <p className="sec-label text-[10px] mb-3">Vertical Leaderboard</p>
+              <div className="space-y-2">
+                {data.verticals.slice(0, 8).map((v, i) => (
+                  <div key={v.vertical} className="flex items-center gap-3">
+                    <span className="text-[10px] text-ink3 font-mono w-4">{i + 1}</span>
+                    <span className="text-xs text-ink2 flex-1 capitalize">{v.vertical.replace(/_/g, ' ')}</span>
+                    <span className="text-xs font-mono text-ink3">{v.totalRuns} runs</span>
+                    <span className={`text-xs font-mono ${v.avgQaScore >= 8 ? 'text-emerald-400' : v.avgQaScore >= 6 ? 'text-amber-400' : 'text-red-400'}`}>
+                      {v.avgQaScore.toFixed(1)} QA
+                    </span>
+                    <div className="w-16 h-1.5 bg-paper2 rounded-full overflow-hidden">
+                      <div className="h-full bg-acid rounded-full" style={{ width: `${v.successRate * 100}%` }} />
+                    </div>
+                    <span className="text-[10px] text-ink3 w-8 text-right">{(v.successRate * 100).toFixed(0)}%</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </section>
+  )
+}
+
+// ── Manual Cron Triggers ──────────────────────────────────────────────────────
+
+interface CronJob {
+  id:       string
+  label:    string
+  path:     string
+  desc:     string
+  danger?:  boolean
+}
+
+const CRON_JOBS: CronJob[] = [
+  { id: 'reactivate',    label: 'Re-engagement Blast',   path: '/api/cron/reactivate',    desc: 'Send upgrade email to all free users + unconverted leads (idempotent)',  danger: true },
+  { id: 'lead-sequence', label: 'Lead Sequence Processor', path: '/api/cron/lead-sequence', desc: 'Process all due follow-up sequence steps and send emails' },
+  { id: 'self-heal',     label: 'Self-Heal Check',        path: '/api/cron/self-heal',     desc: 'Run health checks and auto-fix failing services' },
+  { id: 'winback',       label: 'Win-back Campaign',      path: '/api/cron/winback',       desc: 'Email expired subscribers with a renewal offer' },
+  { id: 'lead-dlq-retry',label: 'DLQ Retry',              path: '/api/cron/lead-dlq-retry',desc: 'Retry leads stuck in dead-letter queue' },
+]
+
+function CronTriggers() {
+  const [running, setRunning] = useState<string | null>(null)
+  const [results, setResults] = useState<Record<string, { ok: boolean; message: string }>>({})
+
+  async function trigger(job: CronJob) {
+    if (running) return
+    if (job.danger && !confirm(`Send ${job.label} to ALL users? This cannot be undone.`)) return
+    setRunning(job.id)
+    try {
+      const resp = await fetch(job.path, { method: 'GET' })
+      const data = await resp.json() as Record<string, unknown>
+      setResults(prev => ({
+        ...prev,
+        [job.id]: {
+          ok: data.ok === true,
+          message: data.ok
+            ? `Done — ${JSON.stringify(data).slice(0, 120)}`
+            : (data.error as string) ?? 'Error',
+        },
+      }))
+    } catch (e) {
+      setResults(prev => ({
+        ...prev,
+        [job.id]: { ok: false, message: e instanceof Error ? e.message : 'Failed' },
+      }))
+    } finally {
+      setRunning(null)
+    }
+  }
+
+  return (
+    <section>
+      <p className="sec-label mb-3">Manual Cron Triggers</p>
+      <div className="card p-0 overflow-hidden">
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="border-b border-border bg-paper2">
+              <th className="text-left px-4 py-2 text-ink3 font-medium">Job</th>
+              <th className="text-left px-4 py-2 text-ink3 font-medium hidden sm:table-cell">Description</th>
+              <th className="text-left px-4 py-2 text-ink3 font-medium">Last result</th>
+              <th className="px-4 py-2 w-24" />
+            </tr>
+          </thead>
+          <tbody>
+            {CRON_JOBS.map(job => {
+              const result = results[job.id]
+              return (
+                <tr key={job.id} className="border-b border-border/50">
+                  <td className="px-4 py-3 font-mono font-semibold text-ink2">{job.label}</td>
+                  <td className="px-4 py-3 text-ink3 hidden sm:table-cell max-w-xs">{job.desc}</td>
+                  <td className="px-4 py-3 max-w-[200px]">
+                    {result ? (
+                      <span className={`text-[10px] font-mono ${result.ok ? 'text-emerald-400' : 'text-red-400'} truncate block`}
+                        title={result.message}>
+                        {result.ok ? '✓ ' : '✗ '}{result.message.slice(0, 80)}
+                      </span>
+                    ) : (
+                      <span className="text-ink3">—</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3 text-right">
+                    <button
+                      onClick={() => trigger(job)}
+                      disabled={running !== null}
+                      className={`text-[10px] px-3 py-1.5 rounded-lg border transition-all disabled:opacity-40 ${
+                        job.danger
+                          ? 'border-amber-500/40 text-amber-400 hover:border-amber-400'
+                          : 'border-acid/40 text-acid hover:border-acid'
+                      } ${running === job.id ? 'animate-pulse' : ''}`}>
+                      {running === job.id ? 'Running…' : 'Run Now'}
+                    </button>
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
       </div>
     </section>
   )

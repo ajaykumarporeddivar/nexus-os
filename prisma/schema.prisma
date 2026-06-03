@@ -98,7 +98,9 @@ model Lead {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+  user       User?           @relation(fields: [userId], references: [id], onDelete: SetNull)
+  activities LeadActivity[]
+  sequences  LeadSequence[]
 
   @@index([email])
   @@index([status])
@@ -108,6 +110,43 @@ model Lead {
   @@index([nextTouchAt])
   @@index([platform])
   @@index([deliveredAt])
+}
+
+// Canonical event timeline for a lead — every sales action writes here.
+model LeadActivity {
+  id        String   @id @default(cuid())
+  leadId    String
+  type      String   // email_sent | email_opened | link_clicked | reply_received | meeting_booked | note | proposal_viewed | status_changed | sequence_enrolled | sequence_exited
+  actor     String   @default("system")  // system | founder | lead | webhook
+  channel   String?
+  subject   String?
+  body      String?  @db.Text
+  meta      Json?
+  createdAt DateTime @default(now())
+
+  lead Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@index([leadId, createdAt])
+  @@index([type, createdAt])
+}
+
+// Durable multi-touch follow-up sequence enrollment.
+model LeadSequence {
+  id           String    @id @default(cuid())
+  leadId       String
+  type         String    // hot_lead | nurture | proposal_followup | reengagement
+  status       String    @default("active")  // active | paused | completed | cancelled
+  currentStep  Int       @default(0)
+  nextSendAt   DateTime?
+  pausedAt     DateTime?
+  cancelReason String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  lead Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@unique([leadId, type])
+  @@index([status, nextSendAt])
 }
 
 model User {

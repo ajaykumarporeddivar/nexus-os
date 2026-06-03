@@ -56,8 +56,10 @@ export async function GET(req: NextRequest) {
     data: {
       system,
       verticals,
+      users:          [] as unknown[],   // populated once users run pipelines via authenticated UI
       topVertical:    verticals[0] ?? null,
       worstVertical:  verticals[verticals.length - 1] ?? null,
+      generatedAt:    new Date().toISOString(),
     },
   })
 }

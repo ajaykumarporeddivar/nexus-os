@@ -12,6 +12,7 @@
 import { Resend } from 'resend'
 import { brand, appUrl } from './brand'
 import type { ScoreRationaleItem } from './leadScoring'
+import { enrollLeadInSequence, writeActivity } from './leadSequence'
 
 const FROM           = () => process.env.EMAIL_FROM          ?? `${brand.name} <noreply@${brand.domain}>`
 const FOUNDER_EMAIL  = () => process.env.INTERNAL_NOTIFY_EMAIL ?? 'aporeddiporeddy8@gmail.com'
@@ -324,4 +325,16 @@ export async function triggerHotLeadOutreach(payload: LeadOutreachPayload): Prom
     )
   }
   await Promise.all(tasks)
+
+  // Enroll in follow-up sequence after first-touch
+  const seqType = payload.icpScore >= 70 ? 'hot_lead' : 'nurture'
+  enrollLeadInSequence(payload.leadId, seqType).catch(e =>
+    console.error('[outreach] sequence enroll failed:', e)
+  )
+
+  writeActivity(payload.leadId, 'email_sent', {
+    channel: 'email',
+    subject: 'first_touch',
+    meta:    { icpScore: payload.icpScore, routingDecision: payload.routingDecision },
+  }).catch(() => undefined)
 }

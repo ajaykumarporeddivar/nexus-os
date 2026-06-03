@@ -49,13 +49,56 @@ async function redisIncr(key: string, delta: number, ttlSeconds: number): Promis
     entry.count += delta
     return entry.count
   }
-  // INCRBY + EXPIRE — atomic incrby, then conditionally set TTL on first write
   const newCount = await redis.incrby(key, delta)
-  if (newCount === delta) {
-    // First write in this period — set expiry
-    await redis.expire(key, ttlSeconds)
-  }
+  if (newCount === delta) await redis.expire(key, ttlSeconds)
   return newCount
+}
+
+// Atomic check-and-increment via Lua — returns new count or -1 if limit exceeded.
+// Prevents TOCTOU race where two concurrent requests both pass the quota check.
+const CHECK_AND_INCR_LUA = `
+local current = tonumber(redis.call('GET', KEYS[1])) or 0
+local limit = tonumber(ARGV[1])
+if current >= limit then return -1 end
+local newval = redis.call('INCRBY', KEYS[1], 1)
+if newval == 1 then redis.call('EXPIRE', KEYS[1], ARGV[2]) end
+return newval
+`
+
+// Atomic bounded decrement — never goes below 0.
+const BOUNDED_DECR_LUA = `
+local current = tonumber(redis.call('GET', KEYS[1])) or 0
+if current <= 0 then return 0 end
+return redis.call('DECRBY', KEYS[1], 1)
+`
+
+async function atomicCheckAndIncr(key: string, limit: number, ttlSeconds: number): Promise<number> {
+  const redis = getRedis()
+  if (!redis) {
+    // In-memory: JS is single-threaded, so Map operations are safe
+    const entry = mem.get(key)
+    const now = Date.now()
+    const current = (!entry || now > entry.expires) ? 0 : entry.count
+    if (current >= limit) return -1
+    const newCount = current + 1
+    mem.set(key, { count: newCount, expires: now + ttlSeconds * 1000 })
+    return newCount
+  }
+  const result = await redis.eval(CHECK_AND_INCR_LUA, [key], [String(limit), String(ttlSeconds)]) as number
+  return result
+}
+
+async function atomicBoundedDecr(key: string): Promise<number> {
+  const redis = getRedis()
+  if (!redis) {
+    const entry = mem.get(key)
+    const now = Date.now()
+    if (!entry || now > entry.expires || entry.count <= 0) return 0
+    entry.count = Math.max(0, entry.count - 1)
+    return entry.count
+  }
+  const result = await redis.eval(BOUNDED_DECR_LUA, [key], []) as number
+  return result
 }
 
 // Run limits per month
@@ -106,6 +149,8 @@ export async function resetQuota(sessionId: string, target: 'all' | 'runs' | 'to
   }
 }
 
+// Atomically checks quota AND increments in one Redis operation.
+// Returns exceeded=true if the limit was already reached (count returned as -1).
 export async function incrementQuota(
   sessionId: string,
   plan = 'free',
@@ -114,10 +159,15 @@ export async function incrementQuota(
   if (isAdmin) return { count: 0, limit: Infinity, exceeded: false }
   const limit = PLAN_RUN_LIMITS[plan] ?? PLAN_RUN_LIMITS.free
   if (limit === Infinity) return { count: 0, limit: Infinity, exceeded: false }
-  const count = await redisIncr(`quota:runs:${sessionId}`, 1, monthTTL())
-  return { count, limit, exceeded: count > limit }
+  const result = await atomicCheckAndIncr(`quota:runs:${sessionId}`, limit, monthTTL())
+  if (result === -1) {
+    const current = await redisGet(`quota:runs:${sessionId}`)
+    return { count: current, limit, exceeded: true }
+  }
+  return { count: result, limit, exceeded: false }
 }
 
+// Atomically decrements quota without going below 0.
 export async function decrementQuota(
   sessionId: string,
   plan = 'free',
@@ -126,11 +176,8 @@ export async function decrementQuota(
   if (isAdmin) return { count: 0, limit: Infinity }
   const limit = PLAN_RUN_LIMITS[plan] ?? PLAN_RUN_LIMITS.free
   if (limit === Infinity) return { count: 0, limit }
-  const key = `quota:runs:${sessionId}`
-  const current = await redisGet(key)
-  if (current <= 0) return { count: 0, limit }
-  const count = await redisIncr(key, -1, monthTTL())
-  return { count: Math.max(0, count), limit }
+  const count = await atomicBoundedDecr(`quota:runs:${sessionId}`)
+  return { count, limit }
 }
 
 export async function checkTokenQuota(

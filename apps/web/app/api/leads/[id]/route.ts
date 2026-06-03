@@ -15,14 +15,19 @@ import { routeLead } from '@/lib/leadScoring'
 
 export const runtime = 'nodejs'
 
-export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const auth = await requireAdmin()
   if (auth.error) return auth.error
 
   const { id } = await params
-  const lead = await prisma.lead.findUnique({ where: { id } })
+  const includeSequences = req.nextUrl.searchParams.get('include') === 'sequences'
+
+  const lead = await prisma.lead.findUnique({
+    where: { id },
+    include: includeSequences ? { sequences: { orderBy: { updatedAt: 'desc' } } } : undefined,
+  })
   if (!lead) return NextResponse.json({ ok: false, error: 'Not found' }, { status: 404 })
-  return NextResponse.json({ ok: true, lead })
+  return NextResponse.json({ ok: true, data: lead, lead })
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {

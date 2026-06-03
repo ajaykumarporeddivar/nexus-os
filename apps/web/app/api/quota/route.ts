@@ -37,16 +37,16 @@ export async function POST(req: NextRequest) {
   const plan    = await getPlan(req)
   const isAdmin = auth.user.isAdmin ?? false
 
-  // Admin users have unlimited runs — skip quota check
+  // Admin users have unlimited runs — skip quota check.
+  // incrementQuota is atomic: checks AND increments in one Redis operation.
   if (!isAdmin) {
-    const status = await checkQuota(sessionId, plan, false)
-    if (!status.ok) {
+    const result = await incrementQuota(sessionId, plan, false)
+    if (result.exceeded) {
       return NextResponse.json(
-        { ok: false, error: `Monthly limit reached (${status.count}/${status.limit} runs). Upgrade to Agency for unlimited runs.`, data: status },
+        { ok: false, error: `Monthly limit reached (${result.count}/${result.limit} runs). Upgrade to Agency for unlimited runs.`, data: result },
         { status: 429 }
       )
     }
-    await incrementQuota(sessionId, plan, isAdmin)
   }
 
   return NextResponse.json({ ok: true, data: { incremented: !isAdmin } })

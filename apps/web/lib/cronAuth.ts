@@ -14,19 +14,35 @@
  */
 import { NextRequest, NextResponse } from 'next/server'
 
+// Constant-time string comparison — prevents timing-attack secret enumeration.
+// Works in both Node.js and Edge Runtime (uses TextEncoder, a standard Web API).
+export function timingSafeEqual(a: string, b: string): boolean {
+  const enc = new TextEncoder()
+  const aBytes = enc.encode(a)
+  const bBytes = enc.encode(b)
+  if (aBytes.length !== bBytes.length) {
+    // Still scan to avoid length-based timing leak
+    let dummy = 0
+    for (let i = 0; i < aBytes.length; i++) dummy |= aBytes[i]
+    return false
+  }
+  let result = 0
+  for (let i = 0; i < aBytes.length; i++) result |= aBytes[i] ^ bBytes[i]
+  return result === 0
+}
+
 export function verifyCronRequest(req: NextRequest): NextResponse | null {
   const secret = process.env.CRON_SECRET
   if (!secret) return null   // dev/test — allow through
 
   const auth = req.headers.get('authorization') ?? ''
-  const token = auth.startsWith('Bearer ') ? auth.slice(7) : null
+  const token = auth.startsWith('Bearer ') ? auth.slice(7) : ''
 
-  // Also accept x-nexus-internal for internal server→server calls
-  const internal = req.headers.get('x-nexus-internal')
-  const internalSecret = process.env.INTERNAL_API_SECRET
+  const internal = req.headers.get('x-nexus-internal') ?? ''
+  const internalSecret = process.env.INTERNAL_API_SECRET ?? ''
 
-  if (token === secret) return null
-  if (internalSecret && internal === internalSecret) return null
+  if (timingSafeEqual(token, secret)) return null
+  if (internalSecret && timingSafeEqual(internal, internalSecret)) return null
 
   return NextResponse.json(
     { ok: false, error: 'Unauthorized — invalid cron secret' },

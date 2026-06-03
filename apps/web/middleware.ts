@@ -1,6 +1,7 @@
 import { withAuth } from 'next-auth/middleware'
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
+import { timingSafeEqual } from '@/lib/cronAuth'
 
 // Public API routes that never require auth (webhooks, health, public data)
 const PUBLIC_API = new Set([
@@ -19,7 +20,7 @@ const PUBLIC_API = new Set([
 ])
 
 // Webhook routes — Razorpay posts here with its own signature, no session
-const WEBHOOK_PREFIXES = ['/api/webhook/']
+const WEBHOOK_PREFIXES = ['/api/webhook/', '/api/webhooks/']
 
 
 // Public page routes
@@ -144,10 +145,13 @@ export default withAuth(
       pathname === '/api/cron/proposal-digest' ||
       pathname === '/api/cron/proposal-dlq-retry' ||
       pathname === '/api/cron/proposal-retention' ||
-      pathname === '/api/cron/self-heal'
+      pathname === '/api/cron/self-heal' ||
+      pathname === '/api/cron/reactivate' ||
+      pathname === '/api/cron/lead-sequence'
     ) {
-      const secret = req.headers.get('x-cron-secret') ?? req.nextUrl.searchParams.get('secret')
-      if (secret === process.env.CRON_SECRET) return NextResponse.next()
+      const cronSecret = process.env.CRON_SECRET
+      const secret = req.headers.get('x-cron-secret') ?? req.nextUrl.searchParams.get('secret') ?? ''
+      if (cronSecret && timingSafeEqual(secret, cronSecret)) return NextResponse.next()
       // Fall through — no secret, withAuth callback will block
     }
 
@@ -162,15 +166,15 @@ export default withAuth(
       const cronSecret     = process.env.CRON_SECRET
       const internalSecret = process.env.INTERNAL_API_SECRET
       const hermesSecret   = process.env.HERMES_SECRET
-      const auth    = req.headers.get('authorization') ?? ''
-      const xCron   = req.headers.get('x-cron-secret') ?? ''
+      const bearer    = (req.headers.get('authorization') ?? '').replace('Bearer ', '')
+      const xCron     = req.headers.get('x-cron-secret') ?? ''
       const xInternal = req.headers.get('x-nexus-internal') ?? ''
-      const xHermes = req.headers.get('x-hermes-secret') ?? ''
-      const query   = req.nextUrl.searchParams.get('secret') ?? ''
+      const xHermes   = req.headers.get('x-hermes-secret') ?? ''
+      const query     = req.nextUrl.searchParams.get('secret') ?? ''
       if (
-        (cronSecret     && (xCron === cronSecret || auth === `Bearer ${cronSecret}` || query === cronSecret)) ||
-        (internalSecret && xInternal === internalSecret) ||
-        (hermesSecret   && (xHermes === hermesSecret || auth === `Bearer ${hermesSecret}`)) ||
+        (cronSecret     && (timingSafeEqual(xCron, cronSecret) || timingSafeEqual(bearer, cronSecret) || timingSafeEqual(query, cronSecret))) ||
+        (internalSecret && timingSafeEqual(xInternal, internalSecret)) ||
+        (hermesSecret   && (timingSafeEqual(xHermes, hermesSecret) || timingSafeEqual(bearer, hermesSecret))) ||
         (!cronSecret && !internalSecret && !hermesSecret)   // dev: no secrets → allow
       ) return NextResponse.next()
       // Fall through — invalid secret, withAuth will block
@@ -196,6 +200,7 @@ export default withAuth(
           pathname === '/api/pipeline-stats' ||
           pathname.startsWith('/api/checkout') ||
           pathname.startsWith('/api/webhook/') ||
+          pathname.startsWith('/api/webhooks/') ||
           pathname === '/api/demo-booking' ||
           pathname === '/api/whatsapp/send' ||
           pathname === '/api/groq/stream' ||
@@ -250,18 +255,20 @@ export default withAuth(
           pathname === '/api/cron/proposal-digest' ||
           pathname === '/api/cron/proposal-dlq-retry' ||
           pathname === '/api/cron/proposal-retention' ||
-          pathname === '/api/cron/self-heal'
+          pathname === '/api/cron/self-heal' ||
+          pathname === '/api/cron/reactivate' ||
+          pathname === '/api/cron/lead-sequence'
         ) {
           // Strict: CRON_SECRET only (no session bypass)
           const cronSecret = process.env.CRON_SECRET
           if (!cronSecret) return false
-          const headerSecret = req.headers.get('x-cron-secret')
-          const querySecret  = req.nextUrl.searchParams.get('secret')
+          const headerSecret = req.headers.get('x-cron-secret') ?? ''
+          const querySecret  = req.nextUrl.searchParams.get('secret') ?? ''
           const bearerToken  = (req.headers.get('authorization') ?? '').replace('Bearer ', '')
           return (
-            headerSecret === cronSecret ||
-            querySecret  === cronSecret ||
-            bearerToken  === cronSecret
+            timingSafeEqual(headerSecret, cronSecret) ||
+            timingSafeEqual(querySecret,  cronSecret) ||
+            timingSafeEqual(bearerToken,  cronSecret)
           )
         }
 
@@ -277,13 +284,13 @@ export default withAuth(
           if (!!token) return true   // authenticated user — pass through, route handles auth internally
           const cronSecret = process.env.CRON_SECRET
           if (!cronSecret) return false
-          const headerSecret = req.headers.get('x-cron-secret')
-          const querySecret  = req.nextUrl.searchParams.get('secret')
+          const headerSecret = req.headers.get('x-cron-secret') ?? ''
+          const querySecret  = req.nextUrl.searchParams.get('secret') ?? ''
           const bearerToken  = (req.headers.get('authorization') ?? '').replace('Bearer ', '')
           return (
-            headerSecret === cronSecret ||
-            querySecret  === cronSecret ||
-            bearerToken  === cronSecret
+            timingSafeEqual(headerSecret, cronSecret) ||
+            timingSafeEqual(querySecret,  cronSecret) ||
+            timingSafeEqual(bearerToken,  cronSecret)
           )
         }
 
@@ -299,15 +306,15 @@ export default withAuth(
           const internalSecret = process.env.INTERNAL_API_SECRET
           const hermesSecret   = process.env.HERMES_SECRET
           if (!cronSecret && !internalSecret && !hermesSecret) return true   // dev
-          const auth      = req.headers.get('authorization') ?? ''
+          const bearer    = (req.headers.get('authorization') ?? '').replace('Bearer ', '')
           const xCron     = req.headers.get('x-cron-secret') ?? ''
           const xInternal = req.headers.get('x-nexus-internal') ?? ''
           const xHermes   = req.headers.get('x-hermes-secret') ?? ''
           const query     = req.nextUrl.searchParams.get('secret') ?? ''
           return (
-            (!!cronSecret     && (xCron === cronSecret || auth === `Bearer ${cronSecret}` || query === cronSecret)) ||
-            (!!internalSecret && xInternal === internalSecret) ||
-            (!!hermesSecret   && (xHermes === hermesSecret || auth === `Bearer ${hermesSecret}`))
+            (!!cronSecret     && (timingSafeEqual(xCron, cronSecret) || timingSafeEqual(bearer, cronSecret) || timingSafeEqual(query, cronSecret))) ||
+            (!!internalSecret && timingSafeEqual(xInternal, internalSecret)) ||
+            (!!hermesSecret   && (timingSafeEqual(xHermes, hermesSecret) || timingSafeEqual(bearer, hermesSecret)))
           )
         }
 

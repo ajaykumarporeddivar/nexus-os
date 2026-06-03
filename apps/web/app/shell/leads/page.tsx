@@ -29,6 +29,7 @@ interface Lead {
   pipelineRunId: string | null; dlqAt: string | null; dlqReason: string | null
   scoringCostUsd: number | null; enrichCostUsd: number | null
   createdAt: string; scoredAt: string | null
+  nextTouchAt: string | null
   repOverrideScore: number | null; repOverrideReason: string | null; repOverrideBy: string | null
 }
 
@@ -42,6 +43,29 @@ interface LeadsResponse {
 interface DigestStats {
   totalLeads: number; avgIcpScore: number; disqualRate: number
   dlqCount: number; costPerHotLead: number; warnings: string[]
+}
+
+// ── New: Activity + Sequence types ───────────────────────────────────────────
+
+interface LeadActivity {
+  id: string
+  type: string
+  actor: string
+  channel: string | null
+  subject: string | null
+  body: string | null
+  meta: Record<string, unknown> | null
+  createdAt: string
+}
+
+interface LeadSequence {
+  id: string
+  type: string
+  status: string
+  currentStep: number
+  nextSendAt: string | null
+  cancelReason: string | null
+  updatedAt: string
 }
 
 type SortField = 'createdAt' | 'icpScore' | 'scoringCostUsd' | 'status'
@@ -183,6 +207,161 @@ function OverrideModal({ lead, onClose, onSaved }: { lead: Lead; onClose: () => 
   )
 }
 
+// ── Activity Drawer ──────────────────────────────────────────────────────────
+
+const ACTIVITY_ICON: Record<string, string> = {
+  email_sent:        '📧',
+  email_opened:      '👁',
+  link_clicked:      '🔗',
+  reply_received:    '💬',
+  meeting_booked:    '📅',
+  sequence_enrolled: '🔄',
+  sequence_exited:   '✓',
+  status_changed:    '⟳',
+  note:              '📝',
+  proposal_viewed:   '📄',
+}
+
+function relTime(iso: string) {
+  const diff = Date.now() - new Date(iso).getTime()
+  const m = Math.floor(diff / 60000), h = Math.floor(m / 60), d = Math.floor(h / 24)
+  if (d > 0) return `${d}d ago`
+  if (h > 0) return `${h}h ago`
+  if (m > 0) return `${m}m ago`
+  return 'just now'
+}
+
+function seqStepLabel(type: string): string {
+  const labels: Record<string, string[]> = {
+    hot_lead:          ['Day 0 outreach', 'Day 3 case study', 'Day 7 demo', 'Day 14 breakup'],
+    nurture:           ['Day 0 value', 'Day 5 story', 'Day 12 ROI', 'Day 21 founder note'],
+    proposal_followup: ['Day 3 review nudge', 'Day 7 objection', 'Day 14 close'],
+  }
+  return labels[type]?.[0] ?? type
+}
+
+function ActivityDrawer({ lead, onClose }: { lead: Lead; onClose: () => void }) {
+  const [activities, setActivities] = useState<LeadActivity[]>([])
+  const [sequences,  setSequences]  = useState<LeadSequence[]>([])
+  const [loading,    setLoading]    = useState(true)
+
+  useEffect(() => {
+    setLoading(true)
+    Promise.all([
+      fetch(`/api/leads/activity?leadId=${lead.id}&take=50`).then(r => r.json()),
+      fetch(`/api/leads/${lead.id}?include=sequences`).then(r => r.json()).catch(() => ({ ok: false })),
+    ]).then(([actRes, leadRes]) => {
+      if (actRes.ok)  setActivities(actRes.data ?? [])
+      if (leadRes.ok && leadRes.data?.sequences) setSequences(leadRes.data.sequences)
+    }).finally(() => setLoading(false))
+  }, [lead.id])
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-end bg-black/50 backdrop-blur-sm"
+      onClick={e => { if (e.target === e.currentTarget) onClose() }}>
+      <div className="bg-paper border-l border-border h-full sm:h-auto sm:max-h-[90vh] w-full sm:w-[480px] flex flex-col shadow-2xl sm:rounded-l-2xl overflow-hidden">
+
+        {/* Header */}
+        <div className="flex items-start justify-between px-5 py-4 border-b border-border shrink-0">
+          <div className="min-w-0">
+            <h3 className="text-sm font-semibold text-ink truncate">{lead.email}</h3>
+            <p className="text-[11px] text-ink3 mt-0.5">{lead.name ?? 'Unknown'} · {lead.company ?? '–'}</p>
+          </div>
+          <button onClick={onClose} className="text-ink3 hover:text-ink text-lg ml-4 shrink-0 transition-colors">✕</button>
+        </div>
+
+        {/* Active sequences */}
+        {sequences.filter(s => s.status === 'active').length > 0 && (
+          <div className="px-5 py-3 border-b border-border bg-acid/5 shrink-0">
+            <p className="text-[10px] text-acid font-mono uppercase tracking-wider mb-2">Active Sequences</p>
+            {sequences.filter(s => s.status === 'active').map(seq => (
+              <div key={seq.id} className="flex items-center gap-3 text-xs">
+                <span className="text-ink2 font-medium">{seq.type.replace(/_/g, ' ')}</span>
+                <span className="text-ink3">step {seq.currentStep + 1}</span>
+                {seq.nextSendAt && (
+                  <span className="text-acid/80">
+                    next {new Date(seq.nextSendAt) <= new Date()
+                      ? 'sending soon'
+                      : `in ${Math.ceil((new Date(seq.nextSendAt).getTime() - Date.now()) / 86400000)}d`}
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Timeline */}
+        <div className="flex-1 overflow-y-auto px-5 py-4">
+          {loading ? (
+            <p className="text-xs text-ink3 animate-pulse">Loading activity…</p>
+          ) : activities.length === 0 ? (
+            <p className="text-xs text-ink3">No activity recorded yet.</p>
+          ) : (
+            <div className="relative">
+              {/* Vertical line */}
+              <div className="absolute left-3.5 top-0 bottom-0 w-px bg-border" />
+              <div className="space-y-4">
+                {activities.map(act => (
+                  <div key={act.id} className="flex gap-3 relative">
+                    {/* Dot */}
+                    <div className="shrink-0 w-7 h-7 rounded-full bg-paper2 border border-border flex items-center justify-center text-[12px] z-10">
+                      {ACTIVITY_ICON[act.type] ?? '·'}
+                    </div>
+                    <div className="flex-1 min-w-0 pb-1">
+                      <div className="flex items-baseline gap-2 flex-wrap">
+                        <span className="text-xs font-medium text-ink">
+                          {act.type.replace(/_/g, ' ')}
+                        </span>
+                        {act.channel && (
+                          <span className="text-[10px] text-ink3 bg-paper2 px-1.5 py-0.5 rounded font-mono">
+                            {act.channel}
+                          </span>
+                        )}
+                        <span className="text-[10px] text-ink3 ml-auto">{relTime(act.createdAt)}</span>
+                      </div>
+                      {act.subject && (
+                        <p className="text-[11px] text-ink2 mt-0.5 truncate" title={act.subject}>
+                          {act.subject}
+                        </p>
+                      )}
+                      {/* Reply preview — show full body */}
+                      {act.type === 'reply_received' && act.body && (
+                        <div className="mt-1.5 bg-paper2 border border-border rounded-lg px-3 py-2">
+                          <p className="text-[10px] text-acid font-mono mb-1">REPLY PREVIEW</p>
+                          <p className="text-xs text-ink2 leading-relaxed">{act.body}</p>
+                        </div>
+                      )}
+                      {act.actor !== 'system' && (
+                        <p className="text-[10px] text-ink3 mt-0.5">by {act.actor}</p>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Footer: completed / cancelled sequences */}
+        {sequences.filter(s => s.status !== 'active').length > 0 && (
+          <div className="px-5 py-3 border-t border-border shrink-0">
+            <p className="text-[10px] text-ink3 font-mono uppercase tracking-wider mb-1.5">Past Sequences</p>
+            <div className="flex flex-wrap gap-2">
+              {sequences.filter(s => s.status !== 'active').map(seq => (
+                <span key={seq.id}
+                  className="text-[10px] px-2 py-0.5 rounded-full border border-border text-ink3">
+                  {seq.type.replace(/_/g, ' ')} · {seq.status}
+                  {seq.cancelReason ? ` (${seq.cancelReason.replace(/_/g, ' ')})` : ''}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ── Rationale Tooltip ────────────────────────────────────────────────────────
 
 function RationaleTooltip({ rationale }: { rationale: ScoreRationaleItem[] }) {
@@ -274,6 +453,7 @@ export default function LeadsPage() {
   const [hotLeadsTotal, setHotLeadsTotal] = useState(0)
   const [notice, setNotice]           = useState('')
   const [overrideLead, setOverride]   = useState<Lead | null>(null)
+  const [activityLead, setActivityLead] = useState<Lead | null>(null)
   const [scoringLead, setScoring]     = useState<string | null>(null)
   const [tooltipLead, setTooltip]     = useState<string | null>(null)
   const [digestStats, setDigestStats] = useState<DigestStats | null>(null)
@@ -550,6 +730,27 @@ export default function LeadsPage() {
                         <span className={`inline-block px-2 py-0.5 rounded-md text-[10px] font-medium ${statusBadge(lead.status)}`}>
                           {lead.status}
                         </span>
+                        {/* Sequence indicator — shown when lead is in active outreach */}
+                        {lead.status === 'in_outreach' && lead.nextTouchAt && (
+                          <div
+                            className="text-[9px] text-acid/80 mt-0.5 cursor-pointer hover:text-acid"
+                            title="Click Activity to see sequence steps"
+                            onClick={() => setActivityLead(lead)}
+                          >
+                            📧 seq · next {Math.ceil((new Date(lead.nextTouchAt).getTime() - Date.now()) / 86400000) > 0
+                              ? `in ${Math.ceil((new Date(lead.nextTouchAt).getTime() - Date.now()) / 86400000)}d`
+                              : 'soon'}
+                          </div>
+                        )}
+                        {lead.status === 'replied' && (
+                          <div
+                            className="text-[9px] text-emerald-400 mt-0.5 cursor-pointer hover:text-emerald-300"
+                            onClick={() => setActivityLead(lead)}
+                            title="View reply"
+                          >
+                            💬 replied — view
+                          </div>
+                        )}
                         {lead.dlqReason && (
                           <div className="text-[9px] text-red-400 mt-0.5 max-w-[120px] truncate" title={lead.dlqReason}>
                             {lead.dlqReason}
@@ -574,6 +775,10 @@ export default function LeadsPage() {
                               {scoringLead === lead.id ? '…' : 'Score'}
                             </button>
                           )}
+                          <button onClick={() => setActivityLead(lead)}
+                            className="text-[10px] px-2.5 py-1 rounded-lg border border-violet-500/40 text-violet-400 hover:border-violet-400 transition-all">
+                            Activity
+                          </button>
                           <button onClick={() => setOverride(lead)}
                             className="text-[10px] px-2.5 py-1 rounded-lg border border-border text-ink3 hover:text-ink hover:border-ink/30 transition-all">
                             Edit
@@ -636,6 +841,10 @@ export default function LeadsPage() {
       {overrideLead && (
         <OverrideModal lead={overrideLead} onClose={() => setOverride(null)}
           onSaved={() => { setOverride(null); loadLeads(page, statusFilter) }} />
+      )}
+
+      {activityLead && (
+        <ActivityDrawer lead={activityLead} onClose={() => setActivityLead(null)} />
       )}
     </div>
     </ShellPageWrapper>
