@@ -16,6 +16,7 @@ const PUBLIC_API = new Set([
   '/api/categories',        // industry taxonomy — public static data
   '/api/lead-capture',      // pre-auth email capture — no login required
   '/api/lead-event',        // behavioral event sink — client-side, no login required
+  '/api/pipeline/showcase', // public showcase of daily-generated apps
   // NOTE: /api/leads POST is allowed below via method-check (G5) — GET stays admin-only
 ])
 
@@ -147,7 +148,8 @@ export default withAuth(
       pathname === '/api/cron/proposal-retention' ||
       pathname === '/api/cron/self-heal' ||
       pathname === '/api/cron/reactivate' ||
-      pathname === '/api/cron/lead-sequence'
+      pathname === '/api/cron/lead-sequence' ||
+      pathname === '/api/cron/daily-niche-generator'
     ) {
       const cronSecret = process.env.CRON_SECRET
       const secret = req.headers.get('x-cron-secret') ?? req.nextUrl.searchParams.get('secret') ?? ''
@@ -257,7 +259,8 @@ export default withAuth(
           pathname === '/api/cron/proposal-retention' ||
           pathname === '/api/cron/self-heal' ||
           pathname === '/api/cron/reactivate' ||
-          pathname === '/api/cron/lead-sequence'
+          pathname === '/api/cron/lead-sequence' ||
+          pathname === '/api/cron/daily-niche-generator'
         ) {
           // Strict: CRON_SECRET only (no session bypass)
           const cronSecret = process.env.CRON_SECRET

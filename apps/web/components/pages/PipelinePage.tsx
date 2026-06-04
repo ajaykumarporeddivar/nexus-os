@@ -5089,6 +5089,29 @@ export default function PipelinePage() {
   const [clientName, setClientName] = useState('')
   const [prefilled,  setPrefilled]  = useState(false)
 
+  // Daily niche suggestions from NicheVault (loaded once, no auth needed)
+  const [nicheOfDay, setNicheOfDay] = useState<{
+    id: string; title: string; tagline: string; pricing: string; mrrPotential: string; brief: string; tier: string
+  } | null>(null)
+  const [topNiches, setTopNiches] = useState<typeof nicheOfDay[]>([])
+
+  useEffect(() => {
+    // Client-side only — import nicheVault helpers
+    import('@/lib/nicheVault').then(({ getNicheOfTheDay, getTopNiches }) => {
+      const today = getNicheOfTheDay()
+      setNicheOfDay({
+        id: today.id, title: today.title, tagline: today.tagline,
+        pricing: today.pricing, mrrPotential: today.mrrPotential,
+        brief: today.brief, tier: today.tier,
+      })
+      setTopNiches(getTopNiches(5).map(n => ({
+        id: n.id, title: n.title, tagline: n.tagline,
+        pricing: n.pricing, mrrPotential: n.mrrPotential,
+        brief: n.brief, tier: n.tier,
+      })))
+    }).catch(() => undefined)
+  }, [])
+
   // G4: brief validation state
   const briefTooShort = brief.trim().length > 0 && brief.trim().length < BRIEF_MIN
   const briefOk       = brief.trim().length >= BRIEF_MIN
@@ -8089,6 +8112,47 @@ REPAIR SCOPE:
                 )}
               </div>
             </div>
+
+            {/* ── Today's hot niche chips ───────────────────────────────── */}
+            {nicheOfDay && !brief && phase === 'input' && (
+              <div className="space-y-2">
+                {/* Today's featured niche */}
+                <div className="rounded-xl border border-acid/30 bg-acid/5 p-3">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-[9px] font-black font-mono text-acid uppercase tracking-widest">
+                      TODAY'S HOT NICHE
+                    </span>
+                    <span className="text-[9px] text-ink3 font-mono">{nicheOfDay.pricing} · {nicheOfDay.mrrPotential} MRR potential</span>
+                    {nicheOfDay.tier === 'high' && (
+                      <span className="text-[9px] font-mono bg-acid/15 text-acid border border-acid/30 px-1.5 py-0.5 rounded-full ml-auto">
+                        HIGH TICKET
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs font-semibold text-ink mb-0.5">{nicheOfDay.title}</p>
+                  <p className="text-[11px] text-ink3 mb-2 leading-relaxed">{nicheOfDay.tagline}</p>
+                  <button
+                    onClick={() => { setBrief(nicheOfDay.brief); setClientName(nicheOfDay.title) }}
+                    className="text-[10px] px-3 py-1.5 rounded-lg bg-acid text-paper font-bold hover:bg-acid/90 transition-all">
+                    Use this brief →
+                  </button>
+                </div>
+
+                {/* Other top niches as small chips */}
+                <div className="flex flex-wrap gap-1.5">
+                  <span className="text-[9px] font-mono text-ink3 uppercase tracking-wider flex items-center">Also trending:</span>
+                  {topNiches.filter(n => n?.id !== nicheOfDay.id).slice(0, 4).map(n => n && (
+                    <button
+                      key={n.id}
+                      onClick={() => { setBrief(n.brief); setClientName(n.title) }}
+                      className="text-[10px] px-2.5 py-1 rounded-full border border-border text-ink3 hover:text-ink hover:border-acid/40 hover:bg-acid/5 transition-all"
+                      title={`${n.pricing} · ${n.mrrPotential} MRR`}>
+                      {n.title}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
 
             <div className="relative">
               <VoiceTextarea

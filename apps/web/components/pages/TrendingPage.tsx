@@ -59,6 +59,29 @@ interface WorkspaceData {
 
 type FeedScope = 'global' | 'workspace'
 
+interface ShowcaseRun {
+  id:           string
+  slug:         string
+  projectName:  string
+  brief:        string
+  vertical:     string
+  liveUrl:      string | null
+  qaScore:      number | null
+  elapsedSec:   number | null
+  viewCount:    number
+  createdAt:    string
+  nicheId:      string | null
+  tagline:      string | null
+  tier:         'high' | 'mid' | null
+  pricing:      string | null
+  mrrPotential: string | null
+  targetICPs:   string[]
+  category:     string
+  tags:         string[]
+  painPoint:    string | null
+  dateKey:      string
+}
+
 // ─── Constants ─────────────────────────────────────────────────────────────────
 
 const NICHE_META: Record<string, { label: string; icon: string }> = {
@@ -653,6 +676,10 @@ export default function TrendingPage() {
   const [expanded,   setExpanded]   = useState<string | null>(null)
   const [triggerMsg, setTriggerMsg] = useState('')
 
+  // ── Showcase state ─────────────────────────────────────────────────────────
+  const [showcase,        setShowcase]        = useState<ShowcaseRun[]>([])
+  const [showcaseExpanded, setShowcaseExpanded] = useState<string | null>(null)
+
   const isLoggedIn = !!session?.user
 
   // ── Load global feed ───────────────────────────────────────────────────────
@@ -710,6 +737,14 @@ export default function TrendingPage() {
   useEffect(() => {
     if (scope === 'workspace' && !activeWorkspace?.id) setScope('global')
   }, [activeWorkspace?.id, scope])
+
+  // Load showcase data (daily-generated apps)
+  useEffect(() => {
+    fetch('/api/pipeline/showcase')
+      .then(r => r.json())
+      .then(d => { if (d.ok) setShowcase(d.data ?? []) })
+      .catch(() => undefined)
+  }, [])
 
   // ── Actions ────────────────────────────────────────────────────────────────
 
@@ -939,6 +974,140 @@ export default function TrendingPage() {
         <div className="border border-border rounded-xl px-4 py-2.5 text-sm text-ink2 bg-paper2/60">
           {triggerMsg}
         </div>
+      )}
+
+      {/* ── NEXUS Daily Build Showcase ─────────────────────────────────── */}
+      {showcase.length > 0 && (
+        <section>
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <p className="text-[10px] font-black font-mono tracking-widest text-acid uppercase mb-0.5">
+                NEXUS FACTORY · DAILY BUILDS
+              </p>
+              <h2 className="text-lg font-bold text-ink">
+                Apps Built by NEXUS This Week
+              </h2>
+              <p className="text-xs text-ink3 mt-0.5">
+                Real, deployed micro-SaaS apps — each built in under 5 minutes, targeting proven high-ticket niches.
+                Click any to pre-fill the pipeline with a production-quality brief.
+              </p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+            {showcase.slice(0, 6).map(run => (
+              <div key={run.id}
+                className="card p-0 overflow-hidden border border-border hover:border-acid/40 transition-all group">
+                {/* Tier badge */}
+                <div className="px-4 pt-4 pb-0 flex items-start justify-between gap-2">
+                  <div className="flex gap-1.5 flex-wrap">
+                    {run.tier === 'high' && (
+                      <span className="text-[9px] font-black font-mono uppercase tracking-widest bg-acid/15 text-acid border border-acid/30 px-2 py-0.5 rounded-full">
+                        HIGH TICKET
+                      </span>
+                    )}
+                    <span className="text-[9px] font-mono uppercase tracking-wide text-ink3 border border-border px-2 py-0.5 rounded-full">
+                      {run.vertical}
+                    </span>
+                    {run.pricing && (
+                      <span className="text-[9px] font-mono text-emerald-400 border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 rounded-full">
+                        {run.pricing}
+                      </span>
+                    )}
+                  </div>
+                  {run.qaScore && (
+                    <span className={`text-[10px] font-mono font-bold shrink-0 ${
+                      run.qaScore >= 8 ? 'text-emerald-400' : run.qaScore >= 6 ? 'text-amber-400' : 'text-ink3'
+                    }`}>
+                      QA {run.qaScore.toFixed(1)}
+                    </span>
+                  )}
+                </div>
+
+                <div className="px-4 py-3">
+                  <h3 className="text-sm font-bold text-ink mb-0.5 group-hover:text-acid transition-colors">
+                    {run.projectName}
+                  </h3>
+                  {run.tagline && (
+                    <p className="text-xs text-ink2 mb-2 leading-relaxed">{run.tagline}</p>
+                  )}
+                  {run.painPoint && (
+                    <p className="text-[11px] text-ink3 leading-relaxed line-clamp-2">{run.painPoint}</p>
+                  )}
+                </div>
+
+                {/* MRR + ICPs */}
+                <div className="px-4 pb-3 flex items-center gap-3 flex-wrap">
+                  {run.mrrPotential && (
+                    <span className="text-[10px] text-ink3 font-mono">
+                      <span className="text-ink2 font-semibold">{run.mrrPotential} MRR</span> potential
+                    </span>
+                  )}
+                  {run.elapsedSec && (
+                    <span className="text-[10px] text-ink3 font-mono">built in {run.elapsedSec}s</span>
+                  )}
+                </div>
+
+                {/* Expanded brief */}
+                {showcaseExpanded === run.id && (
+                  <div className="mx-4 mb-3 bg-paper2 border border-border rounded-xl p-3">
+                    <p className="text-[10px] text-ink3 font-mono uppercase tracking-wider mb-1.5">Brief used</p>
+                    <p className="text-xs text-ink2 leading-relaxed">{run.brief.slice(0, 500)}{run.brief.length > 500 ? '…' : ''}</p>
+                    {run.targetICPs.length > 0 && (
+                      <div className="mt-2 flex flex-wrap gap-1">
+                        {run.targetICPs.map((icp, i) => (
+                          <span key={i} className="text-[9px] text-ink3 border border-border px-2 py-0.5 rounded-full">
+                            {icp}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Actions */}
+                <div className="px-4 pb-4 flex gap-2 flex-wrap border-t border-border pt-3">
+                  {run.liveUrl && (
+                    <a href={run.liveUrl} target="_blank" rel="noopener noreferrer"
+                      className="text-[10px] px-3 py-1.5 rounded-lg border border-acid/40 text-acid hover:border-acid hover:bg-acid/5 transition-all font-medium">
+                      View Live App ↗
+                    </a>
+                  )}
+                  <button
+                    onClick={() => {
+                      sessionStorage.setItem('nexus-prefill-pipeline-brief', run.brief)
+                      sessionStorage.setItem('nexus-prefill-pipeline-client', run.projectName)
+                      try {
+                        localStorage.setItem('nexus-prefill-pipeline-brief', run.brief)
+                        localStorage.setItem('nexus-prefill-pipeline-client', run.projectName)
+                      } catch { /* storage full */ }
+                      router.push('/shell?page=pipeline')
+                    }}
+                    className="text-[10px] px-3 py-1.5 rounded-lg bg-acid text-paper font-bold hover:bg-acid/90 transition-all">
+                    Build My Version →
+                  </button>
+                  <button
+                    onClick={() => setShowcaseExpanded(prev => prev === run.id ? null : run.id)}
+                    className="text-[10px] px-3 py-1.5 rounded-lg border border-border text-ink3 hover:text-ink transition-all">
+                    {showcaseExpanded === run.id ? 'Hide brief' : 'See brief'}
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-4 p-4 rounded-xl border border-dashed border-acid/30 bg-acid/3 text-center">
+            <p className="text-xs text-ink2">
+              <span className="text-acid font-bold">↑ Every app above was built by NEXUS in under 5 minutes.</span>
+              {' '}Each one targets a $10K–50K/mo MRR niche. The pipeline runs fresh at 6:30am IST every day.
+            </p>
+            <button
+              onClick={() => router.push('/shell?page=pipeline')}
+              className="mt-3 text-xs px-4 py-2 rounded-lg bg-acid text-paper font-bold hover:bg-acid/90 transition-all">
+              Build your own high-ticket SaaS now →
+            </button>
+          </div>
+        </section>
       )}
 
       {/* Niche filters */}

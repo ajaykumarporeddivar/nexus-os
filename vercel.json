@@ -16,7 +16,8 @@
     { "path": "/api/cron/growth-drip",   "schedule": "0 10 * * *" },
     { "path": "/api/cron/self-heal",     "schedule": "*/30 * * * *" },
     { "path": "/api/cron/reactivate",     "schedule": "0 10 1 * *"  },
-    { "path": "/api/cron/lead-sequence",  "schedule": "0 * * * *"   }
+    { "path": "/api/cron/lead-sequence",          "schedule": "0 * * * *"   },
+    { "path": "/api/cron/daily-niche-generator",  "schedule": "0 1 * * *"   }
   ],
   "headers": [
     {
