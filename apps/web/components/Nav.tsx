@@ -37,6 +37,7 @@ interface NavItemDef {
   minPlan?:    string   // locks item below this plan (shows upgrade prompt)
   flowNext?:   PageId   // shows a subtle "→ next" connector below this item
   isNew?:      boolean  // shows NEW badge (used for recently added features)
+  href?:       string   // if set, renders as external <a> link (opens in new tab)
 }
 
 interface NavGroup {
@@ -172,6 +173,14 @@ const GROUPS: NavGroup[] = [
         label: 'Dashboard',
         icon: '▣',
         description: 'Runs, tokens, QA scores & analytics',
+      },
+      {
+        id: 'overview',           // dummy — href overrides navigation
+        label: "Newton's Cradle",
+        icon: '⬡',
+        description: 'Live 3D physics sim — Three.js demo',
+        href: '/newtons-cradle-3d.html',
+        isNew: true,
       },
     ],
   },
@@ -315,7 +324,10 @@ function NavItem({
     : isDelivery ? 'text-violet-500 hover:bg-violet-500/8 hover:text-ink'
     : 'text-ink3 hover:bg-paper2 hover:text-ink'
 
-  const handleClick = () => locked ? onLocked() : onNavigate(item.id)
+  const handleClick = () => {
+    if (item.href) { window.open(item.href, '_blank', 'noopener,noreferrer'); return }
+    locked ? onLocked() : onNavigate(item.id)
+  }
 
   if (collapsed) {
     return (
@@ -357,9 +369,12 @@ function NavItem({
           AGY+
         </span>
       )}
+      {item.href && !locked && !item.isNew && (
+        <span className="text-[9px] text-ink3/60 flex-shrink-0">↗</span>
+      )}
       {item.isNew && !locked && (
         <span className="text-[8px] font-bold font-mono text-acid bg-acid/10 border border-acid/30 rounded px-1 flex-shrink-0">
-          NEW
+          {item.href ? '↗' : 'NEW'}
         </span>
       )}
     </button>
