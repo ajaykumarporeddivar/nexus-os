@@ -332,6 +332,58 @@ export default function OverviewPage({ onNavigate }: Props) {
         </div>
       </section>
 
+      {/* ─── Newton's Cradle Live Demo ─── */}
+      <section>
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <p className="sec-label mb-1">NEXUS Lab · Interactive Demo</p>
+            <h2 className="text-xl font-bold">Newton's Cradle 3D</h2>
+            <p className="text-sm text-ink3 mt-1">
+              Physics simulation built with Three.js — drag to rotate, click a ball to pull &amp; release.
+            </p>
+          </div>
+          <a
+            href="/newtons-cradle-3d.html"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="btn btn-ghost text-xs px-3 py-1.5 shrink-0"
+          >
+            Open full screen ↗
+          </a>
+        </div>
+
+        {/* Iframe embed */}
+        <div className="relative rounded-2xl overflow-hidden border border-border bg-[#0d0d14]"
+          style={{ height: '420px' }}>
+          <iframe
+            src="/newtons-cradle-3d.html"
+            title="Newton's Cradle 3D Physics Simulation"
+            className="w-full h-full border-0"
+            loading="lazy"
+            sandbox="allow-scripts allow-same-origin"
+          />
+          {/* Corner badge */}
+          <div className="absolute top-3 right-3 pointer-events-none">
+            <span className="text-[9px] font-mono font-bold bg-black/60 border border-acid/30 text-acid px-2 py-1 rounded-full backdrop-blur-sm">
+              LIVE · Three.js
+            </span>
+          </div>
+        </div>
+
+        {/* Shortcut row */}
+        <div className="flex items-center gap-4 mt-3 flex-wrap">
+          <a
+            href="/newtons-cradle-3d.html"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-xs text-acid hover:underline font-mono"
+          >
+            https://web-xi-vert-58.vercel.app/newtons-cradle-3d.html ↗
+          </a>
+          <span className="text-[10px] text-ink3">Drag · Click balls · Space to pause · R to reset · D for demo mode</span>
+        </div>
+      </section>
+
       {/* ─── Bottom CTA ─── */}
       <section className="text-center py-8">
         <button className="btn btn-primary text-base px-8 py-3" onClick={() => onNavigate('pricing')}>

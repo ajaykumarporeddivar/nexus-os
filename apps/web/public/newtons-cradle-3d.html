@@ -1,0 +1,853 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Newton's Cradle 3D</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      overflow: hidden;
+      background: #0d0d14;
+      font-family: 'Courier New', Courier, monospace;
+    }
+
+    canvas {
+      display: block;
+      touch-action: none;
+    }
+
+    #ui {
+      position: fixed;
+      top: 20px;
+      left: 20px;
+      z-index: 10;
+      color: #ffffff;
+      background: rgba(0, 0, 0, 0.55);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 10px;
+      padding: 14px 16px;
+      user-select: none;
+      pointer-events: auto;
+      min-width: 220px;
+      backdrop-filter: blur(6px);
+    }
+
+    #ui h2 {
+      font-size: 13px;
+      letter-spacing: 3px;
+      color: #33dd66;
+      margin-bottom: 4px;
+      font-weight: 700;
+    }
+
+    #ui p {
+      font-size: 10px;
+      color: rgba(255,255,255,0.4);
+      margin-bottom: 12px;
+      letter-spacing: 0.5px;
+    }
+
+    .section-label {
+      font-size: 9px;
+      letter-spacing: 2px;
+      color: rgba(255,255,255,0.3);
+      text-transform: uppercase;
+      margin-bottom: 6px;
+    }
+
+    #ballButtons {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+      margin-bottom: 12px;
+    }
+
+    button {
+      background: rgba(255,255,255,0.06);
+      color: rgba(255,255,255,0.7);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 5px;
+      padding: 4px 9px;
+      font-family: 'Courier New', monospace;
+      font-size: 11px;
+      cursor: pointer;
+      transition: background 0.15s, color 0.15s, border-color 0.15s;
+    }
+
+    button:hover {
+      background: rgba(51, 221, 102, 0.15);
+      border-color: rgba(51, 221, 102, 0.4);
+      color: #33dd66;
+    }
+
+    button.active {
+      background: rgba(51, 221, 102, 0.2);
+      border-color: #33dd66;
+      color: #33dd66;
+    }
+
+    .slider-row {
+      margin-bottom: 12px;
+    }
+
+    .slider-row label {
+      display: block;
+      font-size: 10px;
+      color: rgba(255,255,255,0.5);
+      margin-bottom: 5px;
+    }
+
+    input[type="range"] {
+      width: 100%;
+      accent-color: #33dd66;
+      cursor: pointer;
+    }
+
+    #actionButtons {
+      display: flex;
+      gap: 6px;
+      margin-top: 4px;
+    }
+
+    #actionButtons button {
+      flex: 1;
+    }
+
+    #debug {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      font-family: 'Courier New', monospace;
+      font-size: 11px;
+      color: #33dd66;
+      text-align: right;
+      background: rgba(0,0,0,0.45);
+      border: 1px solid rgba(51,221,102,0.15);
+      border-radius: 8px;
+      padding: 10px 14px;
+      line-height: 1.8;
+      backdrop-filter: blur(4px);
+      pointer-events: none;
+    }
+
+    #debug span {
+      color: rgba(255,255,255,0.4);
+      margin-right: 4px;
+    }
+
+    #keys {
+      position: fixed;
+      bottom: 20px;
+      left: 20px;
+      font-family: 'Courier New', monospace;
+      font-size: 10px;
+      color: rgba(255,255,255,0.2);
+      line-height: 1.8;
+      pointer-events: none;
+    }
+
+    #keys kbd {
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.15);
+      border-radius: 3px;
+      padding: 1px 5px;
+      font-size: 10px;
+    }
+  </style>
+</head>
+<body>
+
+  <div id="ui">
+    <h2>NEWTON'S CRADLE</h2>
+    <p>Drag to rotate · Click ball to pull &amp; release</p>
+
+    <div class="section-label">Ball Count</div>
+    <div id="ballButtons">
+      <button data-count="1" aria-label="Use 1 ball">1</button>
+      <button data-count="2" aria-label="Use 2 balls">2</button>
+      <button data-count="3" aria-label="Use 3 balls">3</button>
+      <button data-count="4" aria-label="Use 4 balls">4</button>
+      <button data-count="5" class="active" aria-label="Use 5 balls">5</button>
+      <button data-count="6" aria-label="Use 6 balls">6</button>
+      <button data-count="7" aria-label="Use 7 balls">7</button>
+    </div>
+
+    <div class="section-label">Pull Balls</div>
+    <div id="pullButtons" style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:12px;">
+      <button data-pull="1" class="active" aria-label="Pull 1 ball">1</button>
+      <button data-pull="2" aria-label="Pull 2 balls">2</button>
+      <button data-pull="3" aria-label="Pull 3 balls">3</button>
+    </div>
+
+    <div class="slider-row">
+      <label>Pull Angle: <strong id="angleVal">45</strong>°</label>
+      <input type="range" id="pullSlider" min="10" max="80" value="45" aria-label="Pull angle in degrees">
+    </div>
+
+    <div id="actionButtons">
+      <button id="resetBtn" aria-label="Reset cradle">Reset</button>
+      <button id="pauseBtn" aria-label="Pause simulation">Pause</button>
+      <button id="demoBtn"  aria-label="Toggle demo mode">Demo</button>
+    </div>
+  </div>
+
+  <div id="debug">
+    <div><span>FPS</span><span id="fpsDisplay">--</span></div>
+    <div><span>Energy</span><span id="energyDisplay">--</span> J</div>
+    <div><span>Drift</span><span id="driftDisplay">--</span>%</div>
+  </div>
+
+  <div id="keys">
+    <div><kbd>Space</kbd> Pause</div>
+    <div><kbd>R</kbd> Reset</div>
+    <div><kbd>D</kbd> Demo</div>
+  </div>
+
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+    }
+  }
+  </script>
+
+  <script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+    import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+
+    // ══════════════════════════════════════════════
+    // CONSTANTS
+    // ══════════════════════════════════════════════
+    const G             = 9.81;
+    const L             = 2.0;
+    const BALL_RADIUS   = 0.4;
+    const BALL_SPACING  = 0.82;
+    const RESTITUTION   = 1.0;
+    const SUB_STEPS     = 8;
+    const MAX_DT        = 1 / 30;
+    const MIN_DT        = 1 / 240;
+    const COLL_COOLDOWN = 2;
+
+    // ══════════════════════════════════════════════
+    // STATE
+    // ══════════════════════════════════════════════
+    const balls        = [];
+    const strings      = [];
+    const frameMeshes  = [];
+    let   collCooldown = [];
+
+    let draggedBall   = null;
+    let isPaused      = false;
+    let isDemoMode    = false;
+    let currentFrame  = 0;
+    let initialEnergy = 0;
+    let fpsSmooth     = 60;
+    let lastFpsTime   = performance.now();
+    let framesSinceFps = 0;
+
+    // Demo state
+    let demoPhase     = 0;
+    let demoTimer     = 0;
+    const DEMO_INTERVAL = 5.0;
+    let currentNumBalls = 5;
+    let currentPullCount = 1;
+    let currentPullAngle = 45;
+
+    const dragPlane  = new THREE.Plane();
+    const dragOffset = new THREE.Vector3();
+    const raycaster  = new THREE.Raycaster();
+    const mouse      = new THREE.Vector2();
+    const clock      = new THREE.Clock();
+
+    // ══════════════════════════════════════════════
+    // RENDERER
+    // ══════════════════════════════════════════════
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setPixelRatio(window.devicePixelRatio);
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.shadowMap.enabled  = true;
+    renderer.shadowMap.type     = THREE.PCFSoftShadowMap;
+    renderer.toneMapping        = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.2;
+    renderer.outputColorSpace   = THREE.SRGBColorSpace;
+    document.body.appendChild(renderer.domElement);
+
+    // ══════════════════════════════════════════════
+    // SCENE
+    // ══════════════════════════════════════════════
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x0d0d14);
+
+    // Environment map (PMREM for metallic reflections)
+    const pmremGenerator = new THREE.PMREMGenerator(renderer);
+    pmremGenerator.compileEquirectangularShader();
+    scene.environment = pmremGenerator
+      .fromScene(new RoomEnvironment(), 0.04)
+      .texture;
+    pmremGenerator.dispose();
+
+    // ══════════════════════════════════════════════
+    // CAMERA
+    // ══════════════════════════════════════════════
+    const camera = new THREE.PerspectiveCamera(
+      45, window.innerWidth / window.innerHeight, 0.1, 100
+    );
+    camera.position.set(0, 2, 8);
+    camera.lookAt(0, 0, 0);
+
+    // ══════════════════════════════════════════════
+    // ORBIT CONTROLS
+    // ══════════════════════════════════════════════
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping   = true;
+    controls.dampingFactor   = 0.05;
+    controls.minDistance     = 4;
+    controls.maxDistance     = 15;
+    controls.maxPolarAngle   = Math.PI * 0.48;
+    controls.target.set(0, 0, 0);
+
+    // ══════════════════════════════════════════════
+    // LIGHTING
+    // ══════════════════════════════════════════════
+    const ambientLight = new THREE.AmbientLight(0x404040, 0.5);
+    scene.add(ambientLight);
+
+    const dirLight = new THREE.DirectionalLight(0xffffff, 1.0);
+    dirLight.position.set(5, 10, 5);
+    dirLight.castShadow = true;
+    dirLight.shadow.mapSize.width  = 2048;
+    dirLight.shadow.mapSize.height = 2048;
+    dirLight.shadow.camera.left   = -10;
+    dirLight.shadow.camera.right  =  10;
+    dirLight.shadow.camera.top    =  10;
+    dirLight.shadow.camera.bottom = -10;
+    dirLight.shadow.bias = -0.0005;
+    scene.add(dirLight);
+
+    const ptLight1 = new THREE.PointLight(0x4488ff, 0.5);
+    ptLight1.position.set(-3, 3, 3);
+    scene.add(ptLight1);
+
+    const ptLight2 = new THREE.PointLight(0xff8844, 0.3);
+    ptLight2.position.set(3, 3, -3);
+    scene.add(ptLight2);
+
+    // ══════════════════════════════════════════════
+    // SHARED MATERIALS (reuse across balls)
+    // ══════════════════════════════════════════════
+    const ballMaterial = new THREE.MeshStandardMaterial({
+      color:           0x8899aa,
+      metalness:       0.95,
+      roughness:       0.05,
+      envMapIntensity: 1.0
+    });
+
+    const stringMaterial = new THREE.LineBasicMaterial({ color: 0xcccccc });
+
+    const frameMaterial = new THREE.MeshStandardMaterial({
+      color:     0x228833,
+      metalness: 0.7,
+      roughness: 0.3
+    });
+
+    const baseMaterial = new THREE.MeshStandardMaterial({
+      color:     0x33aa44,
+      metalness: 0.3,
+      roughness: 0.6
+    });
+
+    // ══════════════════════════════════════════════
+    // DISPOSE CRADLE (GPU memory cleanup)
+    // ══════════════════════════════════════════════
+    function disposeCradle() {
+      balls.forEach(ball => {
+        ball.geometry.dispose();
+        scene.remove(ball);
+      });
+      strings.forEach(group => {
+        group.forEach(line => {
+          line.geometry.dispose();
+          scene.remove(line);
+        });
+      });
+      frameMeshes.forEach(mesh => {
+        mesh.geometry.dispose();
+        scene.remove(mesh);
+      });
+      balls.length      = 0;
+      strings.length    = 0;
+      frameMeshes.length = 0;
+      collCooldown      = [];
+    }
+
+    // ══════════════════════════════════════════════
+    // BUILD FRAME
+    // ══════════════════════════════════════════════
+    function buildFrame(numBalls, totalWidth) {
+      const frameHeight = L + 0.5;
+      const halfW = totalWidth / 2 + 0.5;
+
+      // Top horizontal bar
+      const topBarGeo = new THREE.BoxGeometry(totalWidth + 1.0, 0.1, 0.8);
+      const topBar    = new THREE.Mesh(topBarGeo, frameMaterial);
+      topBar.position.set(0, L + 0.05, 0);
+      topBar.castShadow = true;
+      scene.add(topBar);
+      frameMeshes.push(topBar);
+
+      // Vertical posts (front and back, left and right)
+      const postGeo = new THREE.BoxGeometry(0.1, frameHeight, 0.1);
+      const postPositions = [
+        [-halfW, -0.25, -0.4],
+        [ halfW, -0.25, -0.4],
+        [-halfW, -0.25,  0.4],
+        [ halfW, -0.25,  0.4]
+      ];
+      postPositions.forEach(([x, y, z]) => {
+        const post = new THREE.Mesh(postGeo, frameMaterial);
+        post.position.set(x, y, z);
+        post.castShadow = true;
+        scene.add(post);
+        frameMeshes.push(post);
+      });
+
+      // Base platform
+      const baseGeo = new THREE.BoxGeometry(totalWidth + 1.0, 0.15, 1.5);
+      const base    = new THREE.Mesh(baseGeo, baseMaterial);
+      base.position.set(0, -L - 0.075, 0);
+      base.receiveShadow = true;
+      scene.add(base);
+      frameMeshes.push(base);
+    }
+
+    // ══════════════════════════════════════════════
+    // CREATE STRING LINE GEOMETRY
+    // ══════════════════════════════════════════════
+    function createStringLine(ax, ay, az, bx, by, bz) {
+      const geo = new THREE.BufferGeometry();
+      const positions = new Float32Array([ax, ay, az, bx, by, bz]);
+      geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+      return new THREE.Line(geo, stringMaterial);
+    }
+
+    // ══════════════════════════════════════════════
+    // INIT CRADLE
+    // ══════════════════════════════════════════════
+    function initCradle(numBalls, pullCount, pullAngleDeg) {
+      disposeCradle();
+
+      currentNumBalls  = numBalls;
+      currentPullCount = pullCount;
+      currentPullAngle = pullAngleDeg;
+
+      const pullAngleRad = pullAngleDeg * Math.PI / 180;
+      const totalWidth   = (numBalls - 1) * BALL_SPACING;
+      const ballGeo      = new THREE.SphereGeometry(BALL_RADIUS, 32, 32);
+
+      // Initialise collision cooldown array
+      for (let i = 0; i < numBalls - 1; i++) collCooldown[i] = -999;
+
+      for (let i = 0; i < numBalls; i++) {
+        const anchorX = (i - (numBalls - 1) / 2) * BALL_SPACING;
+        const anchorY = L;
+
+        const isPulled = i < pullCount;
+        const angle    = isPulled ? -pullAngleRad : 0;
+
+        const ball = new THREE.Mesh(ballGeo, ballMaterial);
+        ball.castShadow = true;
+        ball.userData = {
+          anchor:          new THREE.Vector3(anchorX, anchorY, 0),
+          angle:           angle,
+          angularVelocity: 0,
+          isDragged:       false,
+          prevDistance:    BALL_RADIUS * 2 + 0.01
+        };
+
+        // Reconstruct position from angle
+        ball.position.set(
+          anchorX + L * Math.sin(angle),
+          anchorY - L * Math.cos(angle),
+          0
+        );
+
+        scene.add(ball);
+        balls.push(ball);
+
+        // Two strings per ball: front (z=-0.3) and back (z=+0.3)
+        const strFront = createStringLine(
+          anchorX, anchorY, -0.3,
+          ball.position.x, ball.position.y, -0.3
+        );
+        const strBack = createStringLine(
+          anchorX, anchorY, 0.3,
+          ball.position.x, ball.position.y, 0.3
+        );
+        scene.add(strFront);
+        scene.add(strBack);
+        strings.push([strFront, strBack]);
+      }
+
+      buildFrame(numBalls, totalWidth);
+      initialEnergy = computeTotalEnergy();
+      currentFrame  = 0;
+    }
+
+    // ══════════════════════════════════════════════
+    // PHYSICS — INTEGRATE
+    // ══════════════════════════════════════════════
+    function integrateBalls(subDt) {
+      for (let i = 0; i < balls.length; i++) {
+        const b = balls[i];
+        if (b.userData.isDragged) continue;
+        b.userData.angularVelocity += (-G / L) * Math.sin(b.userData.angle) * subDt;
+        b.userData.angle           += b.userData.angularVelocity * subDt;
+        // Clamp angle
+        b.userData.angle = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, b.userData.angle));
+      }
+    }
+
+    // ══════════════════════════════════════════════
+    // PHYSICS — RESOLVE COLLISIONS (forward pass)
+    // ══════════════════════════════════════════════
+    function resolveCollisions() {
+      const diameter = BALL_RADIUS * 2;
+
+      for (let i = 0; i < balls.length - 1; i++) {
+        const b1 = balls[i];
+        const b2 = balls[i + 1];
+
+        const dx = b2.position.x - b1.position.x;
+        const dy = b2.position.y - b1.position.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+
+        // Continuous collision detection — detect sign change
+        const prevDist1 = b1.userData.prevDistance;
+        const colliding = distance < diameter ||
+          (prevDist1 > diameter && distance <= diameter);
+
+        // Store for next frame CCD
+        b1.userData.prevDistance = distance;
+
+        if (!colliding) continue;
+
+        // Cooldown guard
+        if (currentFrame - collCooldown[i] < COLL_COOLDOWN) continue;
+        collCooldown[i] = currentFrame;
+
+        // Step D: Convert angularVelocity → tangential velocity, swap, convert back
+        let v1 = b1.userData.angularVelocity * L;
+        let v2 = b2.userData.angularVelocity * L;
+        [v1, v2] = [v2, v1];  // equal-mass elastic swap
+        b1.userData.angularVelocity = v1 / L;
+        b2.userData.angularVelocity = v2 / L;
+
+        // Step E: Overlap resolution — push apart
+        if (distance < diameter && distance > 0) {
+          const overlap     = diameter - distance;
+          const correction  = overlap / 2;
+          b1.userData.angle -= correction / L;
+          b2.userData.angle += correction / L;
+        }
+      }
+    }
+
+    // ══════════════════════════════════════════════
+    // PHYSICS — RECONSTRUCT POSITIONS FROM ANGLES
+    // ══════════════════════════════════════════════
+    function reconstructPositions() {
+      for (let i = 0; i < balls.length; i++) {
+        const b      = balls[i];
+        const anchor = b.userData.anchor;
+        const angle  = b.userData.angle;
+        b.position.x = anchor.x + L * Math.sin(angle);
+        b.position.y = anchor.y - L * Math.cos(angle);
+        // z unchanged
+      }
+    }
+
+    // ══════════════════════════════════════════════
+    // PHYSICS — MAIN UPDATE
+    // ══════════════════════════════════════════════
+    function updatePhysics(dt) {
+      const subDt = dt / SUB_STEPS;
+      for (let s = 0; s < SUB_STEPS; s++) {
+        integrateBalls(subDt);
+        resolveCollisions();
+      }
+      reconstructPositions();
+    }
+
+    // ══════════════════════════════════════════════
+    // UPDATE STRINGS
+    // ══════════════════════════════════════════════
+    function updateStrings() {
+      for (let i = 0; i < balls.length; i++) {
+        const ball   = balls[i];
+        const anchor = ball.userData.anchor;
+        const pair   = strings[i];
+        const zOffsets = [-0.3, 0.3];
+
+        pair.forEach((line, j) => {
+          const pos = line.geometry.attributes.position;
+          pos.setXYZ(0, anchor.x, anchor.y, zOffsets[j]);
+          pos.setXYZ(1, ball.position.x, ball.position.y, zOffsets[j]);
+          pos.needsUpdate = true;
+        });
+      }
+    }
+
+    // ══════════════════════════════════════════════
+    // ENERGY MONITOR
+    // ══════════════════════════════════════════════
+    function computeTotalEnergy() {
+      let total = 0;
+      for (let i = 0; i < balls.length; i++) {
+        const b   = balls[i];
+        const ang = b.userData.angle;
+        const omg = b.userData.angularVelocity;
+        const PE  = G * L * (1 - Math.cos(ang));       // m=1
+        const KE  = 0.5 * Math.pow(L * omg, 2);
+        total += PE + KE;
+      }
+      return total;
+    }
+
+    function updateEnergyMonitor() {
+      const E = computeTotalEnergy();
+      document.getElementById('energyDisplay').textContent =
+        E.toFixed(3);
+      if (initialEnergy > 0.001) {
+        const drift = ((E - initialEnergy) / initialEnergy) * 100;
+        document.getElementById('driftDisplay').textContent =
+          (drift >= 0 ? '+' : '') + drift.toFixed(2);
+      } else {
+        document.getElementById('driftDisplay').textContent = '0.00';
+      }
+    }
+
+    // ══════════════════════════════════════════════
+    // FPS COUNTER
+    // ══════════════════════════════════════════════
+    function updateFPSCounter() {
+      framesSinceFps++;
+      const now  = performance.now();
+      const elapsed = now - lastFpsTime;
+      if (elapsed >= 500) {
+        const fps = framesSinceFps / (elapsed / 1000);
+        fpsSmooth = fpsSmooth * 0.7 + fps * 0.3;
+        document.getElementById('fpsDisplay').textContent =
+          Math.round(fpsSmooth);
+        framesSinceFps = 0;
+        lastFpsTime    = now;
+      }
+    }
+
+    // ══════════════════════════════════════════════
+    // DEMO MODE
+    // ══════════════════════════════════════════════
+    function updateDemo(dt) {
+      if (!isDemoMode) return;
+      demoTimer += dt;
+      if (demoTimer >= DEMO_INTERVAL) {
+        demoTimer = 0;
+        demoPhase = (demoPhase + 1) % 3;
+        const pullCounts = [1, 2, 3];
+        const pc = Math.min(pullCounts[demoPhase], currentNumBalls - 1 || 1);
+        initCradle(currentNumBalls, pc, currentPullAngle);
+      }
+    }
+
+    // ══════════════════════════════════════════════
+    // INTERACTION — MOUSE / TOUCH
+    // ══════════════════════════════════════════════
+    function getEventCoords(e) {
+      if (e.clientX !== undefined) return { x: e.clientX, y: e.clientY };
+      if (e.touches && e.touches.length > 0) return { x: e.touches[0].clientX, y: e.touches[0].clientY };
+      return { x: 0, y: 0 };
+    }
+
+    function setMouseNDC(e) {
+      const { x, y } = getEventCoords(e);
+      mouse.x =  (x / window.innerWidth)  * 2 - 1;
+      mouse.y = -(y / window.innerHeight) * 2 + 1;
+    }
+
+    function onMouseDown(e) {
+      // Ignore UI clicks
+      if (e.target !== renderer.domElement) return;
+      setMouseNDC(e);
+      raycaster.setFromCamera(mouse, camera);
+      const intersects = raycaster.intersectObjects(balls);
+
+      if (intersects.length > 0) {
+        draggedBall = intersects[0].object;
+        draggedBall.userData.isDragged = true;
+        controls.enabled = false;
+
+        const ballWorldPos = new THREE.Vector3();
+        draggedBall.getWorldPosition(ballWorldPos);
+        const normal = camera.getWorldDirection(new THREE.Vector3()).negate();
+        dragPlane.setFromNormalAndCoplanarPoint(normal, ballWorldPos);
+
+        const intersectPoint = new THREE.Vector3();
+        raycaster.ray.intersectPlane(dragPlane, intersectPoint);
+        dragOffset.subVectors(ballWorldPos, intersectPoint);
+      }
+    }
+
+    function onMouseMove(e) {
+      if (!draggedBall) return;
+      setMouseNDC(e);
+      raycaster.setFromCamera(mouse, camera);
+
+      const rawPoint = new THREE.Vector3();
+      raycaster.ray.intersectPlane(dragPlane, rawPoint);
+      if (!rawPoint) return;
+
+      const newPos = rawPoint.add(dragOffset);
+      const anchor = draggedBall.userData.anchor;
+      const dx     = newPos.x - anchor.x;
+      const dy     = newPos.y - anchor.y;
+
+      // Angle only — enforce string length constraint
+      let angle = Math.atan2(dx, -dy);
+      angle = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, angle));
+
+      draggedBall.userData.angle           = angle;
+      draggedBall.userData.angularVelocity = 0;
+
+      // Reconstruct from angle (prevents string stretching)
+      draggedBall.position.x = anchor.x + L * Math.sin(angle);
+      draggedBall.position.y = anchor.y - L * Math.cos(angle);
+    }
+
+    function onMouseUp() {
+      if (!draggedBall) return;
+      draggedBall.userData.isDragged = false;
+      draggedBall = null;
+      controls.enabled = true;
+    }
+
+    function onResize() {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    }
+
+    // ══════════════════════════════════════════════
+    // ANIMATION LOOP
+    // ══════════════════════════════════════════════
+    function animate() {
+      requestAnimationFrame(animate);
+
+      if (!isPaused) {
+        currentFrame++;
+        const rawDt = clock.getDelta();
+        const dt    = Math.max(MIN_DT, Math.min(MAX_DT, rawDt));
+
+        updatePhysics(dt);
+        updateStrings();
+        updateEnergyMonitor();
+        updateFPSCounter();
+        updateDemo(dt);
+      } else {
+        clock.getDelta(); // drain clock to avoid spike on resume
+      }
+
+      controls.update();
+      renderer.render(scene, camera);
+    }
+
+    // ══════════════════════════════════════════════
+    // UI HELPERS
+    // ══════════════════════════════════════════════
+    function resetCradle() {
+      initCradle(currentNumBalls, currentPullCount, currentPullAngle);
+    }
+
+    function togglePause() {
+      isPaused = !isPaused;
+      document.getElementById('pauseBtn').textContent =
+        isPaused ? 'Resume' : 'Pause';
+      if (!isPaused) clock.getDelta(); // reset clock delta
+    }
+
+    function toggleDemo() {
+      isDemoMode = !isDemoMode;
+      demoTimer  = 0;
+      demoPhase  = 0;
+      document.getElementById('demoBtn').classList.toggle('active', isDemoMode);
+    }
+
+    // ══════════════════════════════════════════════
+    // EVENT LISTENERS
+    // ══════════════════════════════════════════════
+    renderer.domElement.addEventListener('mousedown',  onMouseDown);
+    renderer.domElement.addEventListener('mousemove',  onMouseMove);
+    renderer.domElement.addEventListener('mouseup',    onMouseUp);
+    renderer.domElement.addEventListener('mouseleave', onMouseUp);
+
+    renderer.domElement.addEventListener('touchstart',
+      e => { e.preventDefault(); onMouseDown(e); }, { passive: false });
+    renderer.domElement.addEventListener('touchmove',
+      e => { e.preventDefault(); onMouseMove(e); }, { passive: false });
+    renderer.domElement.addEventListener('touchend',
+      e => { e.preventDefault(); onMouseUp(); },   { passive: false });
+
+    window.addEventListener('resize', onResize);
+
+    window.addEventListener('keydown', e => {
+      if (e.code === 'Space') { e.preventDefault(); togglePause(); }
+      if (e.key  === 'r' || e.key === 'R') resetCradle();
+      if (e.key  === 'd' || e.key === 'D') toggleDemo();
+    });
+
+    // Ball count buttons
+    document.querySelectorAll('#ballButtons [data-count]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('#ballButtons [data-count]')
+          .forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        const n = parseInt(btn.dataset.count);
+        // clamp pullCount to available balls
+        const pc = Math.min(currentPullCount, n);
+        initCradle(n, pc, currentPullAngle);
+      });
+    });
+
+    // Pull count buttons
+    document.querySelectorAll('#pullButtons [data-pull]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('#pullButtons [data-pull]')
+          .forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        currentPullCount = parseInt(btn.dataset.pull);
+        initCradle(currentNumBalls, currentPullCount, currentPullAngle);
+      });
+    });
+
+    // Pull angle slider
+    document.getElementById('pullSlider').addEventListener('input', e => {
+      currentPullAngle = parseInt(e.target.value);
+      document.getElementById('angleVal').textContent = currentPullAngle;
+    });
+
+    // Action buttons
+    document.getElementById('resetBtn').addEventListener('click', resetCradle);
+    document.getElementById('pauseBtn').addEventListener('click', togglePause);
+    document.getElementById('demoBtn').addEventListener('click', toggleDemo);
+
+    // ══════════════════════════════════════════════
+    // STARTUP
+    // ══════════════════════════════════════════════
+    initCradle(5, 1, 45);
+    animate();
+
+  </script>
+</body>
+</html>
