@@ -24,12 +24,12 @@
       "source": "/(.*)",
       "headers": [
         { "key": "X-Content-Type-Options",     "value": "nosniff" },
-        { "key": "X-Frame-Options",             "value": "DENY" },
+        { "key": "X-Frame-Options",             "value": "SAMEORIGIN" },
         { "key": "Referrer-Policy",             "value": "strict-origin-when-cross-origin" },
         { "key": "Permissions-Policy",          "value": "camera=(), microphone=(), geolocation=()" },
         {
           "key": "Content-Security-Policy",
-          "value": "default-src 'self'; script-src 'self' 'unsafe-eval' 'unsafe-inline' checkout.razorpay.com; style-src 'self' 'unsafe-inline' fonts.googleapis.com; font-src 'self' fonts.gstatic.com; img-src 'self' data: blob: lh3.googleusercontent.com; connect-src 'self' https://api.anthropic.com https://checkout.razorpay.com https://api.razorpay.com https://*.upstash.io https://api.resend.com https://live-mt-server.wati.io; frame-src checkout.razorpay.com"
+          "value": "default-src 'self'; script-src 'self' 'unsafe-eval' 'unsafe-inline' checkout.razorpay.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' fonts.googleapis.com; font-src 'self' fonts.gstatic.com; img-src 'self' data: blob: lh3.googleusercontent.com; connect-src 'self' https://api.anthropic.com https://checkout.razorpay.com https://api.razorpay.com https://*.upstash.io https://api.resend.com https://live-mt-server.wati.io https://cdn.jsdelivr.net; worker-src blob:; frame-src 'self' checkout.razorpay.com"
         }
       ]
     },
