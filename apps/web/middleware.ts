@@ -36,7 +36,7 @@ const PUBLIC_PAGES = new Set([
 
 // Query-param-based public pages on /shell — accessible without login
 // Public onboarding path: browse ideas -> pipeline demo -> pricing.
-const PUBLIC_SHELL_PAGES = new Set(['pricing', 'pipeline', 'overview', 'trending'])
+const PUBLIC_SHELL_PAGES = new Set(['pricing', 'pipeline', 'overview', 'trending', 'agentic-career'])
 
 export default withAuth(
   function middleware(req: NextRequest) {
@@ -177,7 +177,7 @@ export default withAuth(
         (cronSecret     && (timingSafeEqual(xCron, cronSecret) || timingSafeEqual(bearer, cronSecret) || timingSafeEqual(query, cronSecret))) ||
         (internalSecret && timingSafeEqual(xInternal, internalSecret)) ||
         (hermesSecret   && (timingSafeEqual(xHermes, hermesSecret) || timingSafeEqual(bearer, hermesSecret))) ||
-        (!cronSecret && !internalSecret && !hermesSecret)   // dev: no secrets → allow
+        (!cronSecret && !internalSecret && !hermesSecret && process.env.NODE_ENV !== 'production')   // dev only
       ) return NextResponse.next()
       // Fall through — invalid secret, withAuth will block
     }
@@ -210,6 +210,7 @@ export default withAuth(
           pathname === '/api/lead-capture' ||
           pathname === '/api/lead-event' ||
           (pathname === '/api/trending' && req.method === 'GET') ||
+          pathname === '/api/pipeline/showcase' ||
           pathname === '/api/quota' ||
           (pathname === '/api/deploy/vercel' && req.method === 'GET') ||
           pathname === '/auth/signin' ||
@@ -308,7 +309,7 @@ export default withAuth(
           const cronSecret     = process.env.CRON_SECRET
           const internalSecret = process.env.INTERNAL_API_SECRET
           const hermesSecret   = process.env.HERMES_SECRET
-          if (!cronSecret && !internalSecret && !hermesSecret) return true   // dev
+          if (!cronSecret && !internalSecret && !hermesSecret) return process.env.NODE_ENV !== 'production'   // dev only
           const bearer    = (req.headers.get('authorization') ?? '').replace('Bearer ', '')
           const xCron     = req.headers.get('x-cron-secret') ?? ''
           const xInternal = req.headers.get('x-nexus-internal') ?? ''

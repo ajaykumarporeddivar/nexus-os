@@ -22,6 +22,8 @@ import {
   runBuildGate,
   logControlDecision,
 } from '@/lib/controlEngine'
+import { runForgeChain } from '@/lib/forgeChain'
+import { runBuildChain } from '@/lib/buildChain'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -53,6 +55,8 @@ export interface PipelineResult {
   }
   totalMs:  number
   error?:   string
+  liveUrl?: string   // surfaced from steps.deploy.data.deployUrl for convenience
+  qaScore?: number   // not available from the single-call orchestrator
 }
 
 // ─── Circuit Breaker (in-memory per process) ──────────────────────────────────
@@ -114,41 +118,52 @@ async function writeAudit(action: string, runId: string, meta: Record<string, un
 
 // ─── Step: FORGE — generate a SaaS concept spec ──────────────────────────────
 
-async function runForge(task: string, projectName: string): Promise<StepResult> {
+function sanitiseTask(s: string): string {
+  return s
+    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '')
+    .replace(/^#{1,6}\s+/gm, '')
+    .replace(/\[INST\]|\[\/INST\]|<s>|<\/s>|<\|im_start\|>|<\|im_end\|>|<\|eot_id\|>/gi, '')
+    .replace(/^(SYSTEM|USER|ASSISTANT|HUMAN|AI)\s*:/gim, '')
+    .replace(/ignore\s+(all\s+)?(previous|prior|above)\s+instructions?/gi, '')
+    .trim()
+}
+
+// ─── Step: FORGE — 12-agent chain (full quality parity with PipelinePage) ─────
+//
+// Set ORCHESTRATOR_FULL_CHAIN=0 to fall back to the legacy single-call stub.
+
+async function runForge(task: string, projectName: string, vertical?: string): Promise<StepResult> {
   const check = canExecute('forge')
-  if (!check.allowed) {
-    return { ok: false, durationMs: 0, error: check.reason }
+  if (!check.allowed) return { ok: false, durationMs: 0, error: check.reason }
+  const t0 = Date.now()
+
+  if (process.env.ORCHESTRATOR_FULL_CHAIN !== '0') {
+    try {
+      const chain = await runForgeChain(sanitiseTask(task), projectName, vertical)
+      recordSuccess('forge')
+      return {
+        ok: true, durationMs: Date.now() - t0,
+        data: { chain, specContract: chain.specContract, qaScore: chain.qaScore, vertical: chain.vertical },
+      }
+    } catch (err) {
+      const error = err instanceof Error ? err.message : String(err)
+      recordFailure('forge', error)
+      return { ok: false, durationMs: Date.now() - t0, error }
+    }
   }
 
-  const t0 = Date.now()
+  // Legacy stub (ORCHESTRATOR_FULL_CHAIN=0)
   try {
     const result = await aiComplete({
-      system: `You are FORGE ANALYST, a micro-SaaS product strategist for NEXUS OS.
-Generate a concise, actionable product specification for a SaaS app.
-Output ONLY a JSON object with these fields:
-{
-  "appName": string,
-  "tagline": string,
-  "targetAudience": string,
-  "coreProblem": string,
-  "keyFeatures": string[],
-  "revenueModel": string,
-  "techStack": string,
-  "estimatedBuildTime": string
-}`,
-      messages: [{ role: 'user', content: `Task: ${task}\nProject name hint: ${projectName}` }],
-      maxTokens: 800,
-      fastMode:  true,
+      system: `You are FORGE ANALYST. Output ONLY a JSON object: { "appName": string, "tagline": string, "targetAudience": string, "coreProblem": string, "keyFeatures": string[], "revenueModel": string, "techStack": string, "estimatedBuildTime": string }`,
+      messages: [{ role: 'user', content: `Task: ${sanitiseTask(task)}\nProject name hint: ${projectName}` }],
+      maxTokens: 800, fastMode: true,
     })
-
     let spec: Record<string, unknown>
     try {
-      const jsonMatch = result.text.match(/\{[\s\S]*\}/)
-      spec = jsonMatch ? JSON.parse(jsonMatch[0]) : { appName: projectName, tagline: task }
-    } catch {
-      spec = { appName: projectName, tagline: task, raw: result.text }
-    }
-
+      const m = result.text.match(/\{[\s\S]*\}/)
+      spec = m ? JSON.parse(m[0]) : { appName: projectName, tagline: task }
+    } catch { spec = { appName: projectName, tagline: task, raw: result.text } }
     recordSuccess('forge')
     return { ok: true, durationMs: Date.now() - t0, data: spec }
   } catch (err) {
@@ -158,48 +173,60 @@ Output ONLY a JSON object with these fields:
   }
 }
 
-// ─── Step: BUILD — generate Next.js application files ────────────────────────
+// ─── Step: BUILD — 10-agent chain (full quality parity with PipelinePage) ─────
 
-async function runBuild(forgeSpec: unknown, projectName: string): Promise<StepResult> {
+async function runBuild(forgeResult: StepResult, task: string, projectName: string): Promise<StepResult> {
   const check = canExecute('build')
-  if (!check.allowed) {
-    return { ok: false, durationMs: 0, error: check.reason }
+  if (!check.allowed) return { ok: false, durationMs: 0, error: check.reason }
+  const t0 = Date.now()
+
+  if (process.env.ORCHESTRATOR_FULL_CHAIN !== '0') {
+    try {
+      const forgeData = forgeResult.data as { chain?: import('@/lib/forgeChain').ForgeChainResult } | undefined
+      const forgeChain = forgeData?.chain
+      if (!forgeChain) throw new Error('FORGE chain result missing — cannot run full BUILD chain')
+      const build = await runBuildChain(forgeChain, projectName, task)
+      recordSuccess('build')
+      return { ok: true, durationMs: Date.now() - t0, data: { files: build.files, fileCount: build.fileCount } }
+    } catch (err) {
+      const error = err instanceof Error ? err.message : String(err)
+      recordFailure('build', error)
+      return { ok: false, durationMs: Date.now() - t0, error }
+    }
   }
 
-  const t0   = Date.now()
-  const spec = JSON.stringify(forgeSpec, null, 2)
-
+  // Legacy stub (ORCHESTRATOR_FULL_CHAIN=0)
+  const t0l = Date.now()
+  const spec = JSON.stringify(forgeResult.data, null, 2)
   try {
     const result = await aiComplete({
-      system: `You are SCAFFOLD ENGINEER for NEXUS OS. Generate a minimal but complete Next.js 14 App Router SaaS application.
-Output ONLY a JSON object where keys are file paths and values are file content strings.
-Required files: src/app/page.tsx, src/app/layout.tsx, src/app/globals.css, package.json, tailwind.config.js, tsconfig.json.
-Use TypeScript, Tailwind CSS, and Lucide React icons. Keep each file under 200 lines.`,
-      messages: [{
-        role: 'user',
-        content: `Build a Next.js app based on this specification:\n${spec}\n\nProject name: ${projectName}`,
-      }],
+      system: `You are SCAFFOLD ENGINEER. Output ONLY a JSON object where keys are file paths and values are file content strings. Required: src/app/page.tsx, src/app/layout.tsx, src/app/globals.css, package.json, tailwind.config.js, tsconfig.json.`,
+      messages: [{ role: 'user', content: `Build a Next.js app based on:\n${spec}\nProject name: ${projectName}` }],
       maxTokens: 6000,
     })
-
     let files: Record<string, string>
     try {
-      const jsonMatch = result.text.match(/\{[\s\S]*\}/)
-      files = jsonMatch ? JSON.parse(jsonMatch[0]) : {}
+      const stripped = result.text.replace(/^```(?:json)?\s*/m, '').replace(/\s*```\s*$/m, '')
+      const jsonMatch = stripped.match(/\{[\s\S]*\}/)
+      const parsed = jsonMatch ? JSON.parse(jsonMatch[0]) : null
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed) && Object.keys(parsed).length > 0) {
+        files = parsed as Record<string, string>
+      } else throw new Error('not a file map')
     } catch {
       files = {
         'src/app/page.tsx': `export default function Home() { return <main className="p-8"><h1 className="text-2xl font-bold">${projectName}</h1></main> }`,
         'src/app/layout.tsx': `import './globals.css'\nexport default function RootLayout({ children }: { children: React.ReactNode }) { return <html lang="en"><body>{children}</body></html> }`,
         'src/app/globals.css': '@tailwind base;\n@tailwind components;\n@tailwind utilities;\n',
+        'package.json': `{"name":"${projectName.toLowerCase().replace(/[^a-z0-9-]/g,'-')}","version":"0.1.0","private":true,"scripts":{"dev":"next dev","build":"next build","start":"next start"},"dependencies":{"next":"14.2.0","react":"^18","react-dom":"^18"},"devDependencies":{"typescript":"^5","@types/node":"^20","@types/react":"^18","tailwindcss":"^3","autoprefixer":"^10","postcss":"^8"}}`,
+        'tsconfig.json': '{"compilerOptions":{"target":"es2017","lib":["dom","dom.iterable","esnext"],"allowJs":true,"skipLibCheck":true,"strict":true,"noEmit":true,"esModuleInterop":true,"module":"esnext","moduleResolution":"bundler","resolveJsonModule":true,"isolatedModules":true,"jsx":"preserve","incremental":true,"plugins":[{"name":"next"}],"paths":{"@/*":["./src/*"]}},"include":["next-env.d.ts","**/*.ts","**/*.tsx",".next/types/**/*.ts"],"exclude":["node_modules"]}',
       }
     }
-
     recordSuccess('build')
-    return { ok: true, durationMs: Date.now() - t0, data: { files, fileCount: Object.keys(files).length } }
+    return { ok: true, durationMs: Date.now() - t0l, data: { files, fileCount: Object.keys(files).length } }
   } catch (err) {
     const error = err instanceof Error ? err.message : String(err)
     recordFailure('build', error)
-    return { ok: false, durationMs: Date.now() - t0, error }
+    return { ok: false, durationMs: Date.now() - t0l, error }
   }
 }
 
@@ -238,17 +265,18 @@ async function runDeploy(
 
     await Promise.all(
       Object.entries(files).map(async ([path, content]) => {
-        const buf  = Buffer.from(content, 'utf8')
+        const contentStr = typeof content === 'string' ? content : JSON.stringify(content, null, 2)
+        const buf  = Buffer.from(contentStr, 'utf8')
         const sha  = createHash('sha1').update(buf).digest('hex')
         const size = buf.length
 
         const res = await fetch(`https://api.vercel.com/v2/files${qs}`, {
           method:  'POST',
           headers: {
-            Authorization:     `Bearer ${token}`,
+            'Authorization':   `Bearer ${token}`,
             'Content-Type':    'application/octet-stream',
             'x-vercel-digest': sha,
-          } as Record<string, string>,
+          },
           body: new Uint8Array(buf),
         })
 
@@ -310,6 +338,8 @@ async function runDeploy(
 export async function triggerPipeline(params: PipelineParams): Promise<PipelineResult> {
   const runId       = randomUUID()
   const projectName = params.projectName ?? `nexus-${Date.now().toString(36)}`
+  // Sanitize task at entry — prevents prompt injection in server-side runs
+  params = { ...params, task: sanitiseTask(params.task) }
   const totalStart  = Date.now()
   const by          = params.triggeredBy ?? 'manual'
 
@@ -321,7 +351,7 @@ export async function triggerPipeline(params: PipelineParams): Promise<PipelineR
 
   // ── Step 1: FORGE ──────────────────────────────────────────────────────────
   await updatePipelineStep(runId, 'forge', { status: 'running', startedAt: new Date().toISOString() })
-  const forgeResult = await runForge(params.task, projectName)
+  const forgeResult = await runForge(params.task, projectName, params.vertical)
   console.log(`[orchestrator] FORGE ${forgeResult.ok ? 'OK' : 'FAIL'} in ${forgeResult.durationMs}ms`)
   await updatePipelineStep(runId, 'forge', {
     status:     forgeResult.ok ? 'done' : 'failed',
@@ -344,13 +374,26 @@ export async function triggerPipeline(params: PipelineParams): Promise<PipelineR
     }
   }
 
-  // ── L2.75 FORGE Gate — quality + domain coherence + oscillation ────────────
-  // Skip gates only for admin/testing (skipGates: true in params)
-  const forgeData    = forgeResult.data as { spec?: string; score?: number } | undefined
+  // ── L2.75 FORGE Gate ─────────────────────────────────────────────────────────
+  // Full chain mode: use actual QA score and spec contract from the 12-agent run.
+  // Legacy stub mode: derive coarse score from field presence.
+  const forgeData = forgeResult.data as Record<string, unknown> | undefined
+  const chainResult = forgeData?.chain as { specContract?: string; qaScore?: number | null } | undefined
+  const forgeSpecContract = chainResult?.specContract ?? (forgeData ? JSON.stringify(forgeData) : '')
+  const forgeQaScore = chainResult?.qaScore != null
+    ? chainResult.qaScore
+    : (() => {
+        const hasFields = forgeData &&
+          typeof forgeData.appName === 'string'     && (forgeData.appName as string).length > 2 &&
+          typeof forgeData.coreProblem === 'string' && (forgeData.coreProblem as string).length > 10 &&
+          Array.isArray(forgeData.keyFeatures)      && (forgeData.keyFeatures as unknown[]).length >= 2
+        return hasFields ? 8.0 : (forgeData ? 5.0 : 0)
+      })()
+
   const forgeGate    = params.skipGates ? { allowed: true, checks: [], blocking: null } : await runForgeGate({
-    qaScore:      forgeData?.score ?? null,
+    qaScore:      forgeQaScore,
     briefText:    params.task,
-    specContract: forgeData?.spec ?? '',
+    specContract: forgeSpecContract,
     projectName,
     vertical:     params.vertical,
   })
@@ -373,7 +416,7 @@ export async function triggerPipeline(params: PipelineParams): Promise<PipelineR
 
   // ── Step 2: BUILD ──────────────────────────────────────────────────────────
   await updatePipelineStep(runId, 'build', { status: 'running', startedAt: new Date().toISOString() })
-  const buildResult = await runBuild(forgeResult.data, projectName)
+  const buildResult = await runBuild(forgeResult, params.task, projectName)
   console.log(`[orchestrator] BUILD ${buildResult.ok ? 'OK' : 'FAIL'} in ${buildResult.durationMs}ms`)
   await updatePipelineStep(runId, 'build', {
     status:     buildResult.ok ? 'done' : 'failed',
@@ -441,10 +484,13 @@ export async function triggerPipeline(params: PipelineParams): Promise<PipelineR
     completePipelineRun(runId, ok, totalMs),
   ])
 
-  console.log(`[orchestrator] Pipeline ${ok ? 'DONE' : 'PARTIAL'} runId=${runId} in ${totalMs}ms`)
+  const deployData = deployResult.data as { deployUrl?: string } | undefined
+  const liveUrl    = deployData?.deployUrl ?? undefined
+
+  console.log(`[orchestrator] Pipeline ${ok ? 'DONE' : 'PARTIAL'} runId=${runId} in ${totalMs}ms${liveUrl ? ` url=${liveUrl}` : ''}`)
 
   return {
-    runId, ok, totalMs,
+    runId, ok, totalMs, liveUrl,
     steps: { forge: forgeResult, build: buildResult, deploy: deployResult },
   }
 }

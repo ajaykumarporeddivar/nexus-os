@@ -33,8 +33,11 @@ function isAuthorized(req: NextRequest): boolean {
   const internalSecret = process.env.INTERNAL_API_SECRET
   const hermesSecret   = process.env.HERMES_SECRET
 
-  // Dev/test: no secrets configured → allow through
-  if (!cronSecret && !internalSecret && !hermesSecret) return true
+  // Dev only: no secrets configured → allow through (never in production)
+  if (!cronSecret && !internalSecret && !hermesSecret) {
+    if (process.env.NODE_ENV === 'production') return false
+    return true
+  }
 
   const authHeader  = req.headers.get('authorization') ?? ''
   const querySecret = req.nextUrl.searchParams.get('secret') ?? ''

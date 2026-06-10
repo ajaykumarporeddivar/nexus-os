@@ -114,10 +114,21 @@ function slugify(s: string): string {
   return s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 60) || 'nexus-app'
 }
 
-// Strip ASCII control characters (except \t \n \r) from user-provided strings before
-// they enter LLM system prompts — prevents prompt injection via malicious brief content.
+// Strip control characters and prompt-injection patterns from user briefs before
+// they enter LLM system prompts.
 function sanitiseBrief(s: string): string {
-  return s.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '').trim()
+  return s
+    // ASCII control chars (keep \t \n \r)
+    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '')
+    // Markdown heading prefixes at line start — prevents fake spec headers in AI output
+    .replace(/^#{1,6}\s+/gm, '')
+    // Known LLM injection delimiters
+    .replace(/\[INST\]|\[\/INST\]|<s>|<\/s>|<\|im_start\|>|<\|im_end\|>|<\|eot_id\|>/gi, '')
+    // Role-override prefixes (case-insensitive, start of line)
+    .replace(/^(SYSTEM|USER|ASSISTANT|HUMAN|AI)\s*:/gim, '')
+    // Instruction-override phrases (strip the phrase, keep surrounding text)
+    .replace(/ignore\s+(all\s+)?(previous|prior|above)\s+instructions?/gi, '')
+    .trim()
 }
 
 function createForgeFallbackOutput(agentId: string, briefText: string, previousContext: string, reason: string): string {

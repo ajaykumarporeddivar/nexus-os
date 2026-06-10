@@ -67,6 +67,10 @@ function redisKey(runId: string): string {
   return `pipeline:${runId}`
 }
 
+// Sorted set that tracks active run IDs by createdAt timestamp.
+// Lets getStalledRuns scan just the active set instead of KEYS pipeline:*.
+const ACTIVE_RUNS_KEY = 'pipeline:_active_runs'
+
 // ─── In-memory fallback ────────────────────────────────────────────────────────
 
 const memStore = new Map<string, { state: PipelineRunState; expiresAt: number }>()
@@ -96,6 +100,14 @@ export async function createPipelineRun(
     },
   }
   await savePipelineState(state)
+  // Register in active-runs sorted set (score = epoch ms for range queries)
+  const redis = getRedis()
+  if (redis) {
+    const score = Date.now()
+    await redis.zadd(ACTIVE_RUNS_KEY, { score, member: runId }).catch(() => {})
+    // Expire the set itself in 24h so it doesn't accumulate forever
+    await redis.expire(ACTIVE_RUNS_KEY, 86400).catch(() => {})
+  }
   return state
 }
 
@@ -168,26 +180,42 @@ export async function completePipelineRun(
   state.totalMs     = totalMs
   if (error) state.error = error
   await savePipelineState(state)
+  // Remove from active-runs sorted set
+  const redis = getRedis()
+  if (redis) await redis.zrem(ACTIVE_RUNS_KEY, runId).catch(() => {})
 }
 
 /**
  * Return all stalled runs (running but updatedAt > stalledAfterMs ago).
- * Only works when Redis is configured (in-memory store is process-local, no cross-restart visibility).
+ *
+ * Uses a sorted set (pipeline:_active_runs) so we only scan runs that were
+ * registered as active — avoids the O(N) KEYS pipeline:* scan.
+ * Runs created before this sorted-set approach (legacy) are not found here,
+ * but they will naturally expire via their individual TTLs.
  */
 export async function getStalledRuns(stalledAfterMs = 300_000): Promise<PipelineRunState[]> {
-  const redis = getRedis()
+  const redis  = getRedis()
   const cutoff = new Date(Date.now() - stalledAfterMs).toISOString()
   const stalled: PipelineRunState[] = []
 
   if (redis) {
     try {
-      const keys = await redis.keys('pipeline:*')
-      for (const key of keys) {
-        const raw = await redis.get<string>(key)
-        if (!raw) continue
-        const s: PipelineRunState = typeof raw === 'string' ? JSON.parse(raw) : raw
-        if (s.status === 'running' && s.updatedAt < cutoff) stalled.push(s)
-      }
+      // Fetch all members of the active-runs set (bounded: completed runs remove themselves)
+      const runIds = await redis.zrange(ACTIVE_RUNS_KEY, 0, -1) as string[]
+      await Promise.all(runIds.map(async (runId) => {
+        try {
+          const raw = await redis.get<string>(redisKey(runId))
+          if (!raw) {
+            // Key expired but set entry wasn't cleaned up — remove stale member
+            await redis.zrem(ACTIVE_RUNS_KEY, runId).catch(() => {})
+            return
+          }
+          const s: PipelineRunState = typeof raw === 'string' ? JSON.parse(raw) : raw
+          if (s.status === 'running' && s.updatedAt < cutoff) stalled.push(s)
+        } catch {
+          // Skip malformed entries
+        }
+      }))
     } catch (err) {
       console.error('[pipelineState] getStalledRuns failed:', err)
     }

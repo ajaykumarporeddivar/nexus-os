@@ -23,7 +23,10 @@ function isAuthorized(req: NextRequest): boolean {
   const internalSecret = process.env.INTERNAL_API_SECRET
   const hermesSecret   = process.env.HERMES_SECRET
 
-  if (!cronSecret && !internalSecret && !hermesSecret) return true   // dev
+  if (!cronSecret && !internalSecret && !hermesSecret) {
+    if (process.env.NODE_ENV === 'production') return false
+    return true   // dev
+  }
 
   const auth      = req.headers.get('authorization') ?? ''
   const xCron     = req.headers.get('x-cron-secret') ?? ''

@@ -101,18 +101,14 @@ export async function GET(req: NextRequest) {
         projectName: niche.title,
         brief:       niche.brief,
         vertical:    niche.vertical,
-        liveUrl:     (result as unknown as { liveUrl?: string }).liveUrl ?? null,
-        qaScore:     typeof (result as unknown as { qaScore?: unknown }).qaScore === 'number'
-                       ? (result as unknown as { qaScore: number }).qaScore
-                       : null,
+        liveUrl:     result.liveUrl ?? null,
+        qaScore:     result.qaScore ?? null,
         elapsedSec:  elapsed,
         agentCount:  23,
       },
       update: {
-        liveUrl:  (result as unknown as { liveUrl?: string }).liveUrl ?? undefined,
-        qaScore:  typeof (result as unknown as { qaScore?: unknown }).qaScore === 'number'
-                    ? (result as unknown as { qaScore: number }).qaScore
-                    : undefined,
+        liveUrl:    result.liveUrl    ?? undefined,
+        qaScore:    result.qaScore    ?? undefined,
         elapsedSec: elapsed,
       },
     }).catch(err => {
@@ -132,7 +128,7 @@ export async function GET(req: NextRequest) {
           tier:       niche.tier,
           pricing:    niche.pricing,
           mrrPotential: niche.mrrPotential,
-          liveUrl:    (result as unknown as { liveUrl?: string }).liveUrl ?? null,
+          liveUrl:    result.liveUrl ?? null,
           slug,
           sharedRunId: sharedRun?.id ?? null,
           elapsedSec: elapsed,
@@ -144,7 +140,7 @@ export async function GET(req: NextRequest) {
     if (process.env.RESEND_API_KEY && process.env.INTERNAL_NOTIFY_EMAIL) {
       const { Resend } = await import('resend')
       const resend = new Resend(process.env.RESEND_API_KEY)
-      const liveUrl = (result as unknown as { liveUrl?: string }).liveUrl
+      const liveUrl = result.liveUrl
       await resend.emails.send({
         from:    process.env.EMAIL_FROM ?? 'NEXUS OS <noreply@resend.dev>',
         to:      process.env.INTERNAL_NOTIFY_EMAIL,
@@ -156,7 +152,7 @@ export async function GET(req: NextRequest) {
 <p><strong>Target:</strong> ${niche.targetICPs.join(', ')}</p>
 <p><strong>Elapsed:</strong> ${elapsed}s</p>
 ${liveUrl ? `<p><strong>Live URL:</strong> <a href="${liveUrl}" style="color:#c8ff00">${liveUrl}</a></p>` : ''}
-<p><strong>Showcase:</strong> <a href="https://web-xi-vert-58.vercel.app/shell?page=trending" style="color:#c8ff00">View on Trending page →</a></p>
+<p><strong>Showcase:</strong> <a href="${process.env.NEXTAUTH_URL ?? process.env.APP_URL ?? 'https://nexus-os.ai'}/shell?page=trending" style="color:#c8ff00">View on Trending page →</a></p>
 </div>`,
       }).catch(console.error)
     }
@@ -167,7 +163,7 @@ ${liveUrl ? `<p><strong>Live URL:</strong> <a href="${liveUrl}" style="color:#c8
       nicheTitle:  niche.title,
       dateKey,
       slug,
-      liveUrl:     (result as unknown as { liveUrl?: string }).liveUrl ?? null,
+      liveUrl:     result.liveUrl ?? null,
       elapsedSec:  elapsed,
     })
 

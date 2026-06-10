@@ -433,20 +433,44 @@ export async function POST(req: NextRequest) {
   const hasCronAuth = !!(cronSecret && (secret === cronSecret || bearerToken === cronSecret))
 
   // Also allow any authenticated NextAuth session (manual "Refresh Now" from the UI)
-  let hasSessionAuth = false
+  let sessionUserId: string | null = null
   if (!hasCronAuth) {
     try {
       const { getServerSession } = await import('next-auth')
       const { authOptions }      = await import('@/lib/authOptions')
       const session = await getServerSession(authOptions)
-      hasSessionAuth = !!session?.user
+      sessionUserId = (session?.user as { id?: string } | undefined)?.id ?? session?.user?.email ?? null
     } catch {
       // getServerSession unavailable in edge — fall through
     }
   }
 
-  if (!hasCronAuth && !hasSessionAuth) {
+  if (!hasCronAuth && !sessionUserId) {
     return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 })
+  }
+
+  // Rate limit: 1 POST per hour per authenticated user (cron calls bypass this)
+  if (!hasCronAuth && sessionUserId) {
+    try {
+      const { Redis } = await import('@upstash/redis')
+      const url   = process.env.UPSTASH_REDIS_REST_URL?.trim()
+      const token = process.env.UPSTASH_REDIS_REST_TOKEN?.trim()
+      if (url && token && url.startsWith('https://')) {
+        const redis = new Redis({ url, token })
+        const rlKey = `rl:trending:${sessionUserId}`
+        const count = await redis.incr(rlKey)
+        if (count === 1) await redis.expire(rlKey, 3600)   // 1 hour window
+        if (count > 1) {
+          const ttl = await redis.ttl(rlKey)
+          return NextResponse.json(
+            { ok: false, error: `Rate limit: 1 refresh per hour. Retry in ${Math.ceil(ttl / 60)} min.` },
+            { status: 429 },
+          )
+        }
+      }
+    } catch {
+      // Redis unavailable — allow through rather than blocking a legitimate request
+    }
   }
 
   try {
