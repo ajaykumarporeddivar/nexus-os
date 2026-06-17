@@ -10,6 +10,7 @@
  */
 
 import { randomUUID } from 'crypto'
+import { Redis } from '@upstash/redis'
 import { aiComplete } from '@/lib/ai'
 import { prisma } from '@/lib/prisma'
 import {
@@ -24,6 +25,7 @@ import {
 } from '@/lib/controlEngine'
 import { runForgeChain } from '@/lib/forgeChain'
 import { runBuildChain } from '@/lib/buildChain'
+import { registerDeployment } from '@/lib/observationLoop'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -36,6 +38,7 @@ export interface PipelineParams {
   triggeredBy?:  'cron' | 'hermes' | 'self-heal' | 'manual'
   vertical?:     string          // domain vertical hint (saas/marketplace/dashboard/etc.)
   skipGates?:    boolean         // bypass L2.75 control gates (admin/testing only)
+  sourceIdeaId?: string          // WorkspaceIdea.id — Phase 4: links pipeline run to trending idea
 }
 
 export interface StepResult {
@@ -59,7 +62,8 @@ export interface PipelineResult {
   qaScore?: number   // not available from the single-call orchestrator
 }
 
-// ─── Circuit Breaker (in-memory per process) ──────────────────────────────────
+// ─── Circuit Breaker (Redis-backed — survives Vercel cold starts; GAP-3) ─────
+// In-memory fallback keeps dev / Redis-down behaviour identical to before.
 
 interface CBState {
   failures:     number
@@ -69,13 +73,48 @@ interface CBState {
 
 const CB_FAILURE_THRESHOLD = 3
 const CB_RESET_MS          = 60_000
+const CB_TTL_SECONDS       = 600   // breaker state expires after 10 min of inactivity
 
 const circuitBreakers: Record<string, CBState> = {}
 
-function cbKey(step: string): string { return `cb:${step}` }
+let _cbRedis: Redis | null | undefined
+function cbRedis(): Redis | null {
+  if (_cbRedis !== undefined) return _cbRedis
+  const url   = process.env.UPSTASH_REDIS_REST_URL
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN
+  _cbRedis = url && token ? new Redis({ url, token }) : null
+  return _cbRedis
+}
 
-function canExecute(step: string): { allowed: boolean; reason?: string } {
-  const cb = circuitBreakers[cbKey(step)]
+function cbKey(step: string): string { return `cb:orchestrator:${step}` }
+
+async function readCbState(step: string): Promise<CBState | null> {
+  const redis = cbRedis()
+  if (redis) {
+    try {
+      const raw = await redis.get<CBState>(cbKey(step))
+      if (raw) return raw
+    } catch (err) {
+      console.warn('[orchestrator] CB redis read failed — using in-memory state:', (err as Error).message)
+    }
+  }
+  return circuitBreakers[cbKey(step)] ?? null
+}
+
+async function writeCbState(step: string, cb: CBState): Promise<void> {
+  circuitBreakers[cbKey(step)] = cb
+  const redis = cbRedis()
+  if (redis) {
+    try {
+      await redis.set(cbKey(step), cb, { ex: CB_TTL_SECONDS })
+    } catch (err) {
+      console.warn('[orchestrator] CB redis write failed — in-memory only:', (err as Error).message)
+    }
+  }
+}
+
+async function canExecute(step: string): Promise<{ allowed: boolean; reason?: string }> {
+  const cb = await readCbState(step)
   if (!cb) return { allowed: true }
   if (cb.openUntil > Date.now()) {
     return { allowed: false, reason: `Circuit open (${step}): ${cb.lastError}. Resets in ${Math.ceil((cb.openUntil - Date.now()) / 1000)}s` }
@@ -83,20 +122,19 @@ function canExecute(step: string): { allowed: boolean; reason?: string } {
   return { allowed: true }
 }
 
-function recordSuccess(step: string): void {
-  circuitBreakers[cbKey(step)] = { failures: 0, openUntil: 0 }
+async function recordSuccess(step: string): Promise<void> {
+  await writeCbState(step, { failures: 0, openUntil: 0 })
 }
 
-function recordFailure(step: string, error: string): void {
-  const key = cbKey(step)
-  const cb  = circuitBreakers[key] ?? { failures: 0, openUntil: 0 }
+async function recordFailure(step: string, error: string): Promise<void> {
+  const cb = (await readCbState(step)) ?? { failures: 0, openUntil: 0 }
   cb.failures++
   cb.lastError = error
   if (cb.failures >= CB_FAILURE_THRESHOLD) {
     cb.openUntil = Date.now() + CB_RESET_MS
     console.warn(`[orchestrator] Circuit OPEN for step "${step}" after ${cb.failures} failures. Resets at ${new Date(cb.openUntil).toISOString()}`)
   }
-  circuitBreakers[key] = cb
+  await writeCbState(step, cb)
 }
 
 // ─── Audit helper (server-side direct Prisma write) ──────────────────────────
@@ -133,21 +171,21 @@ function sanitiseTask(s: string): string {
 // Set ORCHESTRATOR_FULL_CHAIN=0 to fall back to the legacy single-call stub.
 
 async function runForge(task: string, projectName: string, vertical?: string): Promise<StepResult> {
-  const check = canExecute('forge')
+  const check = await canExecute('forge')
   if (!check.allowed) return { ok: false, durationMs: 0, error: check.reason }
   const t0 = Date.now()
 
   if (process.env.ORCHESTRATOR_FULL_CHAIN !== '0') {
     try {
       const chain = await runForgeChain(sanitiseTask(task), projectName, vertical)
-      recordSuccess('forge')
+      await recordSuccess('forge')
       return {
         ok: true, durationMs: Date.now() - t0,
         data: { chain, specContract: chain.specContract, qaScore: chain.qaScore, vertical: chain.vertical },
       }
     } catch (err) {
       const error = err instanceof Error ? err.message : String(err)
-      recordFailure('forge', error)
+      await recordFailure('forge', error)
       return { ok: false, durationMs: Date.now() - t0, error }
     }
   }
@@ -164,11 +202,11 @@ async function runForge(task: string, projectName: string, vertical?: string): P
       const m = result.text.match(/\{[\s\S]*\}/)
       spec = m ? JSON.parse(m[0]) : { appName: projectName, tagline: task }
     } catch { spec = { appName: projectName, tagline: task, raw: result.text } }
-    recordSuccess('forge')
+    await recordSuccess('forge')
     return { ok: true, durationMs: Date.now() - t0, data: spec }
   } catch (err) {
     const error = err instanceof Error ? err.message : String(err)
-    recordFailure('forge', error)
+    await recordFailure('forge', error)
     return { ok: false, durationMs: Date.now() - t0, error }
   }
 }
@@ -176,7 +214,7 @@ async function runForge(task: string, projectName: string, vertical?: string): P
 // ─── Step: BUILD — 10-agent chain (full quality parity with PipelinePage) ─────
 
 async function runBuild(forgeResult: StepResult, task: string, projectName: string): Promise<StepResult> {
-  const check = canExecute('build')
+  const check = await canExecute('build')
   if (!check.allowed) return { ok: false, durationMs: 0, error: check.reason }
   const t0 = Date.now()
 
@@ -186,11 +224,11 @@ async function runBuild(forgeResult: StepResult, task: string, projectName: stri
       const forgeChain = forgeData?.chain
       if (!forgeChain) throw new Error('FORGE chain result missing — cannot run full BUILD chain')
       const build = await runBuildChain(forgeChain, projectName, task)
-      recordSuccess('build')
+      await recordSuccess('build')
       return { ok: true, durationMs: Date.now() - t0, data: { files: build.files, fileCount: build.fileCount } }
     } catch (err) {
       const error = err instanceof Error ? err.message : String(err)
-      recordFailure('build', error)
+      await recordFailure('build', error)
       return { ok: false, durationMs: Date.now() - t0, error }
     }
   }
@@ -221,11 +259,11 @@ async function runBuild(forgeResult: StepResult, task: string, projectName: stri
         'tsconfig.json': '{"compilerOptions":{"target":"es2017","lib":["dom","dom.iterable","esnext"],"allowJs":true,"skipLibCheck":true,"strict":true,"noEmit":true,"esModuleInterop":true,"module":"esnext","moduleResolution":"bundler","resolveJsonModule":true,"isolatedModules":true,"jsx":"preserve","incremental":true,"plugins":[{"name":"next"}],"paths":{"@/*":["./src/*"]}},"include":["next-env.d.ts","**/*.ts","**/*.tsx",".next/types/**/*.ts"],"exclude":["node_modules"]}',
       }
     }
-    recordSuccess('build')
+    await recordSuccess('build')
     return { ok: true, durationMs: Date.now() - t0l, data: { files, fileCount: Object.keys(files).length } }
   } catch (err) {
     const error = err instanceof Error ? err.message : String(err)
-    recordFailure('build', error)
+    await recordFailure('build', error)
     return { ok: false, durationMs: Date.now() - t0l, error }
   }
 }
@@ -237,7 +275,7 @@ async function runDeploy(
   projectName: string,
   env?:        Record<string, string>,
 ): Promise<StepResult> {
-  const check = canExecute('deploy')
+  const check = await canExecute('deploy')
   if (!check.allowed) {
     return { ok: false, durationMs: 0, error: check.reason }
   }
@@ -315,7 +353,34 @@ async function runDeploy(
     const deployment = await deployRes.json() as { id: string; url: string; readyState: string }
     const deployUrl  = deployment.url ? `https://${deployment.url}` : `https://${safeName}.vercel.app`
 
-    recordSuccess('deploy')
+    // Disable SSO/deployment protection so generated apps are publicly viewable
+    // without requiring Vercel team membership. Fire-and-forget — non-blocking.
+    fetch(`https://api.vercel.com/v9/projects/${safeName}${qs}`, {
+      method:  'PATCH',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ ssoProtection: null }),
+    }).catch(err => console.warn('[orchestrator] ssoProtection patch failed:', (err as Error).message))
+
+    await recordSuccess('deploy')
+
+    // Post-deploy health check — poll the live URL 3× with 5 s delay; mark degraded if HTTP !== 200
+    let healthStatus: 'healthy' | 'degraded' | 'unknown' = 'unknown'
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      await new Promise(r => setTimeout(r, 5_000))
+      try {
+        const hRes = await fetch(deployUrl, { method: 'HEAD', signal: AbortSignal.timeout(8_000) })
+        if (hRes.ok) { healthStatus = 'healthy'; break }
+        console.warn(`[orchestrator] health check attempt ${attempt} → ${hRes.status}`)
+        healthStatus = 'degraded'
+      } catch (hErr) {
+        console.warn(`[orchestrator] health check attempt ${attempt} failed:`, (hErr as Error).message)
+        healthStatus = 'degraded'
+      }
+    }
+    if (healthStatus === 'degraded') {
+      console.warn(`[orchestrator] DEPLOY health degraded after 3 attempts — deployUrl=${deployUrl}`)
+    }
+
     return {
       ok:        true,
       durationMs: Date.now() - t0,
@@ -324,11 +389,12 @@ async function runDeploy(
         deployUrl,
         state:        deployment.readyState,
         files:        fileRefs.length,
+        healthStatus,
       },
     }
   } catch (err) {
     const error = err instanceof Error ? err.message : String(err)
-    recordFailure('deploy', error)
+    await recordFailure('deploy', error)
     return { ok: false, durationMs: Date.now() - t0, error }
   }
 }
@@ -440,7 +506,7 @@ export async function triggerPipeline(params: PipelineParams): Promise<PipelineR
 
   // ── L2.75 BUILD Gate — file count + deployment readiness ──────────────────
   const buildData = buildResult.data as { files: Record<string, string>; fileCount: number }
-  const buildGate = params.skipGates ? { allowed: true, checks: [], blocking: null } : runBuildGate({ files: buildData.files })
+  const buildGate = params.skipGates ? { allowed: true, checks: [], blocking: null } : runBuildGate({ files: buildData.files, briefText: params.task })
   if (!params.skipGates) await logControlDecision(runId, 'build', buildGate)
   console.log(`[orchestrator] BUILD GATE ${buildGate.allowed ? 'PASS' : 'BLOCK'}: ${buildGate.blocking?.reason ?? 'all checks passed'}`)
 
@@ -487,7 +553,58 @@ export async function triggerPipeline(params: PipelineParams): Promise<PipelineR
   const deployData = deployResult.data as { deployUrl?: string } | undefined
   const liveUrl    = deployData?.deployUrl ?? undefined
 
+  // AROS v4 Phase 3: register successful deployment for post-deploy observation.
+  // The loop polls at 1h/24h/7d and feeds health back into agent scorecards.
+  if (ok && liveUrl) {
+    const forgeChainData = (forgeResult.data as { chain?: { vertical?: string } } | undefined)?.chain
+    registerDeployment({
+      runId,
+      deployUrl:   liveUrl,
+      deployedAt:  new Date().toISOString(),
+      workspaceId: params.workspaceId,
+      vertical:    forgeChainData?.vertical ?? params.vertical,
+      projectName,
+    }).catch(() => {})
+
+    // AROS v4 Phase 4: stamp the source WorkspaceIdea so the observation loop
+    // can close the feedback cycle (trending idea → pipeline → live health).
+    if (params.sourceIdeaId) {
+      import('@/lib/prisma').then(({ prisma: db }) =>
+        db.workspaceIdea.update({
+          where: { id: params.sourceIdeaId! },
+          data: {
+            deploymentRunId: runId,
+            deployedAt:      new Date(),
+            deploymentUrl:   liveUrl,
+            status:          'converted',
+            convertedAt:     new Date(),
+          },
+        })
+      ).catch(err => console.error('[orchestrator] idea stamp failed:', err))
+    }
+  }
+
   console.log(`[orchestrator] Pipeline ${ok ? 'DONE' : 'PARTIAL'} runId=${runId} in ${totalMs}ms${liveUrl ? ` url=${liveUrl}` : ''}`)
+
+  // GAP-27: completion email for server-side runs (fire-and-forget)
+  if (process.env.RESEND_API_KEY && process.env.INTERNAL_NOTIFY_EMAIL) {
+    import('resend').then(({ Resend }) => {
+      const resend = new Resend(process.env.RESEND_API_KEY)
+      return resend.emails.send({
+        from:    process.env.EMAIL_FROM ?? 'NEXUS OS <noreply@resend.dev>',
+        to:      process.env.INTERNAL_NOTIFY_EMAIL!,
+        subject: `${ok ? '✅' : '⚠️'} Pipeline ${ok ? 'complete' : 'partial'}: ${projectName}`,
+        html: `<div style="font-family:sans-serif;padding:24px">
+<h2 style="margin:0 0 12px">${ok ? 'Pipeline complete ✅' : 'Pipeline finished with errors ⚠️'}</h2>
+<p><strong>Project:</strong> ${projectName}</p>
+<p><strong>Run ID:</strong> ${runId}</p>
+<p><strong>Duration:</strong> ${Math.round(totalMs / 1000)}s · Triggered by: ${params.triggeredBy ?? 'manual'}</p>
+${liveUrl ? `<p><strong>Live URL:</strong> <a href="${liveUrl}">${liveUrl}</a></p>` : ''}
+${!ok ? `<p><strong>Failed step:</strong> ${!forgeResult.ok ? 'FORGE' : !buildResult.ok ? 'BUILD' : 'DEPLOY'} — ${forgeResult.error ?? buildResult.error ?? deployResult.error ?? 'unknown'}</p>` : ''}
+</div>`,
+      })
+    }).catch(err => console.error('[orchestrator] completion email failed:', err))
+  }
 
   return {
     runId, ok, totalMs, liveUrl,
