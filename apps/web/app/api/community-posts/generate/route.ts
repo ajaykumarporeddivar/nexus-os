@@ -102,8 +102,27 @@ Generate a high-scoring (9.0+) post in this exact style. The post should feel au
         maxTokens: 1200,
       })
 
-      // Extract JSON — handle markdown fences
-      const jsonStr = text.replace(/^```(?:json)?\n?/m, '').replace(/\n?```\s*$/m, '').trim()
+      // Extract JSON — strip markdown fences, then sanitize raw control chars
+      // that Groq sometimes emits as literal bytes inside string values
+      const raw = text.replace(/^```(?:json)?\n?/m, '').replace(/\n?```\s*$/m, '').trim()
+      // Walk char-by-char: inside JSON strings replace bare control chars with escapes
+      let jsonStr = ''
+      let inStr = false
+      let escaped = false
+      for (let i = 0; i < raw.length; i++) {
+        const ch = raw[i]
+        if (escaped) { jsonStr += ch; escaped = false; continue }
+        if (ch === '\\' && inStr) { jsonStr += ch; escaped = true; continue }
+        if (ch === '"') { inStr = !inStr; jsonStr += ch; continue }
+        if (inStr) {
+          if (ch === '\n')      { jsonStr += '\\n';  continue }
+          if (ch === '\r')      { jsonStr += '\\n';  continue }
+          if (ch === '\t')      { jsonStr += '\\t';  continue }
+          const code = ch.charCodeAt(0)
+          if (code < 0x20)      { continue } // drop other control chars
+        }
+        jsonStr += ch
+      }
       const parsed = JSON.parse(jsonStr) as {
         title: string; style: string; body: string; score: number;
         metrics: { label: string; score: number }[]; psychology_tip: string
