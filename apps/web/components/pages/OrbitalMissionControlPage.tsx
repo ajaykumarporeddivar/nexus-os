@@ -1,128 +1,83 @@
 'use client'
 
-import { useState } from 'react'
-
 export default function OrbitalMissionControlPage() {
-  const [fullscreen, setFullscreen] = useState(false)
-
   return (
-    <div
-      style={{
-        position:   fullscreen ? 'fixed' : 'relative',
-        inset:      fullscreen ? 0 : 'auto',
-        zIndex:     fullscreen ? 9999 : 'auto',
-        display:    'flex',
-        flexDirection: 'column',
-        height:     fullscreen ? '100vh' : 'calc(100vh - 58px)',
-        background: '#050807',
-      }}
-    >
-      {/* Minimal top bar — only visible outside fullscreen */}
-      {!fullscreen && (
-        <div style={{
-          display:        'flex',
-          alignItems:     'center',
-          justifyContent: 'space-between',
-          padding:        '8px 16px',
-          borderBottom:   '0.5px solid rgba(183,255,74,0.18)',
-          background:     'rgba(5,8,7,0.9)',
-          flexShrink:     0,
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <span style={{
-              border:     '1px solid #b7ff4a',
-              color:      '#b7ff4a',
-              fontFamily: 'monospace',
-              fontSize:   9,
-              fontWeight: 800,
-              padding:    '3px 5px',
-              letterSpacing: '0.5px',
-            }}>NX</span>
-            <div>
-              <div style={{ fontSize: 11, fontWeight: 700, color: '#f3f7f4', letterSpacing: '1.5px', fontFamily: 'monospace' }}>
-                ORBITAL MISSION CONTROL
-              </div>
-              <div style={{ fontSize: 9, color: '#89938e', fontFamily: 'monospace', marginTop: 1 }}>
-                N-body physics · Velocity-Verlet integrator · Kepler elements
-              </div>
-            </div>
-          </div>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <a
-              href="/orbital-mission-control.html"
-              target="_blank"
-              rel="noopener noreferrer"
-              style={{
-                fontSize:    10,
-                fontFamily:  'monospace',
-                color:       '#89938e',
-                border:      '1px solid rgba(255,255,255,0.1)',
-                borderRadius: 4,
-                padding:     '5px 10px',
-                textDecoration: 'none',
-                cursor:      'pointer',
-              }}
-            >
-              ↗ OPEN FULL TAB
-            </a>
-            <button
-              onClick={() => setFullscreen(true)}
-              style={{
-                fontSize:    10,
-                fontFamily:  'monospace',
-                color:       '#071006',
-                background:  '#b7ff4a',
-                border:      '1px solid #b7ff4a',
-                borderRadius: 4,
-                padding:     '5px 10px',
-                cursor:      'pointer',
-                fontWeight:  700,
-              }}
-            >
-              ⛶ FULLSCREEN
-            </button>
-          </div>
+    <div style={{
+      display:        'flex',
+      flexDirection:  'column',
+      alignItems:     'center',
+      justifyContent: 'center',
+      height:         'calc(100vh - 58px)',
+      background:     '#050807',
+      gap:            32,
+      padding:        24,
+    }}>
+      {/* Branding */}
+      <div style={{ textAlign: 'center' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, marginBottom: 16 }}>
+          <span style={{
+            border:        '1px solid #b7ff4a',
+            color:         '#b7ff4a',
+            fontFamily:    'monospace',
+            fontSize:      10,
+            fontWeight:    800,
+            padding:       '4px 7px',
+            letterSpacing: '0.5px',
+          }}>NX</span>
+          <span style={{ fontSize: 11, fontWeight: 700, color: '#b7ff4a', fontFamily: 'monospace', letterSpacing: '2px' }}>
+            ORBITAL MISSION CONTROL
+          </span>
         </div>
-      )}
+        <div style={{ fontSize: 13, color: '#f3f7f4', fontFamily: 'monospace', letterSpacing: '0.5px', marginBottom: 8 }}>
+          N-body physics simulation · Velocity-Verlet integrator
+        </div>
+        <div style={{ fontSize: 11, color: '#89938e', fontFamily: 'monospace' }}>
+          LEO orbits · Trans-lunar injection · Mars heliocentric · Lunar slingshot
+        </div>
+      </div>
 
-      {/* Fullscreen exit button */}
-      {fullscreen && (
-        <button
-          onClick={() => setFullscreen(false)}
-          style={{
-            position:   'fixed',
-            top:        16,
-            right:      16,
-            zIndex:     10000,
-            fontSize:   10,
-            fontFamily: 'monospace',
-            color:      '#071006',
-            background: '#b7ff4a',
-            border:     '1px solid #b7ff4a',
+      {/* Feature pills */}
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'center', maxWidth: 520 }}>
+        {['Burn execution', 'Circularize', 'Δv slider', 'Time warp ×86400', 'Kepler elements', 'Prediction line', 'Energy drift monitor', 'Guided demo mode'].map(f => (
+          <span key={f} style={{
+            fontSize:     10,
+            fontFamily:   'monospace',
+            color:        '#5ee7f2',
+            border:       '1px solid rgba(94,231,242,0.25)',
             borderRadius: 4,
-            padding:    '5px 10px',
-            cursor:     'pointer',
-            fontWeight: 700,
-          }}
-        >
-          ✕ EXIT
-        </button>
-      )}
+            padding:      '4px 10px',
+          }}>{f}</span>
+        ))}
+      </div>
 
-      {/* Simulation iframe — gets its own full viewport */}
-      <iframe
-        src="/orbital-mission-control.html"
-        title="Orbital Mission Control — N-body physics simulation"
+      {/* Launch button */}
+      <a
+        href="/orbital-mission-control.html"
+        target="_blank"
+        rel="noopener noreferrer"
         style={{
-          flex:        1,
-          border:      'none',
-          width:       '100%',
-          display:     'block',
-          background:  '#050807',
+          display:        'inline-flex',
+          alignItems:     'center',
+          gap:            10,
+          background:     '#b7ff4a',
+          color:          '#071006',
+          fontFamily:     'monospace',
+          fontWeight:     800,
+          fontSize:       13,
+          letterSpacing:  '1px',
+          padding:        '14px 32px',
+          borderRadius:   6,
+          textDecoration: 'none',
+          border:         'none',
+          cursor:         'pointer',
         }}
-        allow="fullscreen"
-        loading="eager"
-      />
+      >
+        ⊙ LAUNCH SIMULATION
+      </a>
+
+      <div style={{ fontSize: 10, color: '#89938e', fontFamily: 'monospace' }}>
+        Opens full-screen in a new tab · No install required
+      </div>
     </div>
   )
 }
