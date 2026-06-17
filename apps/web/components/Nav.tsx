@@ -12,7 +12,8 @@ const ALL_PAGES = [
   'runtime', 'dashboard', 'vault', 'agent-editor', 'audit',
   'trending', 'workspaces', 'pricing', 'deploy', 'build', 'pipeline', 'evolve',
   'higgs-ai', 'keys', 'admin', 'client-agents', 'image-prompts', 'video-prompts',
-  'leads', 'proposals', 'growth', 'chasebot', 'arbflow',
+  'community-posts',
+  'leads', 'proposals', 'growth', 'chasebot', 'arbflow', 'agentic-career', 'agent-os',
 ] as const
 
 export type PageId = typeof ALL_PAGES[number]
@@ -113,6 +114,21 @@ const GROUPS: NavGroup[] = [
         description: 'Niche validator · offer builder · content engine',
         isNew: true,
       },
+      {
+        id: 'agentic-career',
+        label: 'Agentic Career OS',
+        icon: 'AI',
+        description: 'FDE career agents, proof engine and war room',
+        isNew: true,
+      },
+      {
+        id: 'agent-os',
+        label: 'Claude Agent OS',
+        icon: 'OS',
+        description: '12-layer autonomous execution runtime',
+        href: '/agent-os',
+        isNew: true,
+      },
     ],
   },
   {
@@ -155,6 +171,13 @@ const GROUPS: NavGroup[] = [
         label: 'Video Prompts',
         icon: '◉',
         description: '8-sec UGC ad prompts for Nano Banana & free AI video',
+        isNew: true,
+      },
+      {
+        id: 'community-posts',
+        label: 'Community Posts',
+        icon: '✦',
+        description: 'AI-generated founder posts in 15 styles — one click',
         isNew: true,
       },
       {

@@ -108,7 +108,8 @@ const TIERS = [
   },
   {
     name: 'Starter',
-    price: '$49',
+    price: '₹4,100',
+    priceUsd: '$49',
     period: '/month',
     highlight: false,
     badge: null,
@@ -125,7 +126,8 @@ const TIERS = [
   },
   {
     name: 'Agency',
-    price: '$199',
+    price: '₹16,600',
+    priceUsd: '$199',
     period: '/month',
     highlight: true,
     badge: 'MOST POPULAR',
@@ -756,6 +758,9 @@ export default function LandingPage() {
                 <span style={{ fontSize: '2.25rem', fontWeight: 900, color: '#f8fafc', letterSpacing: '-0.03em' }}>{tier.price}</span>
                 {tier.period && <span style={{ fontSize: '0.875rem', color: '#475569' }}>{tier.period}</span>}
               </div>
+              {'priceUsd' in tier && (tier as {priceUsd: string}).priceUsd && (
+                <div style={{ fontSize: '0.75rem', color: '#64748b', marginBottom: '0.25rem' }}>{(tier as {priceUsd: string}).priceUsd}/mo · India pricing</div>
+              )}
 
               <div style={{ marginBottom: '1.75rem', minHeight: '1rem' }} />
 

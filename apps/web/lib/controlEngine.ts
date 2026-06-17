@@ -105,6 +105,84 @@ export function checkBuildFileCount(files: Record<string, string>): ControlCheck
 // ─── Check 4: Oscillation Detector ────────────────────────────────────────────
 // Same brief keeps failing → flag for human review instead of infinite retry
 
+const BUILD_COHERENCE_FILES = [
+  'src/app/page.tsx',
+  'src/app/dashboard/page.tsx',
+  'src/lib/data.ts',
+  'src/lib/types.ts',
+  'src/components/layout.tsx',
+  'src/components/ui.tsx',
+]
+
+const BUILD_GENERIC_PATTERNS = [
+  /your ai-generated saas application/i,
+  /generic saas/i,
+  /nexus preview/i,
+  /lorem ipsum/i,
+  /placeholder/i,
+]
+
+const BUILD_TERM_STOP_WORDS = new Set([
+  'about','above','after','again','agent','agents','application','based','build','builder','business','client','clients',
+  'create','dashboard','different','every','feature','features','first','from','generate','generic','input','micro','needs',
+  'platform','please','prompt','saas','service','should','system','their','there','these','thing','those','tools','using',
+  'users','where','which','with','workflow','workflows','would','your',
+])
+
+function extractBriefTerms(briefText: string, limit = 14): string[] {
+  const counts = new Map<string, number>()
+  const words = briefText
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, ' ')
+    .split(/\s+/)
+    .map(w => w.replace(/^-+|-+$/g, ''))
+    .filter(w => w.length >= 4 && !BUILD_TERM_STOP_WORDS.has(w) && !/^\d+$/.test(w))
+
+  for (const word of words) counts.set(word, (counts.get(word) ?? 0) + 1)
+  return [...counts.entries()]
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .map(([word]) => word)
+    .slice(0, limit)
+}
+
+export function checkBuildDomainCoherence(
+  briefText: string,
+  files: Record<string, string>,
+): ControlCheckResult {
+  const terms = extractBriefTerms(briefText)
+  const appText = BUILD_COHERENCE_FILES
+    .map(file => files[file] ?? '')
+    .join('\n')
+    .toLowerCase()
+
+  const uniqueMatches = [...new Set(terms.filter(term => appText.includes(term)))]
+  const genericHits = BUILD_GENERIC_PATTERNS
+    .filter(pattern => pattern.test(files['src/app/page.tsx'] ?? appText))
+    .map(pattern => pattern.source)
+
+  const threshold = Math.min(5, Math.max(2, Math.ceil(terms.length * 0.35)))
+  const enoughSpecificity = terms.length === 0 || uniqueMatches.length >= threshold
+  const passed = enoughSpecificity && genericHits.length === 0
+
+  return {
+    passed,
+    check: 'build_domain_coherence',
+    reason: !passed
+      ? genericHits.length > 0
+        ? `Generated app contains generic fallback copy (${genericHits.length} hit) - refusing to deploy prompt-agnostic SaaS output`
+        : `Generated app references ${uniqueMatches.length} domain terms from the brief (need >=${threshold}) - likely mismatched output`
+      : undefined,
+    data: {
+      briefTermCount: terms.length,
+      matchCount: uniqueMatches.length,
+      matched: uniqueMatches.slice(0, 12),
+      missing: terms.filter(term => !uniqueMatches.includes(term)).slice(0, 12),
+      genericHits,
+      threshold,
+    },
+  }
+}
+
 export async function checkOscillation(
   briefText:   string,
   projectName: string,
@@ -196,13 +274,83 @@ export async function runForgeGate(params: {
   }
 }
 
+/** Check that named imports from internal @/ paths all exist in the generated files */
+export function checkExportCoherence(files: Record<string, string>): ControlCheckResult {
+  // Map each generated file path (src/...) → its exported names
+  const exportMap = new Map<string, Set<string>>()
+  for (const [filePath, content] of Object.entries(files)) {
+    const exports = new Set<string>()
+    // named exports: export const/function/class/type/interface Foo
+    for (const m of content.matchAll(/export\s+(?:const|function|class|type|interface|enum)\s+(\w+)/g)) {
+      exports.add(m[1])
+    }
+    // re-exports: export { Foo, Bar }
+    for (const m of content.matchAll(/export\s*\{([^}]+)\}/g)) {
+      for (const name of m[1].split(',')) {
+        const clean = name.trim().split(/\s+as\s+/).pop()?.trim()
+        if (clean) exports.add(clean)
+      }
+    }
+    // default export counts as "default"
+    if (/export\s+default/.test(content)) exports.add('default')
+    exportMap.set(filePath, exports)
+  }
+
+  const broken: string[] = []
+
+  for (const [importingFile, content] of Object.entries(files)) {
+    // find: import { Foo, Bar } from '@/lib/something'
+    for (const m of content.matchAll(/import\s*\{([^}]+)\}\s*from\s*['"](@\/[^'"]+)['"]/g)) {
+      const names = m[1].split(',').map(n => {
+        const parts = n.trim().split(/\s+as\s+/)
+        return parts[0].trim()
+      }).filter(n => n && n !== 'type') // skip type-only imports
+
+      const importPath = m[2] // e.g. @/lib/data
+      // resolve to a generated file key: strip @/ prefix, try with common extensions
+      const relPath = importPath.replace(/^@\//, 'src/')
+      const candidates = [
+        relPath,
+        relPath + '.ts',
+        relPath + '.tsx',
+        relPath + '/index.ts',
+        relPath + '/index.tsx',
+      ]
+      const resolvedKey = candidates.find(c => exportMap.has(c))
+      if (!resolvedKey) continue // file not in generated set — external dep, skip
+
+      const availableExports = exportMap.get(resolvedKey)!
+      for (const name of names) {
+        if (!availableExports.has(name)) {
+          broken.push(`'${name}' not exported from ${importPath} (imported in ${importingFile})`)
+        }
+      }
+    }
+  }
+
+  return {
+    passed: broken.length === 0,
+    check:  'build_export_coherence',
+    reason: broken.length > 0
+      ? `${broken.length} broken named import(s) will cause Vercel build failure: ${broken.slice(0, 3).join('; ')}${broken.length > 3 ? ` (+${broken.length - 3} more)` : ''}`
+      : undefined,
+    data: { broken },
+  }
+}
+
 /** Run BUILD-level checks (after BUILD, before DEPLOY) */
 export function runBuildGate(params: {
   files: Record<string, string>
+  briefText?: string
 }): ControlGateResult {
   const checks: ControlCheckResult[] = [
     checkBuildFileCount(params.files),
+    checkExportCoherence(params.files),
   ]
+  const fileCountPassed = checks[0].passed
+  if (fileCountPassed && params.briefText?.trim()) {
+    checks.push(checkBuildDomainCoherence(params.briefText, params.files))
+  }
   const blocking = checks.find(c => !c.passed) ?? null
   return { allowed: blocking === null, checks, blocking }
 }

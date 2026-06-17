@@ -4,6 +4,8 @@ import { useSearchParams, useRouter } from 'next/navigation'
 import { Suspense, useState, useCallback, useEffect, useRef } from 'react'
 import dynamic from 'next/dynamic'
 import Nav, { type PageId } from '@/components/Nav'
+import ErrorBoundary from '@/components/ErrorBoundary'
+import OnboardingModal from '@/components/OnboardingModal'
 import OverviewPage from '@/components/pages/OverviewPage'
 
 const PageLoader = () => <div className="flex-1 flex items-center justify-center text-ink3 text-sm animate-blink">Loading…</div>
@@ -23,6 +25,7 @@ const PricingPage           = dynamic(() => import('@/components/pages/PricingPa
 const DeployPage            = dynamic(() => import('@/components/pages/DeployPage'),            { loading: PageLoader })
 const BuildEnginePage       = dynamic(() => import('@/components/pages/BuildEnginePage'),       { loading: PageLoader })
 const PipelinePage          = dynamic(() => import('@/components/pages/PipelinePage'),          { loading: PageLoader })
+const AgenticCareerPage     = dynamic(() => import('@/components/pages/AgenticCareerPage'),     { loading: PageLoader })
 const EvolvePage            = dynamic(() => import('@/components/pages/EvolvePage'),            { loading: PageLoader })
 const HiggsAIPage           = dynamic(() => import('@/components/pages/HiggsAIPage'),           { loading: PageLoader })
 const KeysPage              = dynamic(() => import('@/components/pages/KeysPage'),              { loading: PageLoader })
@@ -30,6 +33,7 @@ const AdminPage             = dynamic(() => import('@/components/pages/AdminPage
 const ClientAgentsPage      = dynamic(() => import('@/components/pages/ClientAgentsPage'),      { loading: PageLoader })
 const ImagePromptsPage      = dynamic(() => import('@/components/pages/ImagePromptsPage'),      { loading: PageLoader })
 const VideoPromptsPage      = dynamic(() => import('@/components/pages/VideoPromptsPage'),      { loading: PageLoader })
+const CommunityPostsPage    = dynamic(() => import('@/components/pages/CommunityPostsPage'),    { loading: PageLoader })
 const GrowthPage            = dynamic(() => import('@/components/pages/GrowthPage'),            { loading: PageLoader })
 const ChaseBotPage          = dynamic(() => import('@/components/pages/ChaseBotPage'),          { loading: PageLoader })
 const ArbFlowPage           = dynamic(() => import('@/components/pages/ArbFlowPage'),           { loading: PageLoader })
@@ -43,7 +47,8 @@ const VALID_PAGES = [
   'forge', 'dashboard', 'vault', 'agent-editor', 'audit',
   'trending', 'workspaces', 'pricing', 'deploy', 'build', 'pipeline', 'evolve',
   'higgs-ai', 'keys', 'admin', 'client-agents', 'image-prompts', 'video-prompts',
-  'leads', 'proposals', 'growth', 'chasebot', 'arbflow',
+  'community-posts',
+  'leads', 'proposals', 'growth', 'chasebot', 'arbflow', 'agentic-career',
 ] as const
 
 function ShellInner() {
@@ -58,6 +63,7 @@ function ShellInner() {
   const [apiConnected,  setApiConnected]  = useState(false)
   const [showShortcuts, setShowShortcuts] = useState(false)
   const [onboarded,     setOnboarded]     = useState(true)
+  const [showWelcome,   setShowWelcome]   = useState(false)
   const lastKeyRef = useRef<string | null>(null)
   const lastKeyTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const voiceNav = useVoiceNavigation()
@@ -73,8 +79,9 @@ function ShellInner() {
     pipeline: 'One-Click Pipeline', evolve: 'Evolve', 'higgs-ai': 'Higgs AI',
     keys: 'API Keys', admin: 'Admin', 'client-agents': 'Client Agents',
     'image-prompts': 'Image Prompts', 'video-prompts': 'Video Prompts',
+    'community-posts': 'Community Posts',
     leads: 'Lead Pipeline', proposals: 'Proposals', growth: 'Growth Engine',
-    chasebot: 'ChaseBot CB', arbflow: 'ArbFlow',
+    chasebot: 'ChaseBot CB', arbflow: 'ArbFlow', 'agentic-career': 'Agentic Career OS',
   }
 
   // Restore sidebar + theme from localStorage/cookie on mount
@@ -86,6 +93,7 @@ function ShellInner() {
     if (savedTheme) applyTheme(savedTheme)
 
     if (!localStorage.getItem('nexus_onboarded')) setOnboarded(false)
+    if (!localStorage.getItem('nexus_onboarding_modal_seen')) setShowWelcome(true)
 
     // Check server-side AI provider status — any configured provider makes the pipeline runnable.
     fetch('/api/health', { cache: 'no-store' })
@@ -230,6 +238,7 @@ function ShellInner() {
 
             {/* Page content — key triggers re-animation on nav */}
             <div key={currentPage} className="flex-1 animate-fadein">
+              <ErrorBoundary label={currentPage}>
               {currentPage === 'journey'         && <JourneyPage onNavigate={onNavigate} />}
               {currentPage === 'client-delivery' && <ClientDeliveryPage />}
               {currentPage === 'overview'        && <OverviewPage onNavigate={onNavigate} />}
@@ -246,6 +255,7 @@ function ShellInner() {
               {currentPage === 'deploy'          && <DeployPage />}
               {currentPage === 'build'           && <BuildEnginePage />}
               {currentPage === 'pipeline'        && <PipelinePage />}
+              {currentPage === 'agentic-career'  && <AgenticCareerPage />}
               {currentPage === 'evolve'          && <EvolvePage />}
               {currentPage === 'higgs-ai'        && <HiggsAIPage />}
               {currentPage === 'keys'            && <KeysPage />}
@@ -253,9 +263,11 @@ function ShellInner() {
               {currentPage === 'client-agents'  && <ClientAgentsPage />}
               {currentPage === 'image-prompts'  && <ImagePromptsPage />}
               {currentPage === 'video-prompts'  && <VideoPromptsPage />}
+              {currentPage === 'community-posts' && <CommunityPostsPage />}
               {currentPage === 'growth'         && <GrowthPage />}
               {currentPage === 'chasebot'       && <ChaseBotPage />}
               {currentPage === 'arbflow'        && <ArbFlowPage />}
+              </ErrorBoundary>
             </div>
           </main>
 
@@ -289,6 +301,14 @@ function ShellInner() {
                 <p className="text-[10px] text-ink3 mt-4 text-center font-mono">press ? to dismiss</p>
               </div>
             </div>
+          )}
+
+          {/* First-visit welcome modal */}
+          {showWelcome && (
+            <OnboardingModal
+              onClose={() => setShowWelcome(false)}
+              onNavigate={onNavigate}
+            />
           )}
 
           {/* AutoPilot guide panel (fixed right) */}

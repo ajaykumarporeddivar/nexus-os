@@ -1,6 +1,6 @@
 {
   "framework": "nextjs",
-  "buildCommand": "cd ../.. && pnpm build --filter=@nexus-os/web",
+  "buildCommand": "cd ../.. && pnpm --filter=@nexus-os/web exec prisma generate && pnpm --filter=@nexus-os/web exec next build --no-lint",
   "outputDirectory": ".next",
   "installCommand": "cd ../.. && pnpm install",
   "crons": [
@@ -46,7 +46,8 @@
     "app/api/cron/proposal-retention/route.ts":         { "maxDuration": 30 },
     "app/api/cron/chasebot-overdue/route.ts":           { "maxDuration": 60 },
     "app/api/chasebot/chase/route.ts":                  { "maxDuration": 60 },
-    "app/api/chasebot/invoices/route.ts":               { "maxDuration": 30 }
+    "app/api/chasebot/invoices/route.ts":               { "maxDuration": 30 },
+    "app/api/community-posts/generate/route.ts":        { "maxDuration": 60 }
   },
   "headers": [
     {

@@ -83,7 +83,7 @@ const ADMIN_EMAILS = new Set(
     .split(',').map(e => e.trim()).filter(Boolean)
 )
 
-function authDbTimeout<T>(promise: Promise<T>, label: string, ms = 2500): Promise<T> {
+function authDbTimeout<T>(promise: Promise<T>, label: string, ms = process.env.NODE_ENV === 'development' ? 8000 : 2500): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms)
     promise.then(

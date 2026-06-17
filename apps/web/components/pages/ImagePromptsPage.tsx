@@ -180,7 +180,26 @@ function ImagePanel({ prompt, onImageSaved }: {
         body:    JSON.stringify({ id: prompt.id, aspectRatio }),
       })
       const json = await res.json()
-      if (!json.ok) throw new Error(json.error)
+      if (!json.ok) {
+        // Auto-fallback to free providers on quota exhaustion
+        const isQuota = json.error?.includes('429') || json.error?.toLowerCase().includes('quota')
+        if (isQuota) {
+          const freeRes  = await fetch('/api/image-prompts/render-free', {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body:    JSON.stringify({ id: prompt.id, aspectRatio }),
+          })
+          const freeJson = await freeRes.json()
+          if (!freeJson.ok) throw new Error(freeJson.error)
+          const src = `data:${freeJson.data.imageMime};base64,${freeJson.data.imageData}`
+          setImageSrc(src)
+          setFlatPrompt('')
+          setDurationMs(null)
+          onImageSaved(prompt.id, freeJson.data.imageData, freeJson.data.imageMime)
+          return
+        }
+        throw new Error(json.error)
+      }
       const src = `data:${json.data.mimeType};base64,${json.data.base64}`
       setImageSrc(src)
       setFlatPrompt(json.data.flatPrompt)
@@ -359,8 +378,15 @@ function PrettyJson({ json }: { json: string }) {
     // use raw
   }
 
+  // Escape HTML BEFORE highlighting — JSON values may carry AI/user content;
+  // unescaped <img onerror=…> inside a string value would execute (XSS).
+  const escaped = formatted
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+
   // Syntax highlight: keys, strings, numbers
-  const highlighted = formatted
+  const highlighted = escaped
     .replace(/(")([\w_]+)(")\s*:/g, '<span class="text-acid">$1$2$3</span>:')
     .replace(/:\s*(")(.*?)(")/g, ': <span class="text-amber-300">$1$2$3</span>')
     .replace(/:\s*(\d+\.?\d*)/g, ': <span class="text-blue-300">$1</span>')
