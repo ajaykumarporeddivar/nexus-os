@@ -12,7 +12,7 @@ const ALL_PAGES = [
   'runtime', 'dashboard', 'vault', 'agent-editor', 'audit',
   'trending', 'workspaces', 'pricing', 'deploy', 'build', 'pipeline', 'evolve',
   'higgs-ai', 'keys', 'admin', 'client-agents', 'image-prompts', 'video-prompts',
-  'community-posts',
+  'community-posts', 'orbital-mission-control',
   'leads', 'proposals', 'growth', 'chasebot', 'arbflow', 'agentic-career', 'agent-os',
 ] as const
 
@@ -178,6 +178,13 @@ const GROUPS: NavGroup[] = [
         label: 'Community Posts',
         icon: '✦',
         description: 'AI-generated founder posts in 15 styles — one click',
+        isNew: true,
+      },
+      {
+        id: 'orbital-mission-control',
+        label: 'Orbital Mission Control',
+        icon: '⊙',
+        description: 'N-body orbital physics lab — burns, transfers, Kepler elements',
         isNew: true,
       },
       {

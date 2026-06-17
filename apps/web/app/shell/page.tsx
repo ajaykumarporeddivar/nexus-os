@@ -33,7 +33,8 @@ const AdminPage             = dynamic(() => import('@/components/pages/AdminPage
 const ClientAgentsPage      = dynamic(() => import('@/components/pages/ClientAgentsPage'),      { loading: PageLoader })
 const ImagePromptsPage      = dynamic(() => import('@/components/pages/ImagePromptsPage'),      { loading: PageLoader })
 const VideoPromptsPage      = dynamic(() => import('@/components/pages/VideoPromptsPage'),      { loading: PageLoader })
-const CommunityPostsPage    = dynamic(() => import('@/components/pages/CommunityPostsPage'),    { loading: PageLoader })
+const CommunityPostsPage          = dynamic(() => import('@/components/pages/CommunityPostsPage'),          { loading: PageLoader })
+const OrbitalMissionControlPage   = dynamic(() => import('@/components/pages/OrbitalMissionControlPage'),   { loading: PageLoader })
 const GrowthPage            = dynamic(() => import('@/components/pages/GrowthPage'),            { loading: PageLoader })
 const ChaseBotPage          = dynamic(() => import('@/components/pages/ChaseBotPage'),          { loading: PageLoader })
 const ArbFlowPage           = dynamic(() => import('@/components/pages/ArbFlowPage'),           { loading: PageLoader })
@@ -47,7 +48,7 @@ const VALID_PAGES = [
   'forge', 'dashboard', 'vault', 'agent-editor', 'audit',
   'trending', 'workspaces', 'pricing', 'deploy', 'build', 'pipeline', 'evolve',
   'higgs-ai', 'keys', 'admin', 'client-agents', 'image-prompts', 'video-prompts',
-  'community-posts',
+  'community-posts', 'orbital-mission-control',
   'leads', 'proposals', 'growth', 'chasebot', 'arbflow', 'agentic-career',
 ] as const
 
@@ -80,6 +81,7 @@ function ShellInner() {
     keys: 'API Keys', admin: 'Admin', 'client-agents': 'Client Agents',
     'image-prompts': 'Image Prompts', 'video-prompts': 'Video Prompts',
     'community-posts': 'Community Posts',
+    'orbital-mission-control': 'Orbital Mission Control',
     leads: 'Lead Pipeline', proposals: 'Proposals', growth: 'Growth Engine',
     chasebot: 'ChaseBot CB', arbflow: 'ArbFlow', 'agentic-career': 'Agentic Career OS',
   }
@@ -263,7 +265,8 @@ function ShellInner() {
               {currentPage === 'client-agents'  && <ClientAgentsPage />}
               {currentPage === 'image-prompts'  && <ImagePromptsPage />}
               {currentPage === 'video-prompts'  && <VideoPromptsPage />}
-              {currentPage === 'community-posts' && <CommunityPostsPage />}
+              {currentPage === 'community-posts'         && <CommunityPostsPage />}
+              {currentPage === 'orbital-mission-control' && <OrbitalMissionControlPage />}
               {currentPage === 'growth'         && <GrowthPage />}
               {currentPage === 'chasebot'       && <ChaseBotPage />}
               {currentPage === 'arbflow'        && <ArbFlowPage />}
