@@ -266,6 +266,13 @@ const GROUPS: NavGroup[] = [
         isNew: true,
       },
       {
+        id: 'sales-os',
+        label: 'Sales OS',
+        icon: '💰',
+        description: 'Governor-orchestrated multi-agent sales engine with KnowledgeOS',
+        isNew: true,
+      },
+      {
         id: 'orbital-mission-control',
         label: 'Orbital Mission Control',
         icon: 'OM',
@@ -299,13 +306,6 @@ const GROUPS: NavGroup[] = [
         icon: '🌾',
         description: '₹3,500 → 10/10 Farm OS — step-by-step deploy guide for Indian farmers',
         href: '/agrios-kisan-deploy.html',
-        isNew: true,
-      },
-      {
-        id: 'sales-os',
-        label: 'Sales OS',
-        icon: '💰',
-        description: 'Governor-orchestrated multi-agent sales engine with KnowledgeOS',
         isNew: true,
       },
     ],
