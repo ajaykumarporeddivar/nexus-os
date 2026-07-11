@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useSession, signIn, signOut } from 'next-auth/react'
 import { useWorkspace } from '@/lib/workspaceContext'
+import { accessForPage, planRank } from '@/lib/featureAccess'
 
 // ─── Page registry ────────────────────────────────────────────────────────────
 // ALL_PAGES drives PageId — keep every route here even if removed from sidebar
@@ -11,22 +12,13 @@ const ALL_PAGES = [
   'journey', 'client-delivery', 'overview', 'reasoning', 'forge',
   'runtime', 'dashboard', 'vault', 'agent-editor', 'audit',
   'trending', 'workspaces', 'pricing', 'deploy', 'build', 'pipeline', 'evolve',
-  'higgs-ai', 'keys', 'admin', 'client-agents', 'image-prompts', 'video-prompts',
-  'community-posts', 'orbital-mission-control',
-  'leads', 'proposals', 'growth', 'chasebot', 'arbflow', 'agentic-career', 'agent-os',
+  'higgs-ai', 'keys', 'admin', 'client-agents', 'image-prompts', 'branding-sovereign', 'prompt-architect', 'visual-compiler', 'cognitive-os', 'claude-tag-playbook', 'video-prompts',
+  'community-posts', 'orbital-mission-control', 'signaldesk-pro', 'agrios-kisan', 'sales-os',
+  'leads', 'proposals', 'growth', 'chasebot', 'arbflow', 'agentic-career', 'neon-drift', 'pcb-agent-os', 'freelancer-os', 'agent-os', 'client-command-center',
+  'problem-solver', 'structure-os',
 ] as const
 
 export type PageId = typeof ALL_PAGES[number]
-
-// ─── Plan rank ────────────────────────────────────────────────────────────────
-
-const PLAN_RANK: Record<string, number> = {
-  free: 0, starter: 1, agency: 2, enterprise: 3,
-}
-
-function planRank(plan: string) {
-  return PLAN_RANK[plan] ?? 0
-}
 
 // ─── Nav group / item types ───────────────────────────────────────────────────
 
@@ -35,7 +27,6 @@ interface NavItemDef {
   label:       string
   icon:        string
   description: string
-  minPlan?:    string   // locks item below this plan (shows upgrade prompt)
   flowNext?:   PageId   // shows a subtle "→ next" connector below this item
   isNew?:      boolean  // shows NEW badge (used for recently added features)
   href?:       string   // if set, renders as external <a> link (opens in new tab)
@@ -63,6 +54,13 @@ const GROUPS: NavGroup[] = [
         description: 'Guided walkthrough — start here',
       },
       {
+        id: 'client-command-center',
+        label: 'Client Command',
+        icon: 'CC',
+        description: 'LinkedIn leads, outreach scripts and booked-call pipeline',
+        isNew: true,
+      },
+      {
         id: 'client-delivery',
         label: 'Client Delivery',
         icon: '⚡',
@@ -72,7 +70,7 @@ const GROUPS: NavGroup[] = [
     ],
   },
   {
-    label: 'Deliver',
+    label: 'Build Pipeline',
     items: [
       {
         id: 'pipeline',
@@ -107,33 +105,18 @@ const GROUPS: NavGroup[] = [
         description: 'Feedback → AI changes → redeploy',
         isNew: true,
       },
-      {
-        id: 'arbflow',
-        label: 'ArbFlow',
-        icon: '◈',
-        description: 'Niche validator · offer builder · content engine',
-        isNew: true,
-      },
-      {
-        id: 'agentic-career',
-        label: 'Agentic Career OS',
-        icon: 'AI',
-        description: 'FDE career agents, proof engine and war room',
-        isNew: true,
-      },
-      {
-        id: 'agent-os',
-        label: 'Claude Agent OS',
-        icon: 'OS',
-        description: '12-layer autonomous execution runtime',
-        href: '/agent-os',
-        isNew: true,
-      },
     ],
   },
   {
     label: 'Research',
     items: [
+      {
+        id: 'problem-solver',
+        label: '9 Solutions Engine',
+        icon: '⚡',
+        description: '60+ problems · 4-stage AI chain · one-click FORGE build',
+        isNew: true,
+      },
       {
         id: 'trending',
         label: 'Trending',
@@ -153,41 +136,6 @@ const GROUPS: NavGroup[] = [
         description: 'GOVERNOR loop — runs until signal drops',
       },
       {
-        id: 'higgs-ai',
-        label: 'Higgs AI',
-        icon: '✦',
-        description: 'Generate images with 6 AI models',
-        isNew: true,
-      },
-      {
-        id: 'image-prompts',
-        label: 'Image Prompts',
-        icon: '⬡',
-        description: 'AI-generated brand visual prompts (JSON)',
-        isNew: true,
-      },
-      {
-        id: 'video-prompts',
-        label: 'Video Prompts',
-        icon: '◉',
-        description: '8-sec UGC ad prompts for Nano Banana & free AI video',
-        isNew: true,
-      },
-      {
-        id: 'community-posts',
-        label: 'Community Posts',
-        icon: '✦',
-        description: 'AI-generated founder posts in 15 styles — one click',
-        isNew: true,
-      },
-      {
-        id: 'orbital-mission-control',
-        label: 'Orbital Mission Control',
-        icon: '⊙',
-        description: 'N-body orbital physics lab — burns, transfers, Kepler elements',
-        isNew: true,
-      },
-      {
         id: 'vault',
         label: 'Prompt Vault',
         icon: '◈',
@@ -196,8 +144,134 @@ const GROUPS: NavGroup[] = [
     ],
   },
   {
-    label: 'Performance',
+    label: 'Creative Lab',
     items: [
+      {
+        id: 'higgs-ai',
+        label: 'Higgs AI',
+        icon: 'HA',
+        description: 'Generate images with 6 AI models',
+        isNew: true,
+      },
+      {
+        id: 'image-prompts',
+        label: 'Image Prompts',
+        icon: 'IP',
+        description: 'AI-generated brand visual prompts',
+        isNew: true,
+      },
+      {
+        id: 'branding-sovereign',
+        label: 'Branding Sovereign',
+        icon: 'BR',
+        description: 'Brand systems, packaging and 10X prompts',
+        isNew: true,
+      },
+      {
+        id: 'prompt-architect',
+        label: 'Prompt Architect',
+        icon: 'PA',
+        description: 'Compile visual specs into image prompts',
+        isNew: true,
+      },
+      {
+        id: 'visual-compiler',
+        label: 'Visual Compiler',
+        icon: 'VC',
+        description: 'NEXUS art direction prompts',
+        isNew: true,
+      },
+      {
+        id: 'video-prompts',
+        label: 'Video Prompts',
+        icon: 'VP',
+        description: '8-sec UGC ad prompts',
+        isNew: true,
+      },
+      {
+        id: 'community-posts',
+        label: 'Community Posts',
+        icon: 'CP',
+        description: 'Founder posts in 15 styles',
+        isNew: true,
+      },
+      {
+        id: 'claude-tag-playbook',
+        label: 'Claude Tag Playbook',
+        icon: '@C',
+        description: 'Enterprise Slack delegation plays',
+        isNew: true,
+      },
+      {
+        id: 'cognitive-os',
+        label: 'Cognitive OS',
+        icon: 'CO',
+        description: 'Enterprise intelligence architecture',
+        isNew: true,
+      },
+    ],
+  },
+  {
+    label: 'Applications',
+    items: [
+      {
+        id: 'structure-os',
+        label: 'Structure OS',
+        icon: 'SO',
+        description: 'Command structure, execution layers and operator dashboard',
+        href: '/structure-os.html',
+        isNew: true,
+      },
+      {
+        id: 'agent-os',
+        label: 'Claude Agent OS',
+        icon: 'OS',
+        description: '12-layer autonomous execution runtime',
+        href: '/agent-os',
+        isNew: true,
+      },
+      {
+        id: 'arbflow',
+        label: 'ArbFlow',
+        icon: 'AF',
+        description: 'Niche validator, offer builder and content engine',
+        isNew: true,
+      },
+      {
+        id: 'agentic-career',
+        label: 'Agentic Career OS',
+        icon: 'AI',
+        description: 'FDE career agents, proof engine and war room',
+        isNew: true,
+      },
+      {
+        id: 'neon-drift',
+        label: 'Neon Drift',
+        icon: 'ND',
+        description: '3D arcade racer with mastery and touch controls',
+        isNew: true,
+      },
+      {
+        id: 'pcb-agent-os',
+        label: 'PCB Agent OS',
+        icon: 'PCB',
+        description: 'Manufacturing intelligence and DFM gates',
+        isNew: true,
+      },
+      {
+        id: 'freelancer-os',
+        label: 'FreelancerOS',
+        icon: 'FO',
+        description: 'GST, CRM, milestones and KitOS agents',
+        isNew: true,
+      },
+      {
+        id: 'orbital-mission-control',
+        label: 'Orbital Mission Control',
+        icon: 'OM',
+        description: 'N-body orbital physics lab and mission controls',
+        isNew: true,
+      },
       {
         id: 'dashboard',
         label: 'Dashboard',
@@ -210,6 +284,28 @@ const GROUPS: NavGroup[] = [
         icon: '⬡',
         description: 'Live 3D physics sim — Three.js demo',
         href: '/newtons-cradle-3d.html',
+        isNew: true,
+      },
+      {
+        id: 'signaldesk-pro',
+        label: 'SignalDesk Pro',
+        icon: '$',
+        description: 'Live crypto signal desk with paper trading, risk and backtests',
+        isNew: true,
+      },
+      {
+        id: 'agrios-kisan',
+        label: 'AgriOS — Kisan Guide',
+        icon: '🌾',
+        description: '₹3,500 → 10/10 Farm OS — step-by-step deploy guide for Indian farmers',
+        href: '/agrios-kisan-deploy.html',
+        isNew: true,
+      },
+      {
+        id: 'sales-os',
+        label: 'Sales OS',
+        icon: '💰',
+        description: 'Governor-orchestrated multi-agent sales engine with KnowledgeOS',
         isNew: true,
       },
     ],
@@ -235,7 +331,6 @@ const GROUPS: NavGroup[] = [
         label: 'Agent Editor',
         icon: '✎',
         description: 'Tune AI agent prompts & versions',
-        minPlan: 'agency',
       },
     ],
   },
@@ -253,7 +348,6 @@ const GROUPS: NavGroup[] = [
         label: 'Audit Log',
         icon: '≡',
         description: 'Full system event trace',
-        minPlan: 'agency',
       },
       {
         id: 'keys',
@@ -266,7 +360,6 @@ const GROUPS: NavGroup[] = [
         label: 'Lead Pipeline',
         icon: '◎',
         description: 'AI-scored leads, routing & ROI',
-        minPlan: 'admin',
         isNew: true,
       },
       {
@@ -274,7 +367,6 @@ const GROUPS: NavGroup[] = [
         label: 'Proposals',
         icon: '◉',
         description: '13-SME AI proposal pipeline — RFP to delivery',
-        minPlan: 'admin',
         isNew: true,
       },
       {
@@ -282,7 +374,6 @@ const GROUPS: NavGroup[] = [
         label: 'ChaseBot CB',
         icon: '⚡',
         description: 'AI invoice follow-up & payment recovery',
-        minPlan: 'admin',
         isNew: true,
       },
       {
@@ -290,7 +381,6 @@ const GROUPS: NavGroup[] = [
         label: 'Growth Engine',
         icon: '▲',
         description: 'Share analytics, referral stats, content engine',
-        minPlan: 'free',
         isNew: true,
       },
       {
@@ -298,7 +388,6 @@ const GROUPS: NavGroup[] = [
         label: 'Admin',
         icon: '⬡',
         description: 'Platform stats, users & scheduler',
-        minPlan: 'admin',   // special sentinel — hidden entirely for non-admins
       },
     ],
   },
@@ -363,8 +452,8 @@ function NavItem({
     return (
       <button
         onClick={handleClick}
-        title={locked ? `${item.label} — Agency+ plan required` : `${item.label}${item.description ? ` — ${item.description}` : ''}`}
-        aria-label={locked ? `${item.label} — Agency+ plan required` : item.label}
+        title={locked ? `${item.label} — upgrade required` : `${item.label}${item.description ? ` — ${item.description}` : ''}`}
+        aria-label={locked ? `${item.label} — upgrade required` : item.label}
         aria-current={isActive && !locked ? 'page' : undefined}
         className={`relative w-full flex items-center justify-center py-2 rounded-lg transition-[background,color] duration-fast ease-out group ${isActive && !locked ? activeCls : idleCls}`}
       >
@@ -382,7 +471,7 @@ function NavItem({
     <button
       onClick={handleClick}
       aria-current={isActive && !locked ? 'page' : undefined}
-      aria-label={locked ? `${item.label} — Agency+ plan required` : item.label}
+      aria-label={locked ? `${item.label} — upgrade required` : item.label}
       className={`relative w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-[background,color] duration-fast ease-out group ${isActive && !locked ? activeCls : idleCls}`}
     >
       {isActive && !locked && (
@@ -396,7 +485,7 @@ function NavItem({
       </span>
       {locked && (
         <span className="text-[8px] font-bold font-mono text-ink3/50 border border-border/40 rounded px-1 flex-shrink-0">
-          AGY+
+          LOCK
         </span>
       )}
       {item.href && !locked && !item.isNew && (
@@ -469,10 +558,6 @@ export default function Nav({
   }, [session, plan])
 
   const handleNav = useCallback((id: PageId) => {
-    if (id === 'leads') {
-      window.location.href = '/shell/leads'
-      return
-    }
     onNavigate(id)
     setWsOpen(false)
     setUserMenuOpen(false)
@@ -640,9 +725,9 @@ export default function Nav({
             )}
 
             {group.items.map(item => {
-              // Admin-sentinel: hide entirely for non-admin users
-              if (item.minPlan === 'admin' && !isAdmin) return null
-              const locked = !!(item.minPlan && item.minPlan !== 'admin' && rank < planRank(item.minPlan))
+              const access = accessForPage(item.id)
+              if (access === 'admin' && !isAdmin) return null
+              const locked = access !== 'admin' && rank < planRank(access)
               return (
                 <div key={item.id}>
                   <NavItem
@@ -667,7 +752,7 @@ export default function Nav({
         ))}
 
         {/* ── Upgrade nudge for locked features ─────────────────────────────── */}
-        {rank < PLAN_RANK.agency && !isAdmin && !collapsed && (
+        {rank < planRank('agency') && !isAdmin && !collapsed && (
           <div className="mx-1 mt-2">
             <button
               onClick={() => handleNav('pricing')}

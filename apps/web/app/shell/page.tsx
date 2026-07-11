@@ -3,10 +3,12 @@
 import { useSearchParams, useRouter } from 'next/navigation'
 import { Suspense, useState, useCallback, useEffect, useRef } from 'react'
 import dynamic from 'next/dynamic'
+import { useSession } from 'next-auth/react'
 import Nav, { type PageId } from '@/components/Nav'
 import ErrorBoundary from '@/components/ErrorBoundary'
 import OnboardingModal from '@/components/OnboardingModal'
 import OverviewPage from '@/components/pages/OverviewPage'
+import { accessForPage, accessLabel, canAccessPage } from '@/lib/featureAccess'
 
 const PageLoader = () => <div className="flex-1 flex items-center justify-center text-ink3 text-sm animate-blink">Loading…</div>
 
@@ -21,23 +23,36 @@ const TrendingPage          = dynamic(() => import('@/components/pages/TrendingP
 const WorkspacesPage        = dynamic(() => import('@/components/pages/WorkspacesPage'),        { loading: PageLoader })
 const JourneyPage           = dynamic(() => import('@/components/pages/JourneyPage'),           { loading: PageLoader })
 const ClientDeliveryPage    = dynamic(() => import('@/components/pages/ClientDeliveryPage'),    { loading: PageLoader })
+const ClientCommandCenterPage = dynamic(() => import('@/components/pages/ClientCommandCenterPage'), { loading: PageLoader })
 const PricingPage           = dynamic(() => import('@/components/pages/PricingPage'),           { loading: PageLoader })
 const DeployPage            = dynamic(() => import('@/components/pages/DeployPage'),            { loading: PageLoader })
 const BuildEnginePage       = dynamic(() => import('@/components/pages/BuildEnginePage'),       { loading: PageLoader })
 const PipelinePage          = dynamic(() => import('@/components/pages/PipelinePage'),          { loading: PageLoader })
 const AgenticCareerPage     = dynamic(() => import('@/components/pages/AgenticCareerPage'),     { loading: PageLoader })
+const NeonDriftPage         = dynamic(() => import('@/components/pages/NeonDriftPage'),         { loading: PageLoader, ssr: false })
+const PcbAgentOsPage        = dynamic(() => import('@/components/pages/PcbAgentOsPage'),        { loading: PageLoader, ssr: false })
 const EvolvePage            = dynamic(() => import('@/components/pages/EvolvePage'),            { loading: PageLoader })
 const HiggsAIPage           = dynamic(() => import('@/components/pages/HiggsAIPage'),           { loading: PageLoader })
 const KeysPage              = dynamic(() => import('@/components/pages/KeysPage'),              { loading: PageLoader })
 const AdminPage             = dynamic(() => import('@/components/pages/AdminPage'),             { loading: PageLoader, ssr: false })
 const ClientAgentsPage      = dynamic(() => import('@/components/pages/ClientAgentsPage'),      { loading: PageLoader })
 const ImagePromptsPage      = dynamic(() => import('@/components/pages/ImagePromptsPage'),      { loading: PageLoader })
+const BrandingSovereignPage = dynamic(() => import('@/components/pages/BrandingSovereignPage'), { loading: PageLoader })
+const PromptArchitectPage   = dynamic(() => import('@/components/pages/PromptArchitectPage'),   { loading: PageLoader })
+const VisualCompilerPage    = dynamic(() => import('@/components/pages/VisualCompilerPage'),    { loading: PageLoader })
+const CognitiveOSPage       = dynamic(() => import('@/components/pages/CognitiveOSPage'),       { loading: PageLoader })
+const ClaudeTagPlaybookPage = dynamic(() => import('@/components/pages/ClaudeTagPlaybookPage'), { loading: PageLoader })
 const VideoPromptsPage      = dynamic(() => import('@/components/pages/VideoPromptsPage'),      { loading: PageLoader })
 const CommunityPostsPage          = dynamic(() => import('@/components/pages/CommunityPostsPage'),          { loading: PageLoader })
 const OrbitalMissionControlPage   = dynamic(() => import('@/components/pages/OrbitalMissionControlPage'),   { loading: PageLoader })
 const GrowthPage            = dynamic(() => import('@/components/pages/GrowthPage'),            { loading: PageLoader })
 const ChaseBotPage          = dynamic(() => import('@/components/pages/ChaseBotPage'),          { loading: PageLoader })
+const LeadQualifierPage     = dynamic(() => import('@/components/pages/LeadQualifierPage'),     { loading: PageLoader })
 const ArbFlowPage           = dynamic(() => import('@/components/pages/ArbFlowPage'),           { loading: PageLoader })
+const FreelancerOSPage      = dynamic(() => import('@/components/pages/FreelancerOSPage'),      { loading: PageLoader })
+const SignalDeskProPage     = dynamic(() => import('@/components/pages/SignalDeskProPage'),     { loading: PageLoader })
+const ProblemSolverPage     = dynamic(() => import('@/components/pages/ProblemSolverPage'),     { loading: PageLoader })
+const SalesOSPage           = dynamic(() => import('@/components/pages/SalesOSPage'),           { loading: PageLoader })
 import { WorkspaceProvider } from '@/lib/workspaceContext'
 import { AutoPilotProvider } from '@/lib/autoPilotContext'
 import AutoPilotBar from '@/components/AutoPilotBar'
@@ -47,9 +62,9 @@ const VALID_PAGES = [
   'journey', 'client-delivery', 'overview', 'reasoning', 'runtime',
   'forge', 'dashboard', 'vault', 'agent-editor', 'audit',
   'trending', 'workspaces', 'pricing', 'deploy', 'build', 'pipeline', 'evolve',
-  'higgs-ai', 'keys', 'admin', 'client-agents', 'image-prompts', 'video-prompts',
+  'higgs-ai', 'keys', 'admin', 'client-agents', 'image-prompts', 'branding-sovereign', 'prompt-architect', 'visual-compiler', 'cognitive-os', 'claude-tag-playbook', 'video-prompts',
   'community-posts', 'orbital-mission-control',
-  'leads', 'proposals', 'growth', 'chasebot', 'arbflow', 'agentic-career',
+  'leads', 'proposals', 'growth', 'chasebot', 'arbflow', 'agentic-career', 'neon-drift', 'pcb-agent-os', 'freelancer-os', 'signaldesk-pro', 'problem-solver', 'client-command-center', 'sales-os',
 ] as const
 
 function ShellInner() {
@@ -58,6 +73,10 @@ function ShellInner() {
   const rawPage      = searchParams.get('page') ?? 'overview'
   const currentPage: PageId = (VALID_PAGES as readonly string[]).includes(rawPage)
     ? rawPage as PageId : 'overview'
+  const { data: session, status: sessionStatus } = useSession()
+  const sessionUser = session?.user as { plan?: string; isAdmin?: boolean } | undefined
+  const hasPageAccess = canAccessPage(currentPage, sessionUser?.plan, sessionUser?.isAdmin)
+  const requiredAccess = accessForPage(currentPage)
 
   const [collapsed,     setCollapsed]     = useState(false)
   const [theme,         setTheme]         = useState<'light' | 'dark' | 'system'>('light')
@@ -72,18 +91,23 @@ function ShellInner() {
 
   // Human-readable labels for TTS page announcements
   const PAGE_LABELS: Record<string, string> = {
-    overview: 'Overview', journey: 'Demo Journey', 'client-delivery': 'Client Delivery',
+    overview: 'Overview', journey: 'Demo Journey', 'client-delivery': 'Client Delivery', 'client-command-center': 'Client Command Center',
     reasoning: 'Reasoning Engine', runtime: 'Live Runtime', forge: 'FORGE Engine',
     dashboard: 'Dashboard', vault: 'Prompt Vault', 'agent-editor': 'Agent Editor',
     audit: 'Audit Log', trending: 'Trending', workspaces: 'Workspaces',
     pricing: 'Pricing', deploy: 'Deploy', build: 'Build Engine',
     pipeline: 'One-Click Pipeline', evolve: 'Evolve', 'higgs-ai': 'Higgs AI',
     keys: 'API Keys', admin: 'Admin', 'client-agents': 'Client Agents',
-    'image-prompts': 'Image Prompts', 'video-prompts': 'Video Prompts',
+    'image-prompts': 'Image Prompts', 'branding-sovereign': 'Branding Sovereign',
+    'prompt-architect': 'Prompt Architect', 'visual-compiler': 'NEXUS Visual Compiler', 'cognitive-os': 'NEXUS Cognitive OS', 'claude-tag-playbook': 'Claude Tag Playbook', 'video-prompts': 'Video Prompts',
     'community-posts': 'Community Posts',
     'orbital-mission-control': 'Orbital Mission Control',
     leads: 'Lead Pipeline', proposals: 'Proposals', growth: 'Growth Engine',
-    chasebot: 'ChaseBot CB', arbflow: 'ArbFlow', 'agentic-career': 'Agentic Career OS',
+    chasebot: 'ChaseBot CB', arbflow: 'ArbFlow', 'agentic-career': 'Agentic Career OS', 'neon-drift': 'Neon Drift', 'pcb-agent-os': 'PCB Agent OS',
+    'freelancer-os': 'FreelancerOS Platform',
+    'signaldesk-pro': 'SignalDesk Pro',
+    'problem-solver': '9 Solutions Engine',
+    'sales-os': 'Sales OS',
   }
 
   // Restore sidebar + theme from localStorage/cookie on mount
@@ -241,8 +265,29 @@ function ShellInner() {
             {/* Page content — key triggers re-animation on nav */}
             <div key={currentPage} className="flex-1 animate-fadein">
               <ErrorBoundary label={currentPage}>
+              {!hasPageAccess && sessionStatus !== 'loading' ? (
+                <div className="min-h-[70vh] flex items-center justify-center px-6">
+                  <div className="max-w-md rounded-2xl border border-border bg-paper p-6 text-center shadow-sm">
+                    <p className="text-[10px] font-black font-mono uppercase tracking-widest text-acid mb-2">
+                      {accessLabel(requiredAccess)}
+                    </p>
+                    <h2 className="text-2xl font-black text-ink">Upgrade required</h2>
+                    <p className="mt-2 text-sm leading-6 text-ink3">
+                      This workspace is part of the NEXUS OS revenue-operations layer. Admins can see everything; other users need the plan shown above.
+                    </p>
+                    <button
+                      onClick={() => onNavigate('pricing')}
+                      className="mt-5 rounded-xl bg-acid px-5 py-3 text-sm font-black text-paper"
+                    >
+                      Review pricing and access
+                    </button>
+                  </div>
+                </div>
+              ) : (
+              <>
               {currentPage === 'journey'         && <JourneyPage onNavigate={onNavigate} />}
               {currentPage === 'client-delivery' && <ClientDeliveryPage />}
+              {currentPage === 'client-command-center' && <ClientCommandCenterPage />}
               {currentPage === 'overview'        && <OverviewPage onNavigate={onNavigate} />}
               {currentPage === 'reasoning'       && <ReasoningEnginePage />}
               {currentPage === 'runtime'         && <LiveRuntimePage onApiKeyChange={onApiKeyChange} onNavigateForge={() => onNavigate('forge')} />}
@@ -258,18 +303,32 @@ function ShellInner() {
               {currentPage === 'build'           && <BuildEnginePage />}
               {currentPage === 'pipeline'        && <PipelinePage />}
               {currentPage === 'agentic-career'  && <AgenticCareerPage />}
+              {currentPage === 'neon-drift'      && <NeonDriftPage />}
+              {currentPage === 'pcb-agent-os'    && <PcbAgentOsPage />}
               {currentPage === 'evolve'          && <EvolvePage />}
               {currentPage === 'higgs-ai'        && <HiggsAIPage />}
               {currentPage === 'keys'            && <KeysPage />}
               {currentPage === 'admin'           && <AdminPage />}
               {currentPage === 'client-agents'  && <ClientAgentsPage />}
               {currentPage === 'image-prompts'  && <ImagePromptsPage />}
+              {currentPage === 'branding-sovereign' && <BrandingSovereignPage />}
+              {currentPage === 'prompt-architect' && <PromptArchitectPage />}
+              {currentPage === 'visual-compiler' && <VisualCompilerPage />}
+              {currentPage === 'cognitive-os' && <CognitiveOSPage />}
+              {currentPage === 'claude-tag-playbook' && <ClaudeTagPlaybookPage />}
               {currentPage === 'video-prompts'  && <VideoPromptsPage />}
               {currentPage === 'community-posts'         && <CommunityPostsPage />}
               {currentPage === 'orbital-mission-control' && <OrbitalMissionControlPage />}
               {currentPage === 'growth'         && <GrowthPage />}
+              {currentPage === 'leads'          && <LeadQualifierPage />}
               {currentPage === 'chasebot'       && <ChaseBotPage />}
               {currentPage === 'arbflow'        && <ArbFlowPage />}
+              {currentPage === 'freelancer-os'  && <FreelancerOSPage />}
+              {currentPage === 'signaldesk-pro' && <SignalDeskProPage />}
+              {currentPage === 'problem-solver' && <ProblemSolverPage onNavigate={onNavigate} />}
+              {currentPage === 'sales-os'       && <SalesOSPage />}
+              </>
+              )}
               </ErrorBoundary>
             </div>
           </main>
@@ -307,7 +366,7 @@ function ShellInner() {
           )}
 
           {/* First-visit welcome modal */}
-          {showWelcome && (
+          {showWelcome && currentPage !== 'client-command-center' && (
             <OnboardingModal
               onClose={() => setShowWelcome(false)}
               onNavigate={onNavigate}
