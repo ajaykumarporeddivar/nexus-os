@@ -15,7 +15,7 @@ const ALL_PAGES = [
   'higgs-ai', 'keys', 'admin', 'client-agents', 'image-prompts', 'branding-sovereign', 'prompt-architect', 'visual-compiler', 'cognitive-os', 'claude-tag-playbook', 'video-prompts',
   'community-posts', 'orbital-mission-control', 'signaldesk-pro', 'agrios-kisan', 'sales-os',
   'leads', 'proposals', 'growth', 'chasebot', 'arbflow', 'agentic-career', 'neon-drift', 'pcb-agent-os', 'freelancer-os', 'agent-os', 'client-command-center',
-  'problem-solver', 'structure-os',
+  'problem-solver', 'structure-os', 'daily-health-5',
 ] as const
 
 export type PageId = typeof ALL_PAGES[number]
@@ -306,6 +306,14 @@ const GROUPS: NavGroup[] = [
         icon: '🌾',
         description: '₹3,500 → 10/10 Farm OS — step-by-step deploy guide for Indian farmers',
         href: '/agrios-kisan-deploy.html',
+        isNew: true,
+      },
+      {
+        id: 'daily-health-5',
+        label: 'Daily Health 5',
+        icon: '♥',
+        description: 'Two daily reminders — water, movement, sunlight, screen-free, sleep',
+        href: '/daily-health-5.html',
         isNew: true,
       },
     ],
